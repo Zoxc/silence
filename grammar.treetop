@@ -28,7 +28,7 @@ grammar Hush
 	end
 	
 	rule string
-		'"' ('\"' / !'"' .)* '"'
+		'"' ('\"' / !'"' .)* '"' { def value; text_value end }
 	end
 	
 	rule ident_char
@@ -36,7 +36,7 @@ grammar Hush
 	end
 	
 	rule ident
-		s [_A-Za-z]+ ident_char*
+		s ([_A-Za-z]+ ident_char*) { def value; text_value.to_sym end }
 	end
 	
 	rule program
@@ -48,7 +48,7 @@ grammar Hush
 	end
 	
 	rule global_scope_entries
-		(l global_scope_entry)* l
+		(l global_scope_entry)* l { def ast; [:global_scope, auto_ast] end }
 	end
 	
 	rule global_scope_entry
@@ -61,12 +61,21 @@ grammar Hush
 	end
 	
 	rule function_attribute
-		'export' S
-		/ 'import' S
+		attrib:('import' / 'export') S { def value; attrib.text_value.to_sym end }
 	end
 	
 	rule function
-		function_attribute* ident function_parameters type_specifier? expression_scope_braced?
+		attribs:function_attribute* ident function_parameters result:(type_specifier?) group:(group_braced?) {
+			def ast
+				[:func,
+					{name: ident.value,
+					params: auto_ast(function_parameters, false),
+					result: opt_ast(result),
+					attribs: attribs.elements.map(&:value),
+					group: opt_ast(group)}
+				]
+			end
+		}
 	end
 	
 	rule function_parameters
@@ -74,7 +83,7 @@ grammar Hush
 	end
 	
 	rule function_parameter
-		ident type_specifier?
+		ident type:(type_specifier?) { def ast; [ident.value, opt_ast(type)] end }
 	end
 	
 	rule type_specifier
@@ -82,18 +91,18 @@ grammar Hush
 	end
 	
 	rule type
-		ident
-		/ '^' l type
-		/ '*' l type
+		ident { def ast; value end }
+		/ '^' l type { def ast; [:null_ptr, type.ast] end }
+		/ '*' l type { def ast; [:ptr, type.ast] end }
 	end
 	
-	rule expression_scope_braced
-		l '{' l (expression (n l expression)* l)? '}'
+	rule group_braced
+		l '{' l (expression (n l expression)* l)? '}' { def ast; [:group, auto_ast] end }
 	end
 	
-	rule expression_scope
-		n expression n
-		/ expression_scope_braced
+	rule group
+		n expression n { def ast; [:group, auto_ast] end }
+		/ group_braced
 	end
 	
 	rule expression
@@ -103,7 +112,7 @@ grammar Hush
 	end
 
 	rule if
-		'if' S expression expression_scope ('else' S expression expression_scope)?
+		'if' S expression group ('else' S expression group)?
 	end
 
 	rule return
@@ -111,7 +120,7 @@ grammar Hush
 	end
 
 	rule additive
-		multitive ( s ('+' / '-') l multitive )*
+		multitive ( s [+-] l multitive )*
 	end
 
 	rule multitive
@@ -127,13 +136,13 @@ grammar Hush
 	end
 	
 	rule call
-		ident s '(' l arguments l ')'
+		ident s '(' l arguments l ')' { def ast; [:call, ident.value, auto_ast] end }
 	end
 	
 	rule factor
 		s '(' l expression l ')'
 		/ number
-		/ string
+		/ string { def ast; [:string, value] end }
 		/ call
 	end
 end
