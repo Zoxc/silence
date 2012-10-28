@@ -26,15 +26,17 @@ def print_ast(ast)
 	case ast
 		when nil
 			"(nil)"
-		when AST::NamedType
+		when AST::NamedTypeNode
 			ast.name.to_s
-		when AST::PtrType
+		when AST::PtrTypeNode
 			"*" + print_ast(ast.target)
-		when AST::NullPtrType
+		when AST::NullPtrTypeNode
 			"^" + print_ast(ast.target)
 		
 		when AST::IntegerLiteral, AST::StringLiteral
 			format.(ast, [[:value]])
+		when AST::VariableDecl
+			format.(ast, [[:name], [:type, :inline], [:value, :single]])
 		when AST::Return
 			format.(ast, [[:value, :single]])
 		when AST::VariableRef

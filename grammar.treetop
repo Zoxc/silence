@@ -91,9 +91,9 @@ grammar AST
 	end
 	
 	rule type
-		ident { def ast; NamedType.new(value) end }
-		/ '^' l type { def ast; NullPtrType.new(type.ast) end }
-		/ '*' l type { def ast; PtrType.new(type.ast) end }
+		ident { def ast; NamedTypeNode.new(value) end }
+		/ '^' l type { def ast; NullPtrTypeNode.new(type.ast) end }
+		/ '*' l type { def ast; PtrTypeNode.new(type.ast) end }
 	end
 	
 	rule group_braced
@@ -156,7 +156,15 @@ grammar AST
 	end
 	
 	rule variable_decl
-		ident (type_specifier (s "=" l expression)? / s ":=" l expression)
+		ident type_value:(
+			type_specifier expr:(s "=" l expression)? { def ast; {type: single_ast(type_specifier), value: single_ast(expr)} end }
+			/ s ":=" l expression { def ast; {value: single_ast(expression)} end }
+		) {
+			def ast
+				tv = single_ast(type_value)
+				VariableDecl.new(ident.value, tv[:type], tv[:value])
+			end
+		} 
 	end
 
 	rule variable_decls

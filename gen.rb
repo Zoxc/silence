@@ -1,10 +1,10 @@
 def c_type(ast)
 	case ast
-		when AST::NamedType
+		when AST::NamedTypeNode
 			ast.name.to_s
-		when AST::PtrType
+		when AST::PtrTypeNode
 			c_type(ast.target) + "*"
-		when AST::NullPtrType
+		when AST::NullPtrTypeNode
 			c_type(ast.target) + "^"
 	end
 end
@@ -23,6 +23,8 @@ def gen_body(ast)
 			ast.value.to_s
 		when AST::VariableRef
 			ast.name.to_s
+		when AST::Return
+			"return #{gen_body(ast.value)}"
 		when AST::BinOp
 			"(#{gen_body(ast.lhs)} #{ast.op} #{gen_body(ast.rhs)})"
 		when AST::StringLiteral

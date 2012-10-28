@@ -21,6 +21,9 @@ end
 #puts result.inspect
 ast = result.ast
 
+ast.run_declare_pass(nil)
+ast.sema_pass(nil)
+
 puts print_ast(ast)
 
 output = File.open("output.c", "w") { |f| f.write codegen(ast) }
