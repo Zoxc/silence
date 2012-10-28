@@ -1,0 +1,139 @@
+grammar Hush
+	rule space
+		[ \t]
+	end
+
+	rule newline
+		"\r"? "\n" / "\r"
+	end
+
+	rule s
+		space*
+	end
+
+	rule S
+		!ident_char l
+	end
+
+	rule n
+		s !(!newline .) newline? s
+	end
+
+	rule l
+		(space / newline)*
+	end
+
+	rule number
+		 [0-9]+
+	end
+	
+	rule string
+		'"' ('\"' / !'"' .)* '"'
+	end
+	
+	rule ident_char
+		[_A-Za-z0-9]
+	end
+	
+	rule ident
+		s [_A-Za-z]+ ident_char*
+	end
+	
+	rule program
+		global_scope_entries
+	end
+	
+	rule global_scope
+		l '{' global_scope_entries '}' n
+	end
+	
+	rule global_scope_entries
+		(l global_scope_entry)* l
+	end
+	
+	rule global_scope_entry
+		struct
+		/ function
+	end
+	
+	rule struct
+		s 'struct' S ident global_scope
+	end
+	
+	rule function_attribute
+		'export' S
+		/ 'import' S
+	end
+	
+	rule function
+		function_attribute* ident function_parameters type_specifier? expression_scope_braced?
+	end
+	
+	rule function_parameters
+		s '(' l (function_parameter (s ',' l function_parameter)* l)? ')'
+	end
+	
+	rule function_parameter
+		ident type_specifier?
+	end
+	
+	rule type_specifier
+		s ':' l type
+	end
+	
+	rule type
+		ident
+		/ '^' l type
+		/ '*' l type
+	end
+	
+	rule expression_scope_braced
+		l '{' l (expression (n l expression)* l)? '}'
+	end
+	
+	rule expression_scope
+		n expression n
+		/ expression_scope_braced
+	end
+	
+	rule expression
+		additive
+		/ return
+		/ if
+	end
+
+	rule if
+		'if' S expression expression_scope ('else' S expression expression_scope)?
+	end
+
+	rule return
+		'return' l expression
+	end
+
+	rule additive
+		multitive ( s ('+' / '-') l multitive )*
+	end
+
+	rule multitive
+		unary ( s [*/%] l unary )*
+	end
+
+	rule unary
+		(s [+-] l)? factor
+	end
+
+	rule arguments
+		(expression (s ',' l expression)*)?
+	end
+	
+	rule call
+		ident s '(' l arguments l ')'
+	end
+	
+	rule factor
+		s '(' l expression l ')'
+		/ number
+		/ string
+		/ call
+	end
+end
