@@ -1,4 +1,4 @@
-grammar Hush
+grammar AST
 	rule space
 		[ \t]
 	end
@@ -12,7 +12,7 @@ grammar Hush
 	end
 
 	rule S
-		!ident_char l
+		!ident_char s
 	end
 
 	rule n
@@ -24,7 +24,7 @@ grammar Hush
 	end
 
 	rule number
-		 [0-9]+
+		 [0-9]+ { def value; text_value.to_i end }
 	end
 	
 	rule string
@@ -48,7 +48,7 @@ grammar Hush
 	end
 	
 	rule global_scope_entries
-		(l global_scope_entry)* l { def ast; [:global_scope, auto_ast] end }
+		(l global_scope_entry)* l { def ast; GlobalScope.new(auto_ast) end }
 	end
 	
 	rule global_scope_entry
@@ -67,13 +67,13 @@ grammar Hush
 	rule function
 		attribs:function_attribute* ident function_parameters result:(type_specifier?) group:(group_braced?) {
 			def ast
-				[:func,
-					{name: ident.value,
-					params: auto_ast(function_parameters, false),
-					result: opt_ast(result),
-					attribs: attribs.elements.map(&:value),
-					group: opt_ast(group)}
-				]
+				func = Function.new
+				func.name = ident.value
+				func.params = function_parameters.ast
+				func.result = single_ast(result)
+				func.attributes = attribs.elements.map(&:value)
+				func.group = single_ast(group)
+				func
 			end
 		}
 	end
@@ -83,7 +83,7 @@ grammar Hush
 	end
 	
 	rule function_parameter
-		ident type:(type_specifier?) { def ast; [ident.value, opt_ast(type)] end }
+		ident type:(type_specifier?) { def ast; Function::Parameter.new(ident.value, single_ast(type)) end }
 	end
 	
 	rule type_specifier
@@ -91,40 +91,56 @@ grammar Hush
 	end
 	
 	rule type
-		ident { def ast; value end }
-		/ '^' l type { def ast; [:null_ptr, type.ast] end }
-		/ '*' l type { def ast; [:ptr, type.ast] end }
+		ident { def ast; NamedType.new(value) end }
+		/ '^' l type { def ast; NullPtrType.new(type.ast) end }
+		/ '*' l type { def ast; PtrType.new(type.ast) end }
 	end
 	
 	rule group_braced
-		l '{' l (expression (n l expression)* l)? '}' { def ast; [:group, auto_ast] end }
+		l '{' l (expression (n l expression)* l)? '}' { def ast; Scope.new(auto_ast) end }
 	end
 	
 	rule group
-		n expression n { def ast; [:group, auto_ast] end }
+		n expression n { def ast; Scope.new(auto_ast) end }
 		/ group_braced
 	end
 	
 	rule expression
-		additive
-		/ return
+		return
 		/ if
-	end
-
-	rule if
-		'if' S expression group ('else' S expression group)?
+		/ assignment
 	end
 
 	rule return
-		'return' l expression
+		'return' l expression { def ast; Return.new(single_ast(expression)) end }
+	end
+
+	rule if
+		'if' S l expression group else_opt:('else' S group)? { def ast; If.new(single_ast(expression), single_ast(group), single_ast(else_opt)) end }
+	end
+
+	rule assignment_right
+		s op:([+\-*/%]? "=") l additive { def ast; rhe op, additive end }
+	end
+
+	rule assignment
+		additive rl:assignment_right* { def ast; merge_rhe(additive, rl, false) end }
+	end
+
+	rule additive_right
+		s op:[+\-] l multitive { def ast; rhe op, multitive end }
 	end
 
 	rule additive
-		multitive ( s [+-] l multitive )*
+		multitive rl:additive_right* { def ast; merge_rhe(multitive, rl) end }
+	end
+
+	rule multitive_right
+		s op:[*/%] l unary { def ast; rhe op, unary end }
 	end
 
 	rule multitive
-		unary ( s [*/%] l unary )*
+		unary rl:multitive_right* { def ast; merge_rhe(unary, rl) end }
 	end
 
 	rule unary
@@ -136,13 +152,23 @@ grammar Hush
 	end
 	
 	rule call
-		ident s '(' l arguments l ')' { def ast; [:call, ident.value, auto_ast] end }
+		ident s '(' l arguments l ')' { def ast; Call.new(ident.value, auto_ast) end }
 	end
 	
+	rule variable_decl
+		ident (type_specifier (s "=" l expression)? / s ":=" l expression)
+	end
+
+	rule variable_decls
+		variable_decl (s "," l variable_decl)*
+	end
+
 	rule factor
 		s '(' l expression l ')'
-		/ number
-		/ string { def ast; [:string, value] end }
+		/ number { def ast; IntegerLiteral.new(value) end }
+		/ string { def ast; StringLiteral.new(value) end }
 		/ call
+		/ variable_decls
+		/ ident { def ast; VariableRef.new(value) end }
 	end
 end

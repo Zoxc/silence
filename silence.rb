@@ -1,9 +1,10 @@
 require_relative 'ast'
 require_relative 'gen'
+require_relative 'print'
 
 Treetop.load "grammar"
 
-parser = HushParser.new
+parser = ASTParser.new
 parser.root = :program
 
 input = File.open(ARGV.first) { |f| f.read }
@@ -17,7 +18,11 @@ unless result
 	exit
 end
 
+#puts result.inspect
 ast = result.ast
-puts ast.inspect
 
-puts codegen(ast)
+puts print_ast(ast)
+
+output = File.open("output.c", "w") { |f| f.write codegen(ast) }
+`gcc output.c -Wall -o output`
+`output.exe`
