@@ -1,5 +1,10 @@
 ﻿class InferSystem
+	class TypeError < Exception
+	end
+	
 	class Type
+		attr_accessor :source
+		
 		def to_s
 			"<error>"
 		end
@@ -7,12 +12,19 @@
 		def args
 			[]
 		end
+		
+		def source_dup(source)
+			result = dup
+			result.source = source
+			result
+		end
 	end
 	
 	class Fixed < Type
 		attr_accessor :name
 		
-		def initialize(name)
+		def initialize(source, name)
+			@source = source
 			@name = name
 		end
 		
@@ -39,7 +51,8 @@
 	end
 	
 	class Function < Type
-		def initialize(args, result)
+		def initialize(source, args, result)
+			@source = source
 			@args = args
 			@result = result
 		end
@@ -58,10 +71,10 @@
 	end
 	
 	def initialize
-		@int_type = Fixed.new('int')
-		@unit_type = Fixed.new('unit')
-		@bool_type = Fixed.new('bool')
-		@string_type = Fixed.new('string')
+		@int_type = Fixed.new(nil, 'int')
+		@unit_type = Fixed.new(nil, 'unit')
+		@bool_type = Fixed.new(nil, 'bool')
+		@string_type = Fixed.new(nil, 'string')
 		@results = {}
 		@vars = {}
 		@var_name = 'α'
@@ -128,7 +141,7 @@
 						@string_type
 					else
 						raise "Unknown literal type #{ast.type}"
-				end
+				end.source_dup(ast.source)
 			when AST::Function
 				@results[ast] = nil
 				
@@ -142,7 +155,7 @@
 				
 				analyze(ast.scope, new_args)
 				
-				Function.new(ast.params.map { |p| @vars[p.var] }, @results[ast] || @unit_type)
+				Function.new(ast.source, ast.params.map { |p| @vars[p.var] }, @results[ast] || @unit_type)
 			when AST::Scope
 				if ast.nodes.empty?
 					@unit_type
@@ -174,9 +187,23 @@
 		end
 	end
 	
+	def errmsg(a, b)
+		return errmsg(b, a) if b.source && !a.source
+		
+		if a.source && b.source
+			"Expression of type #{a},\n#{a.source.format}\nconflicts with expression of type #{b},\n#{b.source.format}" 
+		elsif a.source
+			"Expected type #{b}, but found type #{a}\n#{a.source.format}" 
+		else
+			"Expression of type #{a}, conflicts with expression of type #{b}" 
+		end
+	end
+	
 	def unify(a, b)
 		a = prune(a)
 		b = prune(b)
+		
+		puts "unifying #{a} and #{b}"
 		
 		return unify(b, a) if b.is_a? Variable
 		
@@ -189,7 +216,7 @@
 		a_args = a.args
 		b_args = b.args
 		
-		raise "Type conflict, #{a} != #{b}" if (a.name != b.name) || (a_args.size != b_args.size)
+		raise TypeError.new(errmsg(a, b)) if (a.name != b.name) || (a_args.size != b_args.size)
 		
 		a_args.each_with_index do |a_arg, i|
 			unify(a_arg, b_args[i])

@@ -26,7 +26,12 @@ ast.run_pass :sema, true
 
 puts print_ast(ast)
 
-infer_scope ast
+begin
+	infer_scope ast
+rescue InferSystem::TypeError => type_error
+	$stderr.puts "Fatal errors:", type_error.message
+	exit
+end
 
 output = File.open("output.c", "w") { |f| f.write codegen(ast) }
 `gcc output.c -Wall -o output`

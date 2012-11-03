@@ -2,17 +2,17 @@ import printf(format: *char): unit
 
 b()
 {
-	a()
+	return a()
 }
 
 c()
 {
-	b()
+	return b()
 }
 
 a()
 {
-	c()
+	return c()
 }
 
 h()
@@ -26,7 +26,7 @@ export main(): unit
 {
 	printf("Hello there")
 	
-	if 1
+	if true
 		printf("Cool")
 	else
 		printf("Odd")

@@ -68,6 +68,7 @@ grammar AST
 		attribs:function_attribute* ident function_parameters result:(type_specifier?) group:(group_braced?) {
 			def ast
 				func = Function.new
+				func.source = source
 				func.name = ident.value
 				func.params = function_parameters.ast
 				func.result = single_ast(result)

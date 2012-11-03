@@ -6,6 +6,29 @@ module AST
 			@input = input
 			@range = range
 		end
+		
+		def untab(str)
+			str.gsub("\t", " " * 8)
+		end
+		
+		def format
+			lines = @input.lines.to_a
+			i = 0
+			line = 1
+			while i < @range.min - lines.first.size
+				i += lines.first.size
+				line += 1
+				lines.shift
+			end
+			count = [@range.max - @range.min, lines.first.chomp.size].max
+			pad = @range.min - i
+			source = @input[i, count]
+			linestr = "  line #{line}: "
+			padstr = " " * (untab(source[0...pad]).size + linestr.size)
+			count = untab(@input[@range]).size
+			rep = count == 1 ? "^" : "~"
+			"#{linestr}#{untab(source)}\n#{padstr}#{rep * count}"
+		end
 	end
 	
 	class Node
