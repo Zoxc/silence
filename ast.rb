@@ -1,27 +1,33 @@
 require 'treetop'
 
 module AST
-	class Node
-		def run_declare_pass(scope)
-			scope = apply_pass(scope)
-			
-			visit do |node|
-				next unless node
-				
-				node.run_declare_pass(scope)
-				node.declare_pass(scope)
-				node
-			end
+	class Source
+		def initialize(input, range)
+			@input = input
+			@range = range
 		end
+	end
+	
+	class Node
+		attr_accessor :source
 		
-		def sema_pass(scope)
+		def run_pass(name, replace = false, scope = nil)
 			scope = apply_pass(scope)
 			
 			visit do |node|
 				next unless node
 				
-				node.sema_pass(scope)
-				node.sema(scope)
+				node.run_pass(name, replace, scope)
+				result = if node.respond_to? name
+						node.send name, scope
+					else
+						node
+					end
+				if replace
+					result
+				else
+					node
+				end
 			end
 		end
 		
@@ -32,12 +38,8 @@ module AST
 		def visit
 		end
 		
-		def declare_pass(scope)
-			self
-		end
-		
-		def sema(scope)
-			self
+		def initialize(source = nil)
+			@source = source
 		end
 	end
 	
@@ -56,7 +58,8 @@ module AST
 	class NamedTypeNode < Node
 		attr_accessor :name
 		
-		def initialize(name)
+		def initialize(source, name)
+			super(source)
 			@name = name
 		end
 		
@@ -68,7 +71,8 @@ module AST
 	class NullPtrTypeNode < Node
 		attr_accessor :target
 		
-		def initialize(target)
+		def initialize(source, target)
+			super(source)
 			@target = target
 		end
 		
@@ -80,7 +84,8 @@ module AST
 	class PtrTypeNode < Node
 		attr_accessor :target
 		
-		def initialize(target)
+		def initialize(source, target)
+			super(source)
 			@target = target
 		end
 		
@@ -89,65 +94,106 @@ module AST
 		end
 	end
 
-	class GlobalScope < Node
-		attr_accessor :nodes
+	class Scope < Node
+		attr_accessor :nodes, :names, :parent, :uses
 		
 		def initialize(nodes)
 			@nodes = nodes
+			@names = {}
+			@uses = []
+		end
+		
+		def use_func(func)
+			@uses << func unless @uses.include? func
+		end
+		
+		def declare(name, obj)
+			@names[name] = obj
+		end
+		
+		def require(name, type = nil)
+			result = @names[name]
+			if result
+				if type && !result.kind_of?(type)
+					raise "Found type #{result.class}, but expected #{type}"
+				end
+				return result
+			end
+			return @parent.require(name) if @parent
+			raise "Unknown identifier #{name}"
 		end
 		
 		def visit
 			@nodes.map! { |n| yield n }
 		end
 	end
+	
+	class GlobalScope < Scope
+	end
 
+	class Program < Node
+		attr_accessor :scope
+	
+		def initialize(scope)
+			@scope = scope
+		end
+		
+		def apply_pass(scope)
+			@scope
+		end
+		
+		def declare_pass(scope)
+			@scope.parent = scope
+		end
+		
+		def visit
+			@scope = yield scope
+		end
+	end
+
+	class LocalScope < Scope
+	end
+	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :group
+		attr_accessor :name, :params, :result, :attributes, :scope, :type
 		
 		class Parameter < Node
-			attr_accessor :name, :type
+			attr_accessor :name, :type, :var
 			
-			def initialize(name, type)
+			def initialize(source, name, type)
+				super(source)
 				@name = name
 				@type = type
 			end
 			
-			def declare(scope)
-				scope.declare(@name, @type) if scope
+			def declare_pass(scope)
+				if @scope
+					@var = Variable.new(@name, @type)
+					scope.declare(@name, @var)
+				end
 			end
+		end
+	
+		def declare_pass(scope)
+			scope.declare(@name, self)
+			@scope.parent = scope if @scope
 		end
 		
 		def apply_pass(scope)
-			@group
+			@scope
 		end
 		
 		def visit
 			@params.map! { |n| yield n }
-			@group = yield group
-		end
-	end
-	
-	class Scope < Node
-		attr_accessor :nodes, :variables
-		
-		def initialize(nodes)
-			@nodes = nodes
-			@variables = {}
-		end
-		
-		def declare(name, type)
-			@variables[name] = Variable.new(name, type)
-		end
-		
-		def visit
-			@nodes.map! { |n| yield n }
+			@scope = yield scope if @scope
 		end
 	end
 	
 	class BinOp < ExpressionNode
 		attr_accessor :lhs, :op, :rhs
 		
-		def initialize(lhs, op, rhs)
+		def initialize(source, lhs, op, rhs)
+			super(source)
 			@lhs = lhs
 			@op = op
 			@rhs = rhs
@@ -162,21 +208,26 @@ module AST
 	class VariableDecl < ExpressionNode
 		attr_accessor :name, :value, :type
 		
-		def initialize(name, type, value)
+		def initialize(source, right_source, name, type, value)
+			@source = source
+			@right_source = right_source
 			@name = name
 			@value = value
 			@type = type
 		end
 		
 		def declare_pass(scope)
-			@var = scope.declare(name, type)
+			@var = Variable.new(@name, @type)
+			scope.declare(@name, @var)
 		end
 		
 		def sema(scope)
+			ref = Ref.new(@source, @var)
+			
 			if @value
-				BinOp.new(@var, :'=', @value)
+				BinOp.new(@right_source, ref, :'=', @value)
 			else
-				@var
+				ref
 			end
 		end
 		
@@ -185,17 +236,25 @@ module AST
 		end
 	end
 	
+	class Ref < ExpressionNode
+		attr_accessor :obj
+		
+		def initialize(source, obj)
+			super(source)
+			@obj = obj
+		end
+	end
+	
 	class VariableRef < ExpressionNode
 		attr_accessor :name
 		
-		def initialize(name)
+		def initialize(source, name)
+			super(source)
 			@name = name
 		end
 		
 		def sema(scope)
-			result = scope.variables[@name]
-			raise "Unknown variable #{@name}" unless result
-			result
+			Ref.new @source, scope.require(@name)
 		end
 	end
 	
@@ -215,18 +274,12 @@ module AST
 		end
 	end
 
-	class IntegerLiteral < ExpressionNode
-		attr_accessor :value
+	class Literal < ExpressionNode
+		attr_accessor :type, :value
 		
-		def initialize(value)
-			@value = value
-		end
-	end
-
-	class StringLiteral < ExpressionNode
-		attr_accessor :value
-		
-		def initialize(value)
+		def initialize(source, type, value)
+			super(source)
+			@type = type
 			@value = value
 		end
 	end
@@ -241,6 +294,12 @@ module AST
 		
 		def visit
 			@args.map! { |n| yield n }
+		end
+		
+		def sema(scope)
+			@func = scope.require(@name, Function)
+			scope.use_func(@func)
+			self
 		end
 	end
 	
@@ -274,7 +333,7 @@ class Treetop::Runtime::SyntaxNode
 			
 			begin
 				re = left ? rl_ast.pop : rl_ast.shift
-				result = AST::BinOp.new(result, re[:op], re[:rhs])
+				result = AST::BinOp.new(re[:op].source, result, re[:op].text_value.to_sym, re[:rhs])
 			end until rl_ast.empty?
 			
 			result
@@ -282,7 +341,11 @@ class Treetop::Runtime::SyntaxNode
 	end
 	
 	def rhe(op, rhs)
-		{op: op.text_value.to_sym, rhs: single_ast(rhs)}
+		{op: op, rhs: single_ast(rhs)}
+	end
+	
+	def source
+		AST::Source.new(input, interval)
 	end
 	
 	def single_ast(nodes)

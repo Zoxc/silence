@@ -33,12 +33,16 @@ def print_ast(ast)
 		when AST::NullPtrTypeNode
 			"^" + print_ast(ast.target)
 		
-		when AST::IntegerLiteral, AST::StringLiteral
+		when AST::Literal
 			format.(ast, [[:value]])
 		when AST::VariableDecl
 			format.(ast, [[:name], [:type, :inline], [:value, :single]])
 		when AST::Return
 			format.(ast, [[:value, :single]])
+		when AST::Ref
+			format.(ast, [[:obj, :single]])
+		when AST::Variable
+			format.(ast, [[:name]])
 		when AST::VariableRef
 			format.(ast, [[:name]])
 		when AST::Call
@@ -48,10 +52,12 @@ def print_ast(ast)
 		when AST::If
 			format.(ast, [[:condition, :single], [:group, :single], [:else_node, :single]])
 		
+		when AST::Program
+			format.(ast, [[:scope, :single]])
 		when AST::GlobalScope, AST::Scope
 			format.(ast, [[:nodes, ast.nodes]])
 		when AST::Function
-			format.(ast, [[:name], [:attributes], [:result, :inline], [:params, ast.params], [:group, :single]])
+			format.(ast, [[:name], [:attributes], [:result, :inline], [:params, ast.params], [:scope, :single]])
 		when AST::Function::Parameter
 			format.(ast, [[:name], [:type, :inline]])
 		else

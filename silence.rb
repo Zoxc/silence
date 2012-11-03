@@ -1,6 +1,7 @@
 require_relative 'ast'
 require_relative 'gen'
 require_relative 'print'
+require_relative 'infer'
 
 Treetop.load "grammar"
 
@@ -18,13 +19,14 @@ unless result
 	exit
 end
 
-#puts result.inspect
 ast = result.ast
 
-ast.run_declare_pass(nil)
-ast.sema_pass(nil)
+ast.run_pass :declare_pass
+ast.run_pass :sema, true
 
 puts print_ast(ast)
+
+infer_scope ast
 
 output = File.open("output.c", "w") { |f| f.write codegen(ast) }
 `gcc output.c -Wall -o output`

@@ -1,4 +1,19 @@
-import printf(format: *char): void
+import printf(format: *char): unit
+
+b()
+{
+	a()
+}
+
+c()
+{
+	b()
+}
+
+a()
+{
+	c()
+}
 
 h()
 {
@@ -7,7 +22,7 @@ h()
 	return a
 }
 
-export main(): void
+export main(): unit
 {
 	printf("Hello there")
 	
