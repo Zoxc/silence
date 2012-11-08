@@ -2,7 +2,6 @@ import printf(format: *char): unit
 
 b()
 {
-	return a()
 }
 
 c()
@@ -13,6 +12,11 @@ c()
 a()
 {
 	return c()
+}
+
+id(a)
+{
+	return a(1)
 }
 
 h()

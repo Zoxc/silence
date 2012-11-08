@@ -153,7 +153,7 @@ grammar AST
 	end
 	
 	rule call
-		ident s '(' l arguments l ')' { def ast; Call.new(ident.value, auto_ast) end }
+		ident s '(' l arguments l ')' { def ast; Call.new(source, ident.value, auto_ast) end }
 	end
 	
 	rule variable_decl

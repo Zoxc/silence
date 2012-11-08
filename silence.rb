@@ -30,6 +30,8 @@ begin
 	infer_scope ast
 rescue InferSystem::TypeError => type_error
 	$stderr.puts "Fatal errors:", type_error.message
+	$stderr.puts type_error.backtrace.join("\n")
+
 	exit
 end
 

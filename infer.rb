@@ -6,6 +6,11 @@
 		attr_accessor :source
 		
 		def to_s
+			"{#{text}}#{'s' if @source}"
+			text
+		end
+		
+		def text
 			"<error>"
 		end
 		
@@ -28,7 +33,7 @@
 			@name = name
 		end
 		
-		def to_s
+		def text
 			@name
 		end
 	end
@@ -36,16 +41,25 @@
 	class Variable < Type
 		attr_accessor :instance
 		
-		def initialize(system, instance)
+		def initialize(source, system, instance)
+			@source = source
 			@system = system
 			@instance = instance
 		end
 		
-		def to_s
+		def text
 			if @instance
 				@instance.to_s
 			else
 				@name ||= @system.new_var_name
+			end
+		end
+		
+		def source
+			if @instance
+				@instance.source
+			else
+				@source
 			end
 		end
 	end
@@ -61,7 +75,7 @@
 			:func
 		end
 		
-		def to_s
+		def text
 			"(#{@args.join(", ")}): #{@result}"
 		end
 		
@@ -77,17 +91,18 @@
 		@string_type = Fixed.new(nil, 'string')
 		@results = {}
 		@vars = {}
-		@var_name = 'α'
+		@funcs = {}
+		@var_name = 1
 	end
 	
 	def new_var_name
 		result = @var_name
-		@var_name = (@var_name.ord + 1).chr(Encoding::UTF_8)
-		result
+		@var_name += 1
+		"p#{result}"
 	end
 	
-	def new_var
-		Variable.new(self, nil)
+	def new_var(source = nil)
+		Variable.new(source, self, nil)
 	end
 	
 	class AnalyzeArgs
@@ -107,6 +122,7 @@
 				if prev
 					unify(result, prev)
 				else
+					puts "settings result of #{args.func.name} to #{result.inspect}"
 					@results[args.func] = result
 				end
 			when AST::If
@@ -123,7 +139,15 @@
 				unify(lhs, rhs)
 				lhs
 			when AST::Call
-				# todo
+				type = @vars[ast.func]
+				if type
+					result = new_var(ast.source)
+					unify(type, Function.new(ast.source, ast.args.map { |arg| analyze(arg, args) }, result))
+					puts " result of call is #{result}"
+					result
+				else
+					#todo fresh(ast.func)
+				end
 			when AST::Ref
 				case ast.obj
 					when AST::Variable
@@ -155,7 +179,9 @@
 				
 				analyze(ast.scope, new_args)
 				
-				Function.new(ast.source, ast.params.map { |p| @vars[p.var] }, @results[ast] || @unit_type)
+				type = Function.new(ast.source, ast.params.map { |p| @vars[p.var] }, @results[ast] || @unit_type).source_dup(ast.source)
+				unify(type, @vars[ast])
+				type
 			when AST::Scope
 				if ast.nodes.empty?
 					@unit_type
@@ -172,7 +198,9 @@
 	
 	def prune(type)
 		if type.is_a?(Variable) && type.instance
-			type.instance = prune(type.instance)
+			pruned = prune(type.instance)
+			type.source = type.source || pruned.source
+			type.instance = pruned
 		else
 			type
 		end
@@ -199,19 +227,32 @@
 		end
 	end
 	
+	def recmsg(a, b)
+		source = a.source || b.source
+		
+		if a.source && b.source
+			"Recursive type #{a},\n#{a.source.format}\ntype #{b},\n#{b.source.format}" 
+		elsif source
+			"Recursive type #{a}, occurs in type #{b}\n#{source.format}" 
+		else
+			"Recursive type #{a}, occurs in type #{b}" 
+		end
+	end
+	
 	def unify(a, b)
 		a = prune(a)
 		b = prune(b)
 		
 		puts "unifying #{a} and #{b}"
 		
-		return unify(b, a) if b.is_a? Variable
-		
 		if a.is_a? Variable
-			raise "Recursive unification" if occurs_in?(a, b)
+			raise TypeError.new(recmsg(a, b)) if occurs_in?(a, b)
 			a.instance = b
+			a.source = a.source || b.source
 			return
 		end
+		
+		return unify(b, a) if b.is_a? Variable
 		
 		a_args = a.args
 		b_args = b.args
@@ -227,12 +268,11 @@
 	
 		puts "Running type inference on the set: #{funcs.map(&:name).inspect}"
 		
-		results = funcs.map do |func|
-			[func, analyze(func)]
-		end
+		funcs.each { |func| @vars[func] = new_var.source_dup(func.source) }
+		funcs.each { |func| analyze(func) }
 		
-		results.each do |result|
-			puts "Type of #{result.first.name} is #{result.last}"
+		funcs.each do |func|
+			puts "Type of #{func.name} is #{@vars[func]}"
 		end
 		
 		puts "Done running type inference."

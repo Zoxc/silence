@@ -72,7 +72,8 @@ module AST
 	class Variable < Node
 		attr_accessor :name, :type
 		
-		def initialize(name, type)
+		def initialize(source, name, type)
+			super(source)
 			@name = name
 			@type = type
 		end
@@ -131,10 +132,12 @@ module AST
 		end
 		
 		def declare(name, obj)
+			puts "|declaring #{name} in #{__id__} \n#{obj.source.format}|"
 			@names[name] = obj
 		end
 		
-		def require(name, type = nil)
+		def require(source, name , type = nil)
+			puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|"
 			result = @names[name]
 			if result
 				if type && !result.kind_of?(type)
@@ -142,7 +145,7 @@ module AST
 				end
 				return result
 			end
-			return @parent.require(name) if @parent
+			return @parent.require(source, name, type) if @parent
 			raise "Unknown identifier #{name}"
 		end
 		
@@ -190,8 +193,9 @@ module AST
 			end
 			
 			def declare_pass(scope)
-				if @scope
-					@var = Variable.new(@name, @type)
+				puts "declaring param #{@name} #{scope.__id__}"
+				if scope
+					@var = Variable.new(@source, @name, @type)
 					scope.declare(@name, @var)
 				end
 			end
@@ -240,7 +244,7 @@ module AST
 		end
 		
 		def declare_pass(scope)
-			@var = Variable.new(@name, @type)
+			@var = Variable.new(@source, @name, @type)
 			scope.declare(@name, @var)
 		end
 		
@@ -277,7 +281,7 @@ module AST
 		end
 		
 		def sema(scope)
-			Ref.new @source, scope.require(@name)
+			Ref.new @source, scope.require(@source, @name)
 		end
 	end
 	
@@ -308,9 +312,10 @@ module AST
 	end
 
 	class Call < ExpressionNode
-		attr_accessor :name, :args
+		attr_accessor :name, :args, :func
 		
-		def initialize(name, args)
+		def initialize(source, name, args)
+			@source = source
 			@name = name
 			@args = args
 		end
@@ -320,7 +325,7 @@ module AST
 		end
 		
 		def sema(scope)
-			@func = scope.require(@name, Function)
+			@func = scope.require(@source, @name)
 			scope.use_func(@func)
 			self
 		end
