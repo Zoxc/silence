@@ -23,12 +23,12 @@ unless result
 	exit
 end
 
-ast = result.ast
+ast = AST::Program.new(result.ast)
 
 ast.run_pass :declare_pass, false, AST::BuiltinScope
 ast.run_pass :sema, true
 
-#puts print_ast(ast)
+puts print_ast(ast)
 
 begin
 	infer_scope ast

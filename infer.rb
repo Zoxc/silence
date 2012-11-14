@@ -21,7 +21,21 @@
 		end
 		
 		def to_s
-			"Apply{ #{@var.text} == #{@type.text} (#{@args.map(&:text).join(", ")}) }"
+			"Apply{ #{@var.real_text} == #{@type.text} (#{@args.map(&:text).join(", ")}) }"
+		end
+	end
+	
+	class FieldConstraint < Constraint
+		attr_accessor :result, :type, :name
+		
+		def initialize(ast, var, type, name)
+			super(ast, var)
+			@type = type
+			@name = name
+		end
+		
+		def to_s
+			"Field{ #{@var.real_text} == #{@type.text} .#{@name} }"
 		end
 	end
 	
@@ -68,6 +82,10 @@
 				make_type(ast.source, scope, ast.target, new_var)
 			when AST::NamedTypeNode
 				scope.require(ast.source, ast.name, Types::Type)
+			when AST::Variable
+				make_type(ast.source, scope, ast.type, new_var)
+			else
+				raise "Unknown AST #{ast.class}"
 		end
 	end
 	
@@ -104,6 +122,11 @@
 				result = new_var(ast.source)
 				@constraints << ApplyConstraint.new(ast, result, type, ast.args.map { |arg| analyze(arg, args) })
 				result
+			when AST::Field
+				type = analyze(ast.obj, args)
+				result = new_var(ast.source)
+				@constraints << FieldConstraint.new(ast, result, type, ast.name)
+				result
 			when AST::Ref
 				result = @vars[ast.obj]
 				if result
@@ -133,7 +156,7 @@
 				new_args = args.dup
 				
 				ast.scope.names.each_value do |var|
-					@vars[var] = make_type(ast.source, args, var.type) || new_var
+					@vars[var] = make_type(ast.source, args, var.type)
 				end
 				
 				new_args.func = ast
@@ -222,6 +245,8 @@
 			case c
 				when ApplyConstraint
 					ApplyConstraint.new(c.ast, inst_type.(c.var), inst_type.(c.type), c.args.map { |arg| inst_type.(arg) })
+				when FieldConstraint
+					FieldConstraint.new(c.ast, inst_type.(c.var), inst_type.(c.type), c.name)
 				else
 					raise "Unknown constraint #{c.class}"
 			end
@@ -283,8 +308,27 @@
 							true
 						when Types::Variable
 						else
-							raise TypeError.new("#{type.text} is not a function type\n#{c.ast.obj.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
+							raise TypeError.new("'#{type.text}' is not a function type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 					end
+				when FieldConstraint
+					var = prune(c.var)
+					type = prune(c.type)
+					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
+					case type
+						when Types::Struct
+							field = type.struct.scope.names[c.name]
+							
+							raise TypeError.new("'#{c.name.inspect}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
+							
+							unify(get_type(c.ast.source, type.struct.scope, field), var)
+							
+							true
+						when Types::Variable
+						else
+							raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
+					end
+				else
+					raise "Unknown constraint #{c.class}"
 			end
 		end
 	end
@@ -298,6 +342,8 @@
 		
 		solve
 		
+		func.itype = prune(func.itype)
+		
 		func.constraints = @constraints
 		
 		unless @constraints.empty?
@@ -306,11 +352,11 @@
 		end
 		
 		@constraints.each do |c|
-			@type_vars.delete(c.var)
+			@type_vars.delete(prune(c.var))
 		end
 		
 		@type_vars.reject! do |var|
-			var.instance || occurs_in?(var, prune(func.itype))
+			var.instance || occurs_in?(var, func.itype)
 		end
 		
 		unless @type_vars.empty?
@@ -318,6 +364,10 @@
 			puts *@type_vars.map{|c| " - #{c.text}"}
 		end
 	end
+end
+
+def get_type(source, scope, ast)
+	InferSystem.make_type(source, scope, ast, proc { |s| raise TypeError.new("Explicit type expected\n#{(s ? s : func.source).format}") })
 end
 
 def infer_function(func, visited)
@@ -328,7 +378,7 @@ def infer_function(func, visited)
 	if func.scope
 		InferSystem.new.infer(func, visited)
 	else
-		func.itype = InferSystem.make_type(func.source, func.parent_scope, func, proc { |s| raise TypeError.new("Explicit type expected for prototype\n#{(s ? s : func.source).format}") })
+		func.itype = get_type(func.source, func.parent_scope, func)
 		func.constraints = []
 		func.itype
 	end

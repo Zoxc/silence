@@ -48,16 +48,17 @@ grammar AST
 	end
 	
 	rule global_scope_entries
-		(l global_scope_entry)* l { def ast; Program.new(GlobalScope.new(auto_ast)) end }
+		(l global_scope_entry)* l { def ast; GlobalScope.new(auto_ast) end }
 	end
 	
 	rule global_scope_entry
 		struct
+		/ variable_decl
 		/ function
 	end
 	
 	rule struct
-		s 'struct' S ident global_scope
+		s 'struct' S ident global_scope { def ast; Struct.new(source, ident.value, single_ast(global_scope)) end }
 	end
 	
 	rule function_attribute
@@ -145,7 +146,7 @@ grammar AST
 	end
 
 	rule unary
-		(s [+-] l)? call_chain
+		(s [+-] l)? chain
 	end
 
 	rule arguments
@@ -168,9 +169,30 @@ grammar AST
 		variable_decl (s "," l variable_decl)*
 	end
 
-	rule call_chain
-		factor s '(' l arguments l ')' { def ast; Call.new(source, single_ast(factor), arguments.ast) end }
-		/ factor
+	rule chain_right
+		s '(' l arguments l ')' { def ast; {type: Call, source: source, arg: arguments.ast} end }
+		/ s '.' l ident { def ast; {type: Field, source: source, arg: ident.value} end }
+	end
+	
+	rule chain
+		factor cr:chain_right* {
+			def ast
+				rl_ast = cr.ast
+				
+				if rl_ast.empty?
+					auto_ast
+				else
+					result = single_ast(factor)
+					
+					begin
+						re = rl_ast.shift
+						result = re[:type].new(re[:source], result, re[:arg])
+					end until rl_ast.empty?
+					
+					result
+				end
+			end
+		}
 	end
 	
 	rule factor

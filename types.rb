@@ -91,6 +91,23 @@ module Types
 		end
 	end
 	
+	class Struct < Type
+		attr_accessor :struct
+		
+		def initialize(source, struct)
+			@source = source
+			@struct = struct
+		end
+		
+		def name
+			:struct
+		end
+		
+		def text
+			@struct.name
+		end
+	end
+	
 	def self.declare_type(name)
 		AST::BuiltinScope.declare(name, Fixed.new(nil, name))
 	end

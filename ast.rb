@@ -174,6 +174,30 @@ module AST
 		end
 	end
 
+	class Struct < Node
+		attr_accessor :name, :scope
+	
+		def initialize(source, name, scope)
+			super(source)
+			@name = name
+			@scope = scope
+		end
+		
+		def declare_pass(scope)
+			scope.declare(@name, Types::Struct.new(nil, self))
+			@scope.parent = scope
+		end
+		
+		def apply_pass(scope)
+			puts @scope.names.keys
+			@scope
+		end
+		
+		def visit
+			@scope = yield scope
+		end
+	end
+	
 	class LocalScope < Scope
 	end
 	
@@ -312,6 +336,20 @@ module AST
 		end
 	end
 
+	class Field < ExpressionNode
+		attr_accessor :obj, :name
+		
+		def initialize(source, obj, name)
+			@source = source
+			@obj = obj
+			@name = name
+		end
+		
+		def visit
+			@obj = yield @obj
+		end
+	end
+	
 	class Call < ExpressionNode
 		attr_accessor :obj, :args, :func
 		
