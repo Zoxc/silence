@@ -35,22 +35,24 @@ module AST
 		attr_accessor :source
 		
 		def run_pass(name, replace = false, scope = nil)
+			result = if respond_to? name
+					send name, scope
+				else
+					self
+				end
+			
 			scope = apply_pass(scope)
 			
 			visit do |node|
 				next unless node
 				
 				node.run_pass(name, replace, scope)
-				result = if node.respond_to? name
-						node.send name, scope
-					else
-						node
-					end
-				if replace
-					result
-				else
-					node
-				end
+			end
+			
+			if replace
+				result
+			else
+				self
 			end
 		end
 		
@@ -119,34 +121,29 @@ module AST
 	end
 
 	class Scope < Node
-		attr_accessor :nodes, :names, :parent, :uses
+		attr_accessor :nodes, :names, :parent
 		
 		def initialize(nodes)
 			@nodes = nodes
 			@names = {}
-			@uses = []
-		end
-		
-		def use_func(func)
-			@uses << func unless @uses.include? func
 		end
 		
 		def declare(name, obj)
-			puts "|declaring #{name} in #{__id__} \n#{obj.source.format}|"
+			#puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
 			@names[name] = obj
 		end
 		
 		def require(source, name , type = nil)
-			puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|"
+			#puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
 			result = @names[name]
 			if result
 				if type && !result.kind_of?(type)
-					raise "Found type #{result.class}, but expected #{type}"
+					raise CompileError, "Found type '#{result.class}', but expected type '#{type}' for '#{name}'\n#{source.format}"
 				end
 				return result
 			end
 			return @parent.require(source, name, type) if @parent
-			raise "Unknown identifier #{name}"
+			raise CompileError, "Unknown identifier '#{name}'\n#{source.format}"
 		end
 		
 		def visit
@@ -181,7 +178,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type
+		attr_accessor :name, :params, :result, :attributes, :scope, :type, :itype, :parent_scope, :constraints
 		
 		class Parameter < Node
 			attr_accessor :name, :type, :var
@@ -193,7 +190,6 @@ module AST
 			end
 			
 			def declare_pass(scope)
-				puts "declaring param #{@name} #{scope.__id__}"
 				if scope
 					@var = Variable.new(@source, @name, @type)
 					scope.declare(@name, @var)
@@ -203,7 +199,12 @@ module AST
 	
 		def declare_pass(scope)
 			scope.declare(@name, self)
-			@scope.parent = scope if @scope
+			
+			if @scope
+				@scope.parent = scope
+			else
+				@parent_scope = scope
+			end
 		end
 		
 		def apply_pass(scope)
@@ -312,22 +313,17 @@ module AST
 	end
 
 	class Call < ExpressionNode
-		attr_accessor :name, :args, :func
+		attr_accessor :obj, :args, :func
 		
-		def initialize(source, name, args)
+		def initialize(source, obj, args)
 			@source = source
-			@name = name
+			@obj = obj
 			@args = args
 		end
 		
 		def visit
 			@args.map! { |n| yield n }
-		end
-		
-		def sema(scope)
-			@func = scope.require(@source, @name)
-			scope.use_func(@func)
-			self
+			@obj = yield @obj
 		end
 	end
 	
@@ -342,6 +338,8 @@ module AST
 			@value = yield @value
 		end
 	end
+
+	BuiltinScope = AST::Scope.new([])
 end
 
 class Treetop::Runtime::SyntaxNode

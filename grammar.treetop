@@ -145,15 +145,11 @@ grammar AST
 	end
 
 	rule unary
-		(s [+-] l)? factor
+		(s [+-] l)? call_chain
 	end
 
 	rule arguments
 		(expression (s ',' l expression)*)?
-	end
-	
-	rule call
-		ident s '(' l arguments l ')' { def ast; Call.new(source, ident.value, auto_ast) end }
 	end
 	
 	rule variable_decl
@@ -172,13 +168,17 @@ grammar AST
 		variable_decl (s "," l variable_decl)*
 	end
 
+	rule call_chain
+		factor s '(' l arguments l ')' { def ast; Call.new(source, single_ast(factor), arguments.ast) end }
+		/ factor
+	end
+	
 	rule factor
 		s '(' l expression l ')'
 		/ number { def ast; Literal.new(source, :int, value) end }
 		/ string { def ast; Literal.new(source, :string, value) end }
 		/ "true" { def ast; Literal.new(source, :bool, true) end }
 		/ "false" { def ast; Literal.new(source, :bool, false) end }
-		/ call
 		/ variable_decls
 		/ ident { def ast; VariableRef.new(source, value) end }
 	end

@@ -1,37 +1,9 @@
-import printf(format: *char): unit
-
-b()
+a(v)
 {
-}
-
-c()
-{
-	return b()
-}
-
-a()
-{
-	return c()
+	1 + id(v)
 }
 
 id(a)
 {
 	return a(1)
-}
-
-h()
-{
-	a := 1
-	a = a + 3 + 1
-	return a
-}
-
-export main(): unit
-{
-	printf("Hello there")
-	
-	if true
-		printf("Cool")
-	else
-		printf("Odd")
 }

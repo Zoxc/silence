@@ -15,6 +15,8 @@ def print_ast(ast)
 						nest.(apply.(prop[1]).join("\n"))
 					when :single
 						nest.(print_ast(ast.send(prop.first)))
+					when :value
+						r << prop[2].inspect
 					when :inline
 						r << print_ast(ast.send(prop.first))
 				end
@@ -40,13 +42,13 @@ def print_ast(ast)
 		when AST::Return
 			format.(ast, [[:value, :single]])
 		when AST::Ref
-			format.(ast, [[:obj, :single]])
+			format.(ast, [[:name, :value, ast.obj.name], [:id, :value, ast.obj.__id__]])
 		when AST::Variable
 			format.(ast, [[:name]])
 		when AST::VariableRef
 			format.(ast, [[:name]])
 		when AST::Call
-			format.(ast, [[:name], [:args, ast.args]])
+			format.(ast, [[:obj, :single], [:args, ast.args]])
 		when AST::BinOp
 			format.(ast, [[:lhs, :single], [:op], [:rhs, :single]])
 		when AST::If
@@ -57,7 +59,7 @@ def print_ast(ast)
 		when AST::GlobalScope, AST::Scope
 			format.(ast, [[:nodes, ast.nodes]])
 		when AST::Function
-			format.(ast, [[:name], [:attributes], [:result, :inline], [:params, ast.params], [:scope, :single]])
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:attributes], [:result, :inline], [:params, ast.params], [:scope, :single]])
 		when AST::Function::Parameter
 			format.(ast, [[:name], [:type, :inline]])
 		else

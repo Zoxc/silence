@@ -1,6 +1,10 @@
+class CompileError < Exception
+end
+
 require_relative 'ast'
 require_relative 'gen'
 require_relative 'print'
+require_relative 'types'
 require_relative 'infer'
 
 Treetop.load "grammar"
@@ -21,17 +25,16 @@ end
 
 ast = result.ast
 
-ast.run_pass :declare_pass
+ast.run_pass :declare_pass, false, AST::BuiltinScope
 ast.run_pass :sema, true
 
-puts print_ast(ast)
+#puts print_ast(ast)
 
 begin
 	infer_scope ast
-rescue InferSystem::TypeError => type_error
-	$stderr.puts "Fatal errors:", type_error.message
-	$stderr.puts type_error.backtrace.join("\n")
-
+rescue CompileError => error
+	$stderr.puts "Fatal errors:", error.message
+	$stderr.puts error.backtrace.join("\n")
 	exit
 end
 
