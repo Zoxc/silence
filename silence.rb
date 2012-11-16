@@ -25,6 +25,7 @@ end
 
 ast = AST::Program.new(result.ast)
 
+ast.run_pass :promote_templates, true
 ast.run_pass :declare_pass, false, AST::BuiltinScope
 ast.run_pass :sema, true
 

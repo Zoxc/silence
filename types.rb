@@ -1,5 +1,15 @@
 ﻿
 module Types
+	def self.type_array_eq?(a, b)
+		return unless a.size == b.size
+		
+		a.size.times do |i|
+			return unless a[i].type_eq? b[i]
+		end
+		
+		return true
+	end
+	
 	class Type
 		attr_accessor :source
 		
@@ -13,6 +23,23 @@ module Types
 		
 		def args
 			[]
+		end
+			
+		def prune
+			self
+		end
+		
+		def fixed_type?
+			true
+		end
+
+		def type_eq?(other)
+			self_pruned = prune
+			other = other.prune
+			
+			return unless self_pruned.class == other.class
+			
+			Types.type_array_eq?(self_pruned.args, other.args)
 		end
 		
 		def source_dup(source)
@@ -44,6 +71,20 @@ module Types
 			@instance = instance
 		end
 		
+		def prune
+			if @instance
+				pruned = @instance.prune
+				@source = @source || pruned.source
+				@instance = pruned
+			else
+				self
+			end
+		end
+		
+		def fixed_type?
+			@instance.fixed_type if @instance
+		end
+
 		def text
 			if @instance
 				@instance.text
@@ -82,6 +123,10 @@ module Types
 			"(#{@args.map(&:text).join(", ")}): #{@result.text}"
 		end
 		
+		def fixed_type?
+			@args.all? { |arg| arg.fixed_type? }
+		end
+
 		def args
 			[*@args, @result]
 		end
@@ -104,7 +149,24 @@ module Types
 		end
 		
 		def text
-			@struct.name
+			"struct '#{@struct.name}'"
+		end
+	end
+	
+	class TemplateRef < Type
+		attr_accessor :template
+		
+		def initialize(source, template)
+			@source = source
+			@template = template
+		end
+		
+		def name
+			:template_ref
+		end
+		
+		def text
+			"template '#{@template.name}'"
 		end
 	end
 	

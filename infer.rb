@@ -39,11 +39,30 @@
 		end
 	end
 	
+	class TemplateConstraint < Constraint
+		attr_accessor :result, :type, :args
+		
+		def initialize(ast, var, type, args)
+			super(ast, var)
+			@type = type
+			@args = args
+		end
+		
+		def to_s
+			"Template{ #{@var.real_text} == #{@type.text} (#{@args.map(&:text).join(", ")}) }"
+		end
+	end
+	
 	def initialize
 		@vars = {}
 		@type_vars = []
 		@var_name = 1
 		@constraints = []
+		@make_type_args = MakeTypeArgs.new(proc { |s| new_var(s) }, proc { |ast, type, args|
+			result = new_var(ast.source)
+			@constraints << TemplateConstraint.new(ast, result, type, args)
+			result
+		})
 	end
 	
 	def new_var_name
@@ -63,34 +82,52 @@
 	def unit_default(type)
 	end
 	
-	class AnalyzeArgs
-		attr_accessor :func
+	class MakeTypeArgs
+		attr_accessor :new_var, :template_instance
 
-		def initialize
-			@func = nil
+		def initialize(new_var, template_instance)
+			@new_var = new_var
+			@template_instance = template_instance
 		end
 	end
 	
-	def self.make_type(source, scope, ast, new_var)
-		return new_var.(source) unless ast
+	def self.make_type(source, scope, ast, args)
+		return args.new_var.(source) unless ast
 		case ast
 			when AST::Function
-				Types::Function.new(ast.source, ast.params.map { |p| make_type(ast.source, scope, p, new_var) }, make_type(ast.source, scope, ast.result, new_var))
+				Types::Function.new(ast.source, ast.params.map { |p| make_type(ast.source, scope, p, args) }, make_type(ast.source, scope, ast.result, args))
 			when AST::Function::Parameter
-				make_type(ast.source, scope, ast.type, new_var)
+				make_type(ast.source, scope, ast.type, args)
 			when AST::NullPtrTypeNode, AST::PtrTypeNode
-				make_type(ast.source, scope, ast.target, new_var)
+				make_type(ast.source, scope, ast.target, args)
 			when AST::NamedTypeNode
-				scope.require(ast.source, ast.name, Types::Type)
+				type = scope.require(ast.source, ast.name, Types::Type)
+				
+				if type.kind_of? Types::TemplateRef
+					params = type.template.params.size
+					raise TypeError.new("Expected #{params} type parameter(s) for #{type.text}, but got #{ast.args.size}\n#{ast.source.format}") if params != ast.args.size
+					args.template_instance.(ast, type, ast.args.map { |n| make_type(ast.source, scope, n, args) })
+				else
+					raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{ast.source.format}") unless type.args.empty?
+					type
+				end
 			when AST::Variable
-				make_type(ast.source, scope, ast.type, new_var)
+				make_type(ast.source, scope, ast.type, args)
 			else
 				raise "Unknown AST #{ast.class}"
 		end
 	end
 	
 	def make_type(source, args, ast)
-		InferSystem.make_type(source, @func.scope, ast, proc { |s| new_var(s) })
+		InferSystem.make_type(source, @func.scope, ast, @make_type_args)
+	end
+	
+	class AnalyzeArgs
+		attr_accessor :func
+
+		def initialize
+			@func = nil
+		end
 	end
 	
 	def analyze(ast, args = AnalyzeArgs.new)
@@ -243,8 +280,8 @@
 		
 		inst_constraint = proc do |c|
 			case c
-				when ApplyConstraint
-					ApplyConstraint.new(c.ast, inst_type.(c.var), inst_type.(c.type), c.args.map { |arg| inst_type.(arg) })
+				when ApplyConstraint, TemplateConstraint
+					c.class.new(c.ast, inst_type.(c.var), inst_type.(c.type), c.args.map { |arg| inst_type.(arg) })
 				when FieldConstraint
 					FieldConstraint.new(c.ast, inst_type.(c.var), inst_type.(c.type), c.name)
 				else
@@ -258,8 +295,8 @@
 	end
 	
 	def unify(a, b, loc = proc { "" })
-		a = prune(a)
-		b = prune(b)
+		a = a.prune
+		b = b.prune
 		
 		if a.is_a? Types::Variable
 			raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
@@ -273,7 +310,7 @@
 		a_args = a.args
 		b_args = b.args
 		
-		raise TypeError.new(errmsg(a, b) + loc.()) if (a.name != b.name) || (a_args.size != b_args.size)
+		raise TypeError.new(errmsg(a, b) + loc.()) if (a.class != b.class) || (a_args.size != b_args.size)
 		
 		new_loc = proc do
 			source = a.source || b.source
@@ -298,8 +335,8 @@
 		nil while @constraints.reject! do |c|
 			case c
 				when ApplyConstraint
-					var = prune(c.var)
-					type = prune(c.type)
+					var = c.var.prune
+					type = c.type.prune
 					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
 					case type
 						when Types::Function
@@ -326,6 +363,19 @@
 						when Types::Variable
 						else
 							raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
+					end
+				when TemplateConstraint
+					var = prune(c.var)
+					type = prune(c.type)
+					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
+					
+					fixed = c.args.all? do |arg|
+						raise TypeError.new(recmsg(var, arg)) if occurs_in?(var, arg)
+						arg.fixed_type? 
+					end
+					
+					if fixed
+						unify(type.template.get_instance(c.ast.source, c.args).itype, var)
 					end
 				else
 					raise "Unknown constraint #{c.class}"
@@ -367,7 +417,8 @@
 end
 
 def get_type(source, scope, ast)
-	InferSystem.make_type(source, scope, ast, proc { |s| raise TypeError.new("Explicit type expected\n#{(s ? s : func.source).format}") })
+	args = InferSystem::MakeTypeArgs.new(proc { |s| raise TypeError.new("Explicit type expected\n#{(s ? s : func.source).format}") }, proc { |ast, type, args| type.template.get_instance(ast.source, args).itype })
+	InferSystem.make_type(source, scope, ast, args)
 end
 
 def infer_function(func, visited)
@@ -389,6 +440,8 @@ end
 def infer_scope(ast, params = {})
 	ast.scope.names.each_pair do |name, value|
 		case value
+			when AST::Ref
+				get_type(value.ast, ast.scope, value.obj)
 			when AST::Function
 				infer_function value, params
 		end

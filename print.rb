@@ -60,6 +60,8 @@ def print_ast(ast)
 			format.(ast, [[:nodes, ast.nodes]])
 		when AST::Struct
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single]])
+		when AST::Template
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single]])
 		when AST::Function
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:attributes], [:result, :inline], [:params, ast.params], [:scope, :single]])
 		when AST::Function::Parameter

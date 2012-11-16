@@ -34,19 +34,19 @@ module AST
 	class Node
 		attr_accessor :source
 		
-		def run_pass(name, replace = false, scope = nil)
+		def run_pass(name, replace = false, args = nil, apply = :apply_pass)
 			result = if respond_to? name
-					send name, scope
+					send name, args
 				else
 					self
 				end
 			
-			scope = apply_pass(scope)
+			args = send apply, args if apply
 			
 			visit do |node|
 				next unless node
 				
-				node.run_pass(name, replace, scope)
+				node.run_pass(name, replace, args)
 			end
 			
 			if replace
@@ -54,6 +54,17 @@ module AST
 			else
 				self
 			end
+		end
+		
+		def dup_ast
+			result = dup
+			
+			visit do |node|
+				next unless node
+				node.dup
+			end
+			
+			result
 		end
 		
 		def apply_pass(scope)
@@ -82,11 +93,12 @@ module AST
 	end
 	
 	class NamedTypeNode < Node
-		attr_accessor :name
+		attr_accessor :name, :args
 		
-		def initialize(source, name)
+		def initialize(source, name, args)
 			super(source)
 			@name = name
+			@args = args
 		end
 		
 		def to_s
@@ -129,12 +141,12 @@ module AST
 		end
 		
 		def declare(name, obj)
-			#puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
+			puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
 			@names[name] = obj
 		end
 		
 		def require(source, name , type = nil)
-			#puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
+			puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
 			result = @names[name]
 			if result
 				if type && !result.kind_of?(type)
@@ -152,6 +164,76 @@ module AST
 	end
 	
 	class GlobalScope < Scope
+	end
+
+	class Template < Node
+		attr_accessor :name, :scope, :params
+		
+		class Parameter < Node
+			attr_accessor :name, :type
+			
+			def initialize(source, name, type)
+				super(source)
+				@name = name
+				@type = type
+			end
+		end
+		
+		class Instance
+			attr_accessor :template, :args, :scope, :ast_ref
+			
+			def initialize(template, args)
+				@template = template
+				@args = args
+				run
+			end
+			
+			def run
+				puts "Creating template instance of #{@template.name} with args #{@args.map(&:text).join(", ")}"
+				scope = template.scope.dup_ast
+				
+				@args.size.times do |i|
+					scope.declare(template.params[i].name, @args[i])
+				end
+				
+				begin
+					scope.run_pass :promote_templates, true
+					scope.run_pass :update_templates, false, self, nil
+					scope.run_pass :declare_pass, false, scope
+					scope.run_pass :sema, true
+					puts print_ast(scope)
+					@scope = scope
+					infer_scope self
+					puts "Created template instance"
+				rescue CompileError => error
+					error.message << "\nIn template instance #{@template.name} with args #{@args.map(&:text).join(", ")}"
+				end
+			end
+			
+			def itype
+				ast_ref.itype
+			end
+		end
+		
+		def get_instance(source, args)
+			existing = @instances.keys.find { |k| Types.type_array_eq?(k, args) }
+			return @instances[existing] if existing
+			instance = @instances[args] = Instance.new(self, args)
+			return instance
+		end
+	
+		def declare_pass(scope)
+			scope.declare(@name, Types::TemplateRef.new(@source, self))
+			@scope.parent = scope
+		end
+		
+		def initialize(source, name, scope, params)
+			super(source)
+			@name = name
+			@scope = scope
+			@params = params
+			@instances = {}
+		end
 	end
 
 	class Program < Node
@@ -175,16 +257,32 @@ module AST
 	end
 
 	class Struct < Node
-		attr_accessor :name, :scope
+		attr_accessor :name, :scope, :itype
 	
-		def initialize(source, name, scope)
+		def initialize(source, name, scope, template_params)
 			super(source)
 			@name = name
 			@scope = scope
+			@template_params = template_params
+		end
+		
+		def promote_templates(scope)
+			if @template_params.empty?
+				self
+			else
+				@template = Template.new(@source, @name, GlobalScope.new([self]), @template_params)
+				@template_params = []
+				@template
+			end
+		end
+		
+		def update_templates(instance)
+			instance.ast_ref = self if @template
 		end
 		
 		def declare_pass(scope)
-			scope.declare(@name, Types::Struct.new(nil, self))
+			@itype = Types::Struct.new(nil, self)
+			scope.declare(@name, @itype)
 			@scope.parent = scope
 		end
 		

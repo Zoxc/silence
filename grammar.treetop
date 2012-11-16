@@ -57,8 +57,16 @@ grammar AST
 		/ function
 	end
 	
+	rule template_parameter
+		ident type:(type_specifier?) { def ast; Template::Parameter.new(source, ident.value, single_ast(type)) end }
+	end
+	
+	rule template_parameters
+		s '(' l (template_parameter (s ',' l template_parameter)* l)? ')'
+	end
+	
 	rule struct
-		s 'struct' S ident global_scope { def ast; Struct.new(source, ident.value, single_ast(global_scope)) end }
+		s 'struct' S ident tp:(template_parameters?) global_scope { def ast; Struct.new(source, ident.value, single_ast(global_scope), tp.ast) end }
 	end
 	
 	rule function_attribute
@@ -92,8 +100,12 @@ grammar AST
 		s ':' l type
 	end
 	
+	rule type_parameters
+		s '(' l (type (s ',' l type)* l)? ')'
+	end
+	
 	rule type
-		ident { def ast; NamedTypeNode.new(source, value) end }
+		ident tp:(type_parameters?) { def ast; NamedTypeNode.new(source, ident.value, tp.ast) end }
 		/ '^' l type { def ast; NullPtrTypeNode.new(source, type.ast) end }
 		/ '*' l type { def ast; PtrTypeNode.new(source, type.ast) end }
 	end

@@ -1,9 +1,9 @@
-struct A
+struct A(Hm)
 {
-	field: int
+	field: Hm
 }
 
-hm(v: A)
+hm(v: A(int))
 {
 	return v.field
 }
