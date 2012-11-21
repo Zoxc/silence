@@ -29,6 +29,10 @@ module Types
 			self
 		end
 		
+		def template?
+			false
+		end
+		
 		def fixed_type?
 			true
 		end
@@ -82,7 +86,7 @@ module Types
 		end
 		
 		def fixed_type?
-			@instance.fixed_type if @instance
+			@instance.fixed_type? if @instance
 		end
 
 		def text
@@ -94,7 +98,8 @@ module Types
 		end
 		
 		def real_text
-			"#{@name ||= @system.new_var_name} {#{text}}"
+			text
+			#"#{@name ||= @system.new_var_name} {#{text}}"
 		end
 		
 		def source
@@ -113,6 +118,10 @@ module Types
 			@source = source
 			@args = args
 			@result = result
+		end
+		
+		def func_args
+			@args
 		end
 		
 		def name
@@ -137,11 +146,32 @@ module Types
 	end
 	
 	class Struct < Type
-		attr_accessor :struct
+		attr_accessor :struct, :args
 		
-		def initialize(source, struct)
+		def initialize(source, struct, args)
 			@source = source
 			@struct = struct
+			@args = args
+		end
+		
+		def template?
+			arg_count > 0
+		end
+		
+		def arg_count
+			template_params.size
+		end
+		
+		def template_params
+			@struct.template_params
+		end
+		
+		def fixed_type?
+			@args.all? { |v| v.fixed_type? }
+		end
+
+		def template_dup(args)
+			self.class.new(@source, @struct, args)
 		end
 		
 		def name
@@ -149,24 +179,24 @@ module Types
 		end
 		
 		def text
-			"struct '#{@struct.name}'"
+			"struct #{@struct.name}(#{@args.map(&:text).join(", ")})"
 		end
 	end
 	
-	class TemplateRef < Type
-		attr_accessor :template
+	class TemplateParam < Type
+		attr_accessor :param
 		
-		def initialize(source, template)
+		def initialize(source, param)
 			@source = source
-			@template = template
+			@param = param
 		end
 		
 		def name
-			:template_ref
+			:template_param
 		end
 		
 		def text
-			"template '#{@template.name}'"
+			"param #{@param.name}"
 		end
 	end
 	

@@ -29,10 +29,10 @@ ast.run_pass :promote_templates, true
 ast.run_pass :declare_pass, false, AST::BuiltinScope
 ast.run_pass :sema, true
 
-puts print_ast(ast)
+#puts print_ast(ast)
 
 begin
-	infer_scope ast
+	infer_scope ast.scope
 rescue CompileError => error
 	$stderr.puts "Fatal errors:", error.message
 	$stderr.puts error.backtrace.join("\n")

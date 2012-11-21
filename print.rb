@@ -56,7 +56,7 @@ def print_ast(ast)
 		
 		when AST::Program
 			format.(ast, [[:scope, :single]])
-		when AST::GlobalScope, AST::Scope
+		when AST::Scope
 			format.(ast, [[:nodes, ast.nodes]])
 		when AST::Struct
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single]])

@@ -83,7 +83,7 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type
+		attr_accessor :name, :type, :itype
 		
 		def initialize(source, name, type)
 			super(source)
@@ -133,7 +133,7 @@ module AST
 	end
 
 	class Scope < Node
-		attr_accessor :nodes, :names, :parent
+		attr_accessor :nodes, :names, :parent, :processed
 		
 		def initialize(nodes)
 			@nodes = nodes
@@ -141,12 +141,12 @@ module AST
 		end
 		
 		def declare(name, obj)
-			puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
+			#puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
 			@names[name] = obj
 		end
 		
 		def require(source, name , type = nil)
-			puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
+			#puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
 			result = @names[name]
 			if result
 				if type && !result.kind_of?(type)
@@ -170,7 +170,7 @@ module AST
 		attr_accessor :name, :scope, :params
 		
 		class Parameter < Node
-			attr_accessor :name, :type
+			attr_accessor :name, :type, :owner, :itype
 			
 			def initialize(source, name, type)
 				super(source)
@@ -257,7 +257,7 @@ module AST
 	end
 
 	class Struct < Node
-		attr_accessor :name, :scope, :itype
+		attr_accessor :name, :scope, :itype, :template_params
 	
 		def initialize(source, name, scope, template_params)
 			super(source)
@@ -266,28 +266,19 @@ module AST
 			@template_params = template_params
 		end
 		
-		def promote_templates(scope)
-			if @template_params.empty?
-				self
-			else
-				@template = Template.new(@source, @name, GlobalScope.new([self]), @template_params)
-				@template_params = []
-				@template
+		def declare_pass(scope)
+			@itype = Types::Struct.new(nil, self, {})
+			scope.declare(@name, @itype)
+			@scope.parent = scope
+			
+			@template_params.each do |param|
+				param.owner = self
+				param.itype = Types::TemplateParam.new(param.source, param)
+				@scope.declare(param.name, param.itype)
 			end
 		end
 		
-		def update_templates(instance)
-			instance.ast_ref = self if @template
-		end
-		
-		def declare_pass(scope)
-			@itype = Types::Struct.new(nil, self)
-			scope.declare(@name, @itype)
-			@scope.parent = scope
-		end
-		
 		def apply_pass(scope)
-			puts @scope.names.keys
 			@scope
 		end
 		
@@ -300,7 +291,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type, :itype, :parent_scope, :constraints
+		attr_accessor :name, :params, :result, :attributes, :scope, :type, :itype, :parent_scope, :constraints, :type_vars, :instances
 		
 		class Parameter < Node
 			attr_accessor :name, :type, :var
@@ -319,6 +310,29 @@ module AST
 			end
 		end
 	
+		class Instance
+			attr_accessor :function, :input_map, :full_map, :itype
+			
+			def initialize(function, input_map, full_map, itype)
+				@function = function
+				@input_map = input_map
+				@full_map = full_map
+				@itype = itype
+			end
+		end
+		
+		def initialize
+			@instances = {}
+		end
+		
+		def create_instance(map)
+			map = map.dup
+			map.each_pair { |k, v| map[k] = v.prune }
+			existing = @instances[map]
+			return existing if existing
+			@instances[map] = InferSystem.create_function_instance(self, map)
+		end
+		
 		def declare_pass(scope)
 			scope.declare(@name, self)
 			

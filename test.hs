@@ -8,6 +8,17 @@ hm(v: A(int))
 	return v.field
 }
 
+ok(v)
+{
+	return v.field
+}
+
+test()
+{
+	v: A
+	return ok(v)
+}
+
 a(v)
 {
 	k := v.hi

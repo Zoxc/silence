@@ -21,7 +21,7 @@
 		end
 		
 		def to_s
-			"Apply{ #{@var.real_text} == #{@type.text} (#{@args.map(&:text).join(", ")}) }"
+			"#{@var.real_text} = Apply{ #{@type.text} (#{@args.map(&:text).join(", ")}) }"
 		end
 	end
 	
@@ -35,21 +35,20 @@
 		end
 		
 		def to_s
-			"Field{ #{@var.real_text} == #{@type.text} .#{@name} }"
+			"#{@var.real_text} = Field{ #{@type.text} .#{@name} }"
 		end
 	end
 	
-	class TemplateConstraint < Constraint
-		attr_accessor :result, :type, :args
+	class FuncInstConstraint < Constraint
+		attr_accessor :func, :map
 		
-		def initialize(ast, var, type, args)
+		def initialize(ast, var, map)
 			super(ast, var)
-			@type = type
-			@args = args
+			@map = map
 		end
 		
 		def to_s
-			"Template{ #{@var.real_text} == #{@type.text} (#{@args.map(&:text).join(", ")}) }"
+			"#{@var.real_text} = FuncInst{ #{@ast.name}, #{@map.each.map{|v| "#{v.first.text} => #{v.last.text}" }.join(", ")} }"
 		end
 	end
 	
@@ -58,10 +57,11 @@
 		@type_vars = []
 		@var_name = 1
 		@constraints = []
+		@func_instances = []
 		@make_type_args = MakeTypeArgs.new(proc { |s| new_var(s) }, proc { |ast, type, args|
-			result = new_var(ast.source)
-			@constraints << TemplateConstraint.new(ast, result, type, args)
-			result
+			raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{type.arg_count} but maximum is #{args.size}\n#{ast.source.format}") if type.arg_count < args.size
+			template_args = type.arg_count.times.map { |i| args[i] || new_var(ast.source) }
+			type.template_dup(template_args)
 		})
 	end
 	
@@ -103,9 +103,7 @@
 			when AST::NamedTypeNode
 				type = scope.require(ast.source, ast.name, Types::Type)
 				
-				if type.kind_of? Types::TemplateRef
-					params = type.template.params.size
-					raise TypeError.new("Expected #{params} type parameter(s) for #{type.text}, but got #{ast.args.size}\n#{ast.source.format}") if params != ast.args.size
+				if type.template?
 					args.template_instance.(ast, type, ast.args.map { |n| make_type(ast.source, scope, n, args) })
 				else
 					raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{ast.source.format}") unless type.args.empty?
@@ -217,22 +215,12 @@
 		end
 	end
 	
-	def prune(type)
-		if type.is_a?(Types::Variable) && type.instance
-			pruned = prune(type.instance)
-			type.source = type.source || pruned.source
-			type.instance = pruned
-		else
-			type
-		end
-	end
-	
 	def occurs_in?(a, b)
 		return true if a == b
 		return false if b.is_a? Types::Variable
 		
 		return b.args.any? do |arg|
-			occurs_in?(a, prune(arg))
+			occurs_in?(a, arg.prune)
 		end
 	end
 	
@@ -260,38 +248,54 @@
 		end
 	end
 	
+	InstArgs = Struct.new(:map, :base)
+	
+	def inst_type(args, type)
+		type = type.prune
+		case type
+			when Types::Fixed
+				type
+			when Types::TemplateParam
+				index = args.base.struct.template_params.index(type.param)
+				args.base.args[index]
+			when Types::Variable
+				args.map[type] ||= new_var(type.source)
+			when Types::Function
+				type.args_dup(*type.args.map { |arg| inst_type(args, arg) })
+			else
+				raise "Unknown type #{type.class}"
+		end
+	end
+	
+	def inst_constraint(args, c)
+		case c
+			when ApplyConstraint
+				c.class.new(c.ast, inst_type(args, c.var), inst_type(args, c.type), c.args.map { |arg| inst_type(args, arg) })
+			when FieldConstraint
+				FieldConstraint.new(c.ast, inst_type(args, c.var), inst_type(args, c.type), c.name)
+			when FuncInstConstraint
+				c_map = {}
+				c.map.each_pair { |k, v| c_map[k] = inst_type(args, v) }
+				FuncInstConstraint.new(c.ast, c_map)
+			when PolyConstraint
+				c.class.new(c.ast, inst_type(args, c.type), c.args.map { |arg| inst_type(args, arg) })
+			else
+				raise "Unknown constraint #{c.class}"
+		end
+	end
+	
 	def inst(func)
 		map = {}
+		inst_args = InstArgs.new(map, nil)
 		infer_function func, @visited
 		
-		inst_type = proc do |type|
-			type = prune(type)
-			case type
-				when Types::Fixed
-					type
-				when Types::Variable
-					map[type] ||= new_var(type.source)
-				when Types::Function
-					type.args_dup(*type.args.map { |arg| inst_type.(arg) })
-				else
-					raise "Unknown type #{type.class}"
-			end
-		end
+		@constraints.concat func.constraints.map { |c| inst_constraint(inst_args, c) }
 		
-		inst_constraint = proc do |c|
-			case c
-				when ApplyConstraint, TemplateConstraint
-					c.class.new(c.ast, inst_type.(c.var), inst_type.(c.type), c.args.map { |arg| inst_type.(arg) })
-				when FieldConstraint
-					FieldConstraint.new(c.ast, inst_type.(c.var), inst_type.(c.type), c.name)
-				else
-					raise "Unknown constraint #{c.class}"
-			end
-		end
+		vars = func.type_vars.map { |tv| map[tv] ||= new_var(tv.source) }
 		
-		@constraints.concat(func.constraints.map { |c| inst_constraint.(c) })
+		@func_instances << [func, vars]
 		
-		return inst_type.(func.itype)
+		return inst_type(inst_args, func.itype)
 	end
 	
 	def unify(a, b, loc = proc { "" })
@@ -348,8 +352,8 @@
 							raise TypeError.new("'#{type.text}' is not a function type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 					end
 				when FieldConstraint
-					var = prune(c.var)
-					type = prune(c.type)
+					var = c.var.prune
+					type = c.type.prune
 					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
 					case type
 						when Types::Struct
@@ -357,30 +361,46 @@
 							
 							raise TypeError.new("'#{c.name.inspect}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 							
-							unify(get_type(c.ast.source, type.struct.scope, field), var)
+							unify(inst_type(InstArgs.new({}, type), field.itype), var)
 							
 							true
 						when Types::Variable
 						else
 							raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 					end
-				when TemplateConstraint
-					var = prune(c.var)
-					type = prune(c.type)
-					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
+				when PolyConstraint
+					type = c.type.prune
 					
-					fixed = c.args.all? do |arg|
-						raise TypeError.new(recmsg(var, arg)) if occurs_in?(var, arg)
-						arg.fixed_type? 
-					end
+					fixed = c.args.all? { |arg| arg.fixed_type? }
 					
 					if fixed
-						unify(type.template.get_instance(c.ast.source, c.args).itype, var)
+						true
+					end
+				when FuncInstConstraint
+					var = c.var.prune
+					if c.map.values.all? { |k| k.fixed_type? }
+						unify(c.ast.create_instance(c.map).itype.result, var)
+						true
 					end
 				else
 					raise "Unknown constraint #{c.class}"
 			end
 		end
+	end
+	
+	def self.create_function_instance(func, map)
+		system = InferSystem.new
+		system.create_function_instance(func, map)
+	end
+	
+	def create_function_instance(func, map)
+		full_map = map.dup
+		@constraints = func.constraints.map { |c| inst_constraint(full_map, c) }
+		type = inst_type(full_map, func.itype)
+		solve
+		raise "Unresolved contraints of #{func.name}" unless @constraints.empty?
+		puts "map of #{func.name} #{full_map.each.map{|v| "#{v.first.text} => #{v.last.text}" }.join(", ")} with type #{type.text}"
+		AST::Function::Instance.new(func, map, full_map, type)
 	end
 	
 	def infer(func, visited)
@@ -392,7 +412,7 @@
 		
 		solve
 		
-		func.itype = prune(func.itype)
+		func.itype = func.itype.prune
 		
 		func.constraints = @constraints
 		
@@ -402,22 +422,31 @@
 		end
 		
 		@constraints.each do |c|
-			@type_vars.delete(prune(c.var))
+			@type_vars.delete(c.var.prune)
 		end
 		
-		@type_vars.reject! do |var|
-			var.instance || occurs_in?(var, func.itype)
-		end
+		@type_vars.reject! { |var| var.instance }
+		
+		func.type_vars = @type_vars.select { |var| occurs_in?(var, func.itype) }
+		
+		@type_vars -= func.type_vars
 		
 		unless @type_vars.empty?
-			puts "unresolved vars of #{func.name}"
-			puts *@type_vars.map{|c| " - #{c.text}"}
+			raise TypeError, "Unresolved vars of #{func.name}\n#{@type_vars.map{|c| " - #{c.text}"}.join("\n")}\n#{func.source.format}"
+		end
+		
+		unless @func_instances.empty?
+			puts "func instances of #{func.name}"
+			puts *@func_instances.map{|i| " - #{i.first.name} (#{i.last.map(&:text).join(", ")})"}
 		end
 	end
 end
 
 def get_type(source, scope, ast)
-	args = InferSystem::MakeTypeArgs.new(proc { |s| raise TypeError.new("Explicit type expected\n#{(s ? s : func.source).format}") }, proc { |ast, type, args| type.template.get_instance(ast.source, args).itype })
+	args = InferSystem::MakeTypeArgs.new(proc { |s| raise TypeError.new("Explicit type expected\n#{(s ? s : func.source).format}") }, proc { |ast, type, args|
+		raise TypeError.new("Expected #{type.arg_count} type parameter(s) for #{type.text}, but got #{ast.args.size}\n#{ast.source.format}") if type.arg_count != ast.args.size
+		type.template_dup(args)
+	})
 	InferSystem.make_type(source, scope, ast, args)
 end
 
@@ -437,13 +466,21 @@ def infer_function(func, visited)
 	puts "Type of #{func.name} is #{func.itype.text}"
 end
 
-def infer_scope(ast, params = {})
-	ast.scope.names.each_pair do |name, value|
+def infer_scope(scope, params = {})
+	raise "Recursive inference of scope" if scope.processed == :ongoing
+	return if scope.processed
+	scope.processed = :ongoing
+	
+	scope.names.each_pair do |name, value|
 		case value
-			when AST::Ref
-				get_type(value.ast, ast.scope, value.obj)
+			when Types::Struct
+				infer_scope(value.struct.scope, params)
+			when AST::Variable
+				value.itype = get_type(value.source, scope, value)
+				puts "Type of #{value.name} is #{value.itype.text}"
 			when AST::Function
-				infer_function value, params
+				infer_function(value, params)
 		end
 	end
+	scope.processed = true
 end
