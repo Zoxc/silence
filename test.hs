@@ -1,31 +1,26 @@
 struct A(Hm)
 {
 	field: Hm
+	
+	read(v)
+	{
+		v.hello
+		return field
+	}
 }
 
 hm(v: A(int))
 {
-	return v.field
+	return v.read
 }
 
 ok(v)
 {
-	return v.field
+	return v.read
 }
 
 test()
 {
 	v: A
 	return ok(v)
-}
-
-a(v)
-{
-	k := v.hi
-	1 + id(v.hi.k)
-}
-
-id(a)
-{
-	return a(1)
 }

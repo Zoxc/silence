@@ -39,16 +39,9 @@
 		end
 	end
 	
-	class FuncInstConstraint < Constraint
-		attr_accessor :func, :map
-		
-		def initialize(ast, var, map)
-			super(ast, var)
-			@map = map
-		end
-		
+	FuncInst = Struct.new(:func, :vars) do
 		def to_s
-			"#{@var.real_text} = FuncInst{ #{@ast.name}, #{@map.each.map{|v| "#{v.first.text} => #{v.last.text}" }.join(", ")} }"
+			"#{func.name}, {#{vars.size.times.map{|i| "#{func.type_vars[i].text} => #{vars[i].text}" }.join(", ")}}"
 		end
 	end
 	
@@ -170,6 +163,9 @@
 					case ast.obj
 						when AST::Function
 							inst(ast.obj)
+						when AST::Variable
+							infer_var(ast.obj, @func.scope, @infer_args)
+							inst_type(InstArgs.new({}, nil), ast.obj.itype)
 						else
 							raise "Undefined #{print_ast(ast.obj)}"
 					end
@@ -256,8 +252,12 @@
 			when Types::Fixed
 				type
 			when Types::TemplateParam
-				index = args.base.struct.template_params.index(type.param)
-				args.base.args[index]
+				if @func.scope.inside?(type.param.owner.scope)
+					type
+				else
+					index = args.base.struct.template_params.index(type.param)
+					args.base.args[index]
+				end
 			when Types::Variable
 				args.map[type] ||= new_var(type.source)
 			when Types::Function
@@ -273,27 +273,21 @@
 				c.class.new(c.ast, inst_type(args, c.var), inst_type(args, c.type), c.args.map { |arg| inst_type(args, arg) })
 			when FieldConstraint
 				FieldConstraint.new(c.ast, inst_type(args, c.var), inst_type(args, c.type), c.name)
-			when FuncInstConstraint
-				c_map = {}
-				c.map.each_pair { |k, v| c_map[k] = inst_type(args, v) }
-				FuncInstConstraint.new(c.ast, c_map)
-			when PolyConstraint
-				c.class.new(c.ast, inst_type(args, c.type), c.args.map { |arg| inst_type(args, arg) })
 			else
 				raise "Unknown constraint #{c.class}"
 		end
 	end
 	
-	def inst(func)
+	def inst(func, base = nil)
 		map = {}
-		inst_args = InstArgs.new(map, nil)
-		infer_function func, @visited
+		inst_args = InstArgs.new(map, base)
+		infer_function func, @infer_args
 		
 		@constraints.concat func.constraints.map { |c| inst_constraint(inst_args, c) }
 		
 		vars = func.type_vars.map { |tv| map[tv] ||= new_var(tv.source) }
 		
-		@func_instances << [func, vars]
+		@func_instances << FuncInst.new(func, vars)
 		
 		return inst_type(inst_args, func.itype)
 	end
@@ -359,28 +353,21 @@
 						when Types::Struct
 							field = type.struct.scope.names[c.name]
 							
-							raise TypeError.new("'#{c.name.inspect}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
+							raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 							
-							unify(inst_type(InstArgs.new({}, type), field.itype), var)
+							field_type = case field
+								when AST::Function
+									inst(field, type)
+								else
+									infer_type(field, type.struct.scope, @infer_args)
+							end
+							
+							unify(field_type, var)
 							
 							true
 						when Types::Variable
 						else
 							raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
-					end
-				when PolyConstraint
-					type = c.type.prune
-					
-					fixed = c.args.all? { |arg| arg.fixed_type? }
-					
-					if fixed
-						true
-					end
-				when FuncInstConstraint
-					var = c.var.prune
-					if c.map.values.all? { |k| k.fixed_type? }
-						unify(c.ast.create_instance(c.map).itype.result, var)
-						true
 					end
 				else
 					raise "Unknown constraint #{c.class}"
@@ -403,8 +390,8 @@
 		AST::Function::Instance.new(func, map, full_map, type)
 	end
 	
-	def infer(func, visited)
-		@visited = visited
+	def infer(func, infer_args)
+		@infer_args = infer_args
 		@func = func
 	
 		func.itype = @vars[func] = new_var(func.source)
@@ -437,7 +424,7 @@
 		
 		unless @func_instances.empty?
 			puts "func instances of #{func.name}"
-			puts *@func_instances.map{|i| " - #{i.first.name} (#{i.last.map(&:text).join(", ")})"}
+			puts *@func_instances.map{|i| " - #{i}"}
 		end
 	end
 end
@@ -450,13 +437,15 @@ def get_type(source, scope, ast)
 	InferSystem.make_type(source, scope, ast, args)
 end
 
-def infer_function(func, visited)
+InferArgs = Struct.new :visited
+
+def infer_function(func, args)
 	return if func.itype
-	raise "Recursive #{func.name}" if visited[func]
-	visited[func] = true
+	raise "Recursive #{func.name}" if args.visited[func]
+	args.visited[func] = true
 	
 	if func.scope
-		InferSystem.new.infer(func, visited)
+		InferSystem.new.infer(func, args)
 	else
 		func.itype = get_type(func.source, func.parent_scope, func)
 		func.constraints = []
@@ -466,21 +455,30 @@ def infer_function(func, visited)
 	puts "Type of #{func.name} is #{func.itype.text}"
 end
 
-def infer_scope(scope, params = {})
-	raise "Recursive inference of scope" if scope.processed == :ongoing
-	return if scope.processed
-	scope.processed = :ongoing
-	
-	scope.names.each_pair do |name, value|
-		case value
-			when Types::Struct
-				infer_scope(value.struct.scope, params)
-			when AST::Variable
-				value.itype = get_type(value.source, scope, value)
-				puts "Type of #{value.name} is #{value.itype.text}"
-			when AST::Function
-				infer_function(value, params)
-		end
+def infer_var(var, scope, args)
+	return if var.itype
+	raise "Recursive #{var.name}" if args.visited[var]
+	args.visited[var] = true
+	var.itype = get_type(var.source, scope, var)
+	puts "Type of #{var.name} is #{var.itype.text}"
+end
+
+def infer_type(value, scope, args)
+	case value
+		when Types::Struct
+			infer_scope(value.struct.scope, args)
+		when AST::Variable
+			infer_var(value, scope, args)
+		when AST::Function
+			infer_function(value, args)
+		else
+			raise "Unknown value #{value.class}"
 	end
-	scope.processed = true
+end
+
+def infer_scope(scope, args = InferArgs.new({}))
+	scope.names.each_pair do |name, value|
+		next if value.kind_of? Types::TemplateParam
+		infer_type(value, scope, args)
+	end
 end

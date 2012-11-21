@@ -133,7 +133,7 @@ module AST
 	end
 
 	class Scope < Node
-		attr_accessor :nodes, :names, :parent, :processed
+		attr_accessor :nodes, :names, :parent, :owner
 		
 		def initialize(nodes)
 			@nodes = nodes
@@ -143,6 +143,12 @@ module AST
 		def declare(name, obj)
 			#puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
 			@names[name] = obj
+		end
+		
+		def inside?(scope)
+			return true if scope == self
+			return @parent.inside?(scope) if parent
+			return false
 		end
 		
 		def require(source, name , type = nil)
