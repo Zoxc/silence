@@ -1,26 +1,19 @@
+struct B
+{
+	test: int
+}
+
 struct A(Hm)
 {
 	field: Hm
 	
-	read(v)
+	read()
 	{
-		v.hello
 		return field
 	}
 }
 
-hm(v: A(int))
+hm(v: A)
 {
 	return v.read
-}
-
-ok(v)
-{
-	return v.read
-}
-
-test()
-{
-	v: A
-	return ok(v)
 }

@@ -32,7 +32,7 @@ ast.run_pass :sema, true
 #puts print_ast(ast)
 
 begin
-	infer_scope ast.scope
+	InferUtils.infer_scope(ast.scope)
 rescue CompileError => error
 	$stderr.puts "Fatal errors:", error.message
 	$stderr.puts error.backtrace.join("\n")

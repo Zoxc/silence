@@ -297,7 +297,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type, :itype, :parent_scope, :constraints, :type_vars, :instances
+		attr_accessor :name, :params, :result, :attributes, :scope, :type, :itype, :parent_scope, :instances
 		
 		class Parameter < Node
 			attr_accessor :name, :type, :var

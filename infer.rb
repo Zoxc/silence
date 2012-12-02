@@ -1,4 +1,6 @@
-﻿class InferSystem
+﻿class InternalType
+	attr_accessor :obj, :type, :type_vars, :constraints, :template_vars
+	
 	class TypeError < CompileError
 	end
 	
@@ -12,7 +14,7 @@
 	end
 	
 	class ApplyConstraint < Constraint
-		attr_accessor :result, :type, :args
+		attr_accessor :type, :args
 		
 		def initialize(ast, var, type, args)
 			super(ast, var)
@@ -26,7 +28,7 @@
 	end
 	
 	class FieldConstraint < Constraint
-		attr_accessor :result, :type, :name
+		attr_accessor :type, :name
 		
 		def initialize(ast, var, type, name)
 			super(ast, var)
@@ -48,14 +50,10 @@
 	def initialize
 		@vars = {}
 		@type_vars = []
+		@template_vars = {}
 		@var_name = 1
 		@constraints = []
 		@func_instances = []
-		@make_type_args = MakeTypeArgs.new(proc { |s| new_var(s) }, proc { |ast, type, args|
-			raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{type.arg_count} but maximum is #{args.size}\n#{ast.source.format}") if type.arg_count < args.size
-			template_args = type.arg_count.times.map { |i| args[i] || new_var(ast.source) }
-			type.template_dup(template_args)
-		})
 	end
 	
 	def new_var_name
@@ -75,42 +73,37 @@
 	def unit_default(type)
 	end
 	
-	class MakeTypeArgs
-		attr_accessor :new_var, :template_instance
-
-		def initialize(new_var, template_instance)
-			@new_var = new_var
-			@template_instance = template_instance
-		end
-	end
-	
-	def self.make_type(source, scope, ast, args)
-		return args.new_var.(source) unless ast
+	def make_type(source, scope, ast)
+		return new_var(source) unless ast
 		case ast
 			when AST::Function
-				Types::Function.new(ast.source, ast.params.map { |p| make_type(ast.source, scope, p, args) }, make_type(ast.source, scope, ast.result, args))
+				Types::Function.new(ast.source, ast.params.map { |p| make_type(ast.source, scope, p) }, make_type(ast.source, scope, ast.result))
 			when AST::Function::Parameter
-				make_type(ast.source, scope, ast.type, args)
+				make_type(ast.source, scope, ast.type)
 			when AST::NullPtrTypeNode, AST::PtrTypeNode
-				make_type(ast.source, scope, ast.target, args)
+				make_type(ast.source, scope, ast.target)
 			when AST::NamedTypeNode
 				type = scope.require(ast.source, ast.name, Types::Type)
 				
 				if type.template?
-					args.template_instance.(ast, type, ast.args.map { |n| make_type(ast.source, scope, n, args) })
+					args = ast.args.map { |n| make_type(ast.source, scope, n) }
+					raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{type.arg_count} but maximum is #{args.size}\n#{ast.source.format}") if type.arg_count < args.size
+					template_args = type.arg_count.times.map { |i| args[i] || new_var(ast.source) }
+					type.template_dup(template_args)
 				else
 					raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{ast.source.format}") unless type.args.empty?
-					type
+					
+					if type.kind_of? Types::TemplateParam
+						@template_vars[type.param] ||= new_var(ast.source)
+					else
+						type
+					end
 				end
 			when AST::Variable
-				make_type(ast.source, scope, ast.type, args)
+				make_type(ast.source, scope, ast.type)
 			else
 				raise "Unknown AST #{ast.class}"
 		end
-	end
-	
-	def make_type(source, args, ast)
-		InferSystem.make_type(source, @func.scope, ast, @make_type_args)
 	end
 	
 	class AnalyzeArgs
@@ -160,15 +153,7 @@
 				if result
 					result
 				else
-					case ast.obj
-						when AST::Function
-							inst(ast.obj)
-						when AST::Variable
-							infer_var(ast.obj, @func.scope, @infer_args)
-							inst_type(InstArgs.new({}, nil), ast.obj.itype)
-						else
-							raise "Undefined #{print_ast(ast.obj)}"
-					end
+					inst(ast.obj)
 				end
 			when AST::Literal
 				case ast.type
@@ -182,12 +167,12 @@
 						raise "Unknown literal type #{ast.type}"
 				end.source_dup(ast.source)
 			when AST::Function
-				@result = (make_type(ast.source, args, ast.result) if ast.result)
+				@result = (make_type(ast.source, @obj.scope, ast.result) if ast.result)
 				
 				new_args = args.dup
 				
 				ast.scope.names.each_value do |var|
-					@vars[var] = make_type(ast.source, args, var.type)
+					@vars[var] = make_type(ast.source, @obj.scope, var.type)
 				end
 				
 				new_args.func = ast
@@ -251,17 +236,12 @@
 		case type
 			when Types::Fixed
 				type
-			when Types::TemplateParam
-				if @func.scope.inside?(type.param.owner.scope)
-					type
-				else
-					index = args.base.struct.template_params.index(type.param)
-					args.base.args[index]
-				end
 			when Types::Variable
 				args.map[type] ||= new_var(type.source)
 			when Types::Function
 				type.args_dup(*type.args.map { |arg| inst_type(args, arg) })
+			when Types::Struct
+				type.template_dup(type.args.map { |arg| inst_type(args, arg) })
 			else
 				raise "Unknown type #{type.class}"
 		end
@@ -278,18 +258,38 @@
 		end
 	end
 	
-	def inst(func, base = nil)
+	def inst(obj, base = nil)
+		case obj
+			when AST::Function, AST::Variable
+				InferUtils.infer_type(obj, @obj.scope, @infer_args)
+			else
+				raise "Undefined #{print_ast(obj)}"
+		end
+		itype = obj.itype
 		map = {}
 		inst_args = InstArgs.new(map, base)
-		infer_function func, @infer_args
 		
-		@constraints.concat func.constraints.map { |c| inst_constraint(inst_args, c) }
+		@constraints.concat itype.constraints.map { |c| inst_constraint(inst_args, c) }
 		
-		vars = func.type_vars.map { |tv| map[tv] ||= new_var(tv.source) }
+		itype.template_vars.each_pair do |param, type|
+			var = inst_type(inst_args, type)
+			
+			other = if base
+				index = base.struct.template_params.index(param)
+				base.args[index]
+			else
+				raise "Outside scope of type param" unless @obj.scope.inside?(param.owner.scope)
+				@template_vars[param] ||= new_var(var.source)
+			end
+			
+			unify(var, other)
+		end
 		
-		@func_instances << FuncInst.new(func, vars)
+		vars = itype.type_vars.map { |tv| map[tv] ||= new_var(tv.source) }
 		
-		return inst_type(inst_args, func.itype)
+		#@func_instances << FuncInst.new(itype, vars)
+		
+		return inst_type(inst_args, itype.type)
 	end
 	
 	def unify(a, b, loc = proc { "" })
@@ -355,12 +355,7 @@
 							
 							raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 							
-							field_type = case field
-								when AST::Function
-									inst(field, type)
-								else
-									infer_type(field, type.struct.scope, @infer_args)
-							end
+							field_type = inst(field, type)
 							
 							unify(field_type, var)
 							
@@ -390,18 +385,13 @@
 		AST::Function::Instance.new(func, map, full_map, type)
 	end
 	
-	def infer(func, infer_args)
+	def infer_function(func, infer_args)
 		@infer_args = infer_args
-		@func = func
-	
-		func.itype = @vars[func] = new_var(func.source)
+		@obj = func
+		@type = @vars[func] = new_var(func.source)
 		analyze(func)
 		
 		solve
-		
-		func.itype = func.itype.prune
-		
-		func.constraints = @constraints
 		
 		unless @constraints.empty?
 			puts "constraints of #{func.name}"
@@ -412,73 +402,92 @@
 			@type_vars.delete(c.var.prune)
 		end
 		
-		@type_vars.reject! { |var| var.instance }
-		
-		func.type_vars = @type_vars.select { |var| occurs_in?(var, func.itype) }
-		
-		@type_vars -= func.type_vars
-		
-		unless @type_vars.empty?
-			raise TypeError, "Unresolved vars of #{func.name}\n#{@type_vars.map{|c| " - #{c.text}"}.join("\n")}\n#{func.source.format}"
-		end
+		finalize
 		
 		unless @func_instances.empty?
 			puts "func instances of #{func.name}"
 			puts *@func_instances.map{|i| " - #{i}"}
 		end
+		
+		@infer_args = nil
+		self
+	end
+	
+	def infer_fixed(obj, scope)
+		@obj = obj
+		@type = make_type(obj.source, scope, obj)
+		finalize
+		self
+	end
+	
+	def finalize
+		@type = @type.prune
+		
+		@type_vars.reject! { |var| var.instance }
+		
+		unresolved_vars = @type_vars
+		@type_vars = @type_vars.select { |var| occurs_in?(var, @type) }
+		
+		unresolved_vars -= @type_vars
+		unresolved_vars -= @template_vars.values
+		
+		puts "template_vars of #{@obj.name}"
+		@template_vars.each_pair{|k,v| puts " - #{k.name} => #{v.text}"}
+		
+		unless unresolved_vars.empty?
+			raise TypeError, "Unresolved vars of #{@obj.name}\n#{unresolved_vars.map{|c| " - #{c.text}"}.join("\n")}\n#{obj.source.format}"
+		end
+		
+		@obj.itype = self
 	end
 end
 
 def get_type(source, scope, ast)
-	args = InferSystem::MakeTypeArgs.new(proc { |s| raise TypeError.new("Explicit type expected\n#{(s ? s : func.source).format}") }, proc { |ast, type, args|
-		raise TypeError.new("Expected #{type.arg_count} type parameter(s) for #{type.text}, but got #{ast.args.size}\n#{ast.source.format}") if type.arg_count != ast.args.size
-		type.template_dup(args)
-	})
-	InferSystem.make_type(source, scope, ast, args)
+	InternalType.new.infer_fixed(ast, scope)
 end
 
 InferArgs = Struct.new :visited
 
-def infer_function(func, args)
-	return if func.itype
-	raise "Recursive #{func.name}" if args.visited[func]
-	args.visited[func] = true
-	
-	if func.scope
-		InferSystem.new.infer(func, args)
-	else
-		func.itype = get_type(func.source, func.parent_scope, func)
-		func.constraints = []
-		func.itype
-	end
-	
-	puts "Type of #{func.name} is #{func.itype.text}"
-end
-
-def infer_var(var, scope, args)
-	return if var.itype
-	raise "Recursive #{var.name}" if args.visited[var]
-	args.visited[var] = true
-	var.itype = get_type(var.source, scope, var)
-	puts "Type of #{var.name} is #{var.itype.text}"
-end
-
-def infer_type(value, scope, args)
-	case value
-		when Types::Struct
-			infer_scope(value.struct.scope, args)
-		when AST::Variable
-			infer_var(value, scope, args)
-		when AST::Function
-			infer_function(value, args)
+module InferUtils
+	def self.infer_function(func, args)
+		return if func.itype
+		raise "Recursive #{func.name}" if args.visited[func]
+		args.visited[func] = true
+		
+		if func.scope
+			InternalType.new.infer_function(func, args)
 		else
-			raise "Unknown value #{value.class}"
+			func.itype = get_type(func.source, func.parent_scope, func)
+		end
+		
+		puts "Type of #{func.name} is #{func.itype.type.text}"
 	end
-end
 
-def infer_scope(scope, args = InferArgs.new({}))
-	scope.names.each_pair do |name, value|
-		next if value.kind_of? Types::TemplateParam
-		infer_type(value, scope, args)
+	def self.infer_var(var, scope, args)
+		return if var.itype
+		raise "Recursive #{var.name}" if args.visited[var]
+		args.visited[var] = true
+		var.itype = get_type(var.source, scope, var)
+		puts "Type of #{var.name} is #{var.itype.type.text}"
+	end
+
+	def self.infer_type(value, scope, args)
+		case value
+			when Types::Struct
+				infer_scope(value.struct.scope, args)
+			when AST::Variable
+				infer_var(value, scope, args)
+			when AST::Function
+				infer_function(value, args)
+			else
+				raise "Unknown value #{value.class}"
+		end
+	end
+
+	def self.infer_scope(scope, args = InferArgs.new({}))
+		scope.names.each_pair do |name, value|
+			next if value.kind_of? Types::TemplateParam
+			infer_type(value, scope, args)
+		end
 	end
 end
