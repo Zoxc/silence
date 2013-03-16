@@ -169,6 +169,10 @@ module Types
 		def fixed_type?
 			@args.all? { |v| v.fixed_type? }
 		end
+		
+		def interface?
+			@struct.interface?
+		end
 
 		def template_dup(args)
 			self.class.new(@source, @struct, args)
@@ -179,7 +183,7 @@ module Types
 		end
 		
 		def text
-			"struct #{@struct.name}(#{@args.map(&:text).join(", ")})"
+			"#{@struct.name}#{"[#{@args.map(&:text).join(", ")}]" if template?}"
 		end
 	end
 	

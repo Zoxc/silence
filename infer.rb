@@ -1,5 +1,5 @@
 ﻿class InternalType
-	attr_accessor :obj, :type, :type_vars, :constraints, :template_vars
+	attr_accessor :obj, :type, :type_vars, :template_vars, :interfaces
 	
 	class TypeError < CompileError
 	end
@@ -54,6 +54,8 @@
 		@var_name = 1
 		@constraints = []
 		@func_instances = []
+		@interfaces = []
+		@views = {}
 	end
 	
 	def new_var_name
@@ -87,9 +89,20 @@
 				
 				if type.template?
 					args = ast.args.map { |n| make_type(ast.source, scope, n) }
+					if type.interface?
+						interface_result = new_var(ast.source)
+						args.unshift(interface_result) 
+					end
 					raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{type.arg_count} but maximum is #{args.size}\n#{ast.source.format}") if type.arg_count < args.size
 					template_args = type.arg_count.times.map { |i| args[i] || new_var(ast.source) }
-					type.template_dup(template_args)
+					result = type.template_dup(template_args)
+					if type.interface?
+						@interfaces << result
+						@views[interface_result] = result
+						interface_result
+					else
+						result
+					end
 				else
 					raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{ast.source.format}") unless type.args.empty?
 					
@@ -247,17 +260,6 @@
 		end
 	end
 	
-	def inst_constraint(args, c)
-		case c
-			when ApplyConstraint
-				c.class.new(c.ast, inst_type(args, c.var), inst_type(args, c.type), c.args.map { |arg| inst_type(args, arg) })
-			when FieldConstraint
-				FieldConstraint.new(c.ast, inst_type(args, c.var), inst_type(args, c.type), c.name)
-			else
-				raise "Unknown constraint #{c.class}"
-		end
-	end
-	
 	def inst(obj, base = nil)
 		case obj
 			when AST::Function, AST::Variable
@@ -268,8 +270,6 @@
 		itype = obj.itype
 		map = {}
 		inst_args = InstArgs.new(map, base)
-		
-		@constraints.concat itype.constraints.map { |c| inst_constraint(inst_args, c) }
 		
 		itype.template_vars.each_pair do |param, type|
 			var = inst_type(inst_args, type)
@@ -329,6 +329,13 @@
 		end
 	end
 	
+	def view(var)
+		r = @views.each.find do |pair|
+			true if pair.first.prune == var
+		end
+		r ? r.last : var
+	end
+	
 	def solve
 		nil while @constraints.reject! do |c|
 			case c
@@ -348,6 +355,7 @@
 				when FieldConstraint
 					var = c.var.prune
 					type = c.type.prune
+					type = view(type) if type.is_a? Types::Variable
 					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
 					case type
 						when Types::Struct
@@ -377,10 +385,8 @@
 	
 	def create_function_instance(func, map)
 		full_map = map.dup
-		@constraints = func.constraints.map { |c| inst_constraint(full_map, c) }
 		type = inst_type(full_map, func.itype)
 		solve
-		raise "Unresolved contraints of #{func.name}" unless @constraints.empty?
 		puts "map of #{func.name} #{full_map.each.map{|v| "#{v.first.text} => #{v.last.text}" }.join(", ")} with type #{type.text}"
 		AST::Function::Instance.new(func, map, full_map, type)
 	end
@@ -401,6 +407,8 @@
 		@constraints.each do |c|
 			@type_vars.delete(c.var.prune)
 		end
+		
+		raise "Unresolved contraints of #{@obj.name}" unless @constraints.empty?
 		
 		finalize
 		
@@ -431,8 +439,20 @@
 		unresolved_vars -= @type_vars
 		unresolved_vars -= @template_vars.values
 		
-		puts "template_vars of #{@obj.name}"
-		@template_vars.each_pair{|k,v| puts " - #{k.name} => #{v.text}"}
+		unless @interfaces.empty?
+			puts "interfaces of #{@obj.name}"
+			@interfaces.each{|i| puts " - #{i.text}"}
+		end
+		
+		unless @views.empty?
+			puts "views of #{@obj.name}"
+			@views.each_pair{|k,v| puts " - #{k.text} <= #{v.text}"}
+		end
+		
+		unless @template_vars.empty?
+			puts "template_vars of #{@obj.name}"
+			@template_vars.each_pair{|k,v| puts " - #{k.name} => #{v.text}"}
+		end
 		
 		unless unresolved_vars.empty?
 			raise TypeError, "Unresolved vars of #{@obj.name}\n#{unresolved_vars.map{|c| " - #{c.text}"}.join("\n")}\n#{obj.source.format}"

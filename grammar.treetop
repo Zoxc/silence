@@ -53,6 +53,7 @@ grammar AST
 	
 	rule global_scope_entry
 		struct
+		/ interface
 		/ variable_decl
 		/ function
 	end
@@ -62,11 +63,15 @@ grammar AST
 	end
 	
 	rule template_parameters
-		s '(' l (template_parameter (s ',' l template_parameter)* l)? ')'
+		s (template_parameter (s ',' l template_parameter)* l)?
 	end
 	
 	rule struct
 		s 'struct' S ident tp:(template_parameters?) global_scope { def ast; Struct.new(source, ident.value, single_ast(global_scope), tp.ast) end }
+	end
+	
+	rule interface
+		s 'class' S ident tp:(template_parameters?) global_scope { def ast; Interface.new(source, ident.value, single_ast(global_scope), tp.ast) end }
 	end
 	
 	rule function_attribute
@@ -101,7 +106,7 @@ grammar AST
 	end
 	
 	rule type_parameters
-		s '(' l (type (s ',' l type)* l)? ')'
+		s '[' l (type (s ',' l type)* l)? ']'
 	end
 	
 	rule type

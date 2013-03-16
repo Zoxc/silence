@@ -3,7 +3,18 @@ struct B
 	test: int
 }
 
-struct A(Hm)
+class Cool T, A
+{
+	test: A
+	hello() { return test }
+}
+
+cool(v: Cool[int])
+{
+	return v.hello()
+}
+
+struct A Hm
 {
 	field: Hm
 	

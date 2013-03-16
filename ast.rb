@@ -262,7 +262,7 @@ module AST
 		end
 	end
 
-	class Struct < Node
+	class Interface < Node
 		attr_accessor :name, :scope, :itype, :template_params
 	
 		def initialize(source, name, scope, template_params)
@@ -290,6 +290,17 @@ module AST
 		
 		def visit
 			@scope = yield scope
+		end
+		
+		def interface?
+			true
+		end
+
+	end
+	
+	class Struct < Interface
+		def interface?
+			false
 		end
 	end
 	
