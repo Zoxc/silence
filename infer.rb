@@ -1,5 +1,5 @@
 ﻿class InternalType
-	attr_accessor :obj, :type, :type_vars, :template_vars, :interfaces
+	attr_accessor :obj, :type, :type_vars, :template_vars, :limits
 	
 	class TypeError < CompileError
 	end
@@ -13,17 +13,25 @@
 		end
 	end
 	
-	class ApplyConstraint < Constraint
-		attr_accessor :type, :args
+	class InterfaceConstraint < Constraint
+		attr_accessor :type
 		
-		def initialize(ast, var, type, args)
+		def to_s
+			@var.text
+		end
+	end
+	
+	class EqualConstraint < Constraint
+		attr_accessor :type, :other
+		
+		def initialize(ast, var, other)
 			super(ast, var)
 			@type = type
-			@args = args
+			@other = other
 		end
 		
 		def to_s
-			"#{@var.real_text} = Apply{ #{@type.text} (#{@args.map(&:text).join(", ")}) }"
+			"#{@var.real_text} ~ #{@other.real_text}"
 		end
 	end
 	
@@ -54,7 +62,7 @@
 		@var_name = 1
 		@constraints = []
 		@func_instances = []
-		@interfaces = []
+		@limits = []
 		@views = {}
 	end
 	
@@ -97,7 +105,7 @@
 					template_args = type.arg_count.times.map { |i| args[i] || new_var(ast.source) }
 					result = type.template_dup(template_args)
 					if type.interface?
-						@interfaces << result
+						@limits << InterfaceConstraint.new(ast, result)
 						@views[interface_result] = result
 						interface_result
 					else
@@ -153,9 +161,10 @@
 				lhs
 			when AST::Call
 				type = analyze(ast.obj, args)
-				result = new_var(ast.source)
-				@constraints << ApplyConstraint.new(ast, result, type, ast.args.map { |arg| analyze(arg, args) })
-				result
+				call_args = ast.args.map { |arg| analyze(arg, args) }
+				interface = Types::FunctionClass.template_dup([type, Types::TypePack.new(ast.source, call_args)]).source_dup(ast.source)
+				@limits << InterfaceConstraint.new(ast, interface)
+				Types::TypeFunction.new(nil, AST::FunctionClassResult, interface)
 			when AST::Field
 				type = analyze(ast.obj, args)
 				result = new_var(ast.source)
@@ -244,6 +253,17 @@
 	
 	InstArgs = Struct.new(:map, :base)
 	
+	def inst_limit(args, limit)
+		case limit
+			when InterfaceConstraint
+				InterfaceConstraint.new(limit.ast, inst_type(args, limit.var))
+			when EqualConstraint
+				EqualConstraint.new(limit.ast, inst_type(args, limit.var), inst_type(args, limit.other))
+			else
+				raise "Unknown limit #{limit.class}"
+		end
+	end
+	
 	def inst_type(args, type)
 		type = type.prune
 		case type
@@ -253,8 +273,10 @@
 				args.map[type] ||= new_var(type.source)
 			when Types::Function
 				type.args_dup(*type.args.map { |arg| inst_type(args, arg) })
-			when Types::Struct
+			when Types::Struct, Types::TypePack
 				type.template_dup(type.args.map { |arg| inst_type(args, arg) })
+			when Types::TypeFunction
+				type.function_dup(inst_type(args, type.interface))
 			else
 				raise "Unknown type #{type.class}"
 		end
@@ -287,7 +309,7 @@
 		
 		vars = itype.type_vars.map { |tv| map[tv] ||= new_var(tv.source) }
 		
-		#@func_instances << FuncInst.new(itype, vars)
+		@limits.concat(itype.limits.map { |l| inst_limit(inst_args, l) })
 		
 		return inst_type(inst_args, itype.type)
 	end
@@ -296,14 +318,21 @@
 		a = a.prune
 		b = b.prune
 		
-		if a.is_a? Types::Variable
-			raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
-			a.instance = b
-			a.source = a.source || b.source
-			return
+		case a
+			when Types::Variable
+				raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
+				a.instance = b
+				a.source = a.source || b.source
+				return
+			when Types::TypeFunction
+				@limits << EqualConstraint.new(a.source || b.source, a, b)
+				return
 		end
 		
-		return unify(b, a, loc) if b.is_a? Types::Variable
+		case b
+			when Types::Variable, Types::TypeFunction
+				return unify(b, a, loc)
+		end
 		
 		a_args = a.args
 		b_args = b.args
@@ -339,19 +368,6 @@
 	def solve
 		nil while @constraints.reject! do |c|
 			case c
-				when ApplyConstraint
-					var = c.var.prune
-					type = c.type.prune
-					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
-					case type
-						when Types::Function
-							unify(Types::Function.new(c.ast.source, c.args, var), type)
-							
-							true
-						when Types::Variable
-						else
-							raise TypeError.new("'#{type.text}' is not a function type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
-					end
 				when FieldConstraint
 					var = c.var.prune
 					type = c.type.prune
@@ -372,6 +388,7 @@
 						else
 							raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 					end
+				when EqualConstraint
 				else
 					raise "Unknown constraint #{c.class}"
 			end
@@ -408,14 +425,14 @@
 			@type_vars.delete(c.var.prune)
 		end
 		
-		raise "Unresolved contraints of #{@obj.name}" unless @constraints.empty?
-		
 		finalize
 		
 		unless @func_instances.empty?
 			puts "func instances of #{func.name}"
 			puts *@func_instances.map{|i| " - #{i}"}
 		end
+		
+		raise "Unresolved contraints of #{@obj.name}" unless @constraints.empty?
 		
 		@infer_args = nil
 		self
@@ -439,9 +456,9 @@
 		unresolved_vars -= @type_vars
 		unresolved_vars -= @template_vars.values
 		
-		unless @interfaces.empty?
-			puts "interfaces of #{@obj.name}"
-			@interfaces.each{|i| puts " - #{i.text}"}
+		unless @limits.empty?
+			puts "limits of #{@obj.name}"
+			@limits.each{|i| puts " - #{i}"}
 		end
 		
 		unless @views.empty?
@@ -453,6 +470,8 @@
 			puts "template_vars of #{@obj.name}"
 			@template_vars.each_pair{|k,v| puts " - #{k.name} => #{v.text}"}
 		end
+		
+		puts "Type of #{@obj.name} is #{@type.text}"
 		
 		unless unresolved_vars.empty?
 			raise TypeError, "Unresolved vars of #{@obj.name}\n#{unresolved_vars.map{|c| " - #{c.text}"}.join("\n")}\n#{obj.source.format}"

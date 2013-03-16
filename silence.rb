@@ -23,21 +23,24 @@ unless result
 	exit
 end
 
+def process(ast, parent)
+	ast.run_pass :declare_pass, false, parent.scope
+	ast.run_pass :sema, true
+
+	#puts print_ast(ast)
+
+	begin
+		InferUtils.infer_scope(ast.scope)
+	rescue CompileError => error
+		$stderr.puts "Fatal errors:", error.message
+		$stderr.puts error.backtrace.join("\n")
+		exit
+	end
+end
+
 ast = AST::Program.new(result.ast)
 
-ast.run_pass :promote_templates, true
-ast.run_pass :declare_pass, false, AST::BuiltinScope
-ast.run_pass :sema, true
-
-#puts print_ast(ast)
-
-begin
-	InferUtils.infer_scope(ast.scope)
-rescue CompileError => error
-	$stderr.puts "Fatal errors:", error.message
-	$stderr.puts error.backtrace.join("\n")
-	exit
-end
+process(ast, AST::Builtin)
 
 output = File.open("output.c", "w") { |f| f.write codegen(ast) }
 `gcc output.c -Wall -o output`

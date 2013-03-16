@@ -1,4 +1,5 @@
 require 'treetop'
+require_relative 'types'
 
 module AST
 	class Source
@@ -175,6 +176,9 @@ module AST
 	class Template < Node
 		attr_accessor :name, :scope, :params
 		
+		class TypeArgs < Node
+		end
+		
 		class Parameter < Node
 			attr_accessor :name, :type, :owner, :itype
 			
@@ -262,6 +266,20 @@ module AST
 		end
 	end
 
+	class TypeFunctionNode < Node
+		attr_accessor :name, :itype
+	
+		def initialize(source, name)
+			super(source)
+			@name = name
+		end
+		
+		def declare_pass(scope)
+			@itype = Types::TypeFunction.new(nil, self, nil)
+			scope.declare(@name, @itype)
+		end
+	end
+	
 	class Interface < Node
 		attr_accessor :name, :scope, :itype, :template_params
 	
@@ -273,7 +291,7 @@ module AST
 		end
 		
 		def declare_pass(scope)
-			@itype = Types::Struct.new(nil, self, {})
+			@itype = Types::Struct.new(nil, self, [])
 			scope.declare(@name, @itype)
 			@scope.parent = scope
 			
@@ -505,8 +523,24 @@ module AST
 			@value = yield @value
 		end
 	end
-
-	BuiltinScope = AST::Scope.new([])
+	
+	Builtin = Program.new(Scope.new([]))
+	function_args = [Template::Parameter.new(nil, :T, nil), Template::Parameter.new(nil, :Args, Template::TypeArgs.new(nil))]
+	FunctionClassResult = TypeFunctionNode.new(nil, :Result)
+	FunctionClass = Interface.new(nil, :Callable, GlobalScope.new([FunctionClassResult]), function_args)
+	FunctionClass.declare_pass(Builtin.scope)
+	
+	def self.declare_type(name)
+		Builtin.scope.declare(name, Types::Fixed.new(nil, name))
+	end
+	
+	Types::IntType = declare_type(:int)
+	Types::UnitType = declare_type(:unit)
+	Types::BoolType = declare_type(:bool)
+	Types::StringType = declare_type(:string)
+	Types::CharType = declare_type(:char)
+	
+	Types::FunctionClass = AST::FunctionClass.itype
 end
 
 class Treetop::Runtime::SyntaxNode

@@ -1,8 +1,3 @@
-struct B
-{
-	test: int
-}
-
 class Cool T, A
 {
 	test: A
@@ -11,7 +6,23 @@ class Cool T, A
 
 cool(v: Cool[int])
 {
-	return v.hello()
+	a: int
+	return a = v.hello()
+}
+
+callable(s: int, v: bool)
+{
+	return 1
+}
+
+test(func, a)
+{
+	return func(1, true) + a
+}
+
+test2()
+{
+	return test(callable, 2)
 }
 
 struct A Hm

@@ -49,6 +49,8 @@ def print_ast(ast)
 			format.(ast, [[:name]])
 		when AST::Call
 			format.(ast, [[:obj, :single], [:args, ast.args]])
+		when AST::Field
+			format.(ast, [[:obj, :single], [:name]])
 		when AST::BinOp
 			format.(ast, [[:lhs, :single], [:op], [:rhs, :single]])
 		when AST::If
@@ -58,7 +60,7 @@ def print_ast(ast)
 			format.(ast, [[:scope, :single]])
 		when AST::Scope
 			format.(ast, [[:nodes, ast.nodes]])
-		when AST::Struct
+		when AST::Struct, AST::Interface
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single]])
 		when AST::Template
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single]])

@@ -111,6 +111,39 @@ module Types
 		end
 	end
 
+	class TypeFunction < Type
+		attr_accessor :type_ast, :interface
+		
+		def initialize(source, type_ast, interface)
+			@source = source
+			@type_ast = type_ast
+			@interface = interface
+		end
+		
+		def fixed_type?
+			false
+		end
+
+		def type_eq?(other)
+			other = other.prune
+			
+			return unless other.is_a? TypeFunction
+			return @interface.type_eq?(other.interface) && @type_ast == other.type_ast
+		end
+		
+		def name
+			:type_function
+		end
+		
+		def text
+			"func(#{@interface.text}.#{@type_ast.name})"
+		end
+		
+		def function_dup(interface)
+			TypeFunction.new(@source, @type_ast, interface)
+		end
+	end
+	
 	class Function < Type
 		attr_accessor :result
 		
@@ -142,6 +175,27 @@ module Types
 		
 		def args_dup(*args, result)
 			Function.new(@source, args, result)
+		end
+	end
+	
+	class TypePack < Type
+		attr_accessor :args
+		
+		def initialize(source, args)
+			@source = source
+			@args = args
+		end
+		
+		def fixed_type?
+			@args.all? { |v| v.fixed_type? }
+		end
+		
+		def text
+			"{#{@args.map(&:text).join(", ")}}"
+		end
+		
+		def template_dup(args)
+			self.class.new(@source, args)
 		end
 	end
 	
@@ -203,14 +257,4 @@ module Types
 			"param #{@param.name}"
 		end
 	end
-	
-	def self.declare_type(name)
-		AST::BuiltinScope.declare(name, Fixed.new(nil, name))
-	end
-	
-	IntType = declare_type(:int)
-	UnitType = declare_type(:unit)
-	BoolType = declare_type(:bool)
-	StringType = declare_type(:string)
-	CharType = declare_type(:char)
 end
