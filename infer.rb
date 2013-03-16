@@ -4,48 +4,53 @@
 	class TypeError < CompileError
 	end
 	
-	class Constraint
+	class Limit
 		attr_accessor :ast, :var
 		
-		def initialize(ast, var)
+		def initialize(system, ast, var)
+			@system = system
 			@ast = ast
 			@var = var
 		end
+		
+		def name
+			@name ||= @system.new_limit_name
+		end
 	end
 	
-	class InterfaceConstraint < Constraint
+	class InterfaceLimit < Limit
 		attr_accessor :type
 		
 		def to_s
-			@var.text
+			"#{name} := #{@var.text}"
 		end
 	end
 	
-	class EqualConstraint < Constraint
-		attr_accessor :type, :other
+	class TypeFunctionLimit < Limit
+		attr_accessor :type_ast, :interface
 		
-		def initialize(ast, var, other)
-			super(ast, var)
-			@type = type
-			@other = other
+		def initialize(system, ast, var, type_ast, interface)
+			super(system, ast, var)
+			@type_ast = type_ast
+			@interface = interface
 		end
 		
 		def to_s
-			"#{@var.real_text} ~ #{@other.real_text}"
+			"#{@var.real_text} = #{@interface.name}.#{@type_ast.name}"
 		end
 	end
 	
-	class FieldConstraint < Constraint
+	class FieldLimit < Limit
 		attr_accessor :type, :name
 		
-		def initialize(ast, var, type, name)
-			super(ast, var)
+		def initialize(system, ast, var, type, name)
+			super(system, ast, var)
 			@type = type
 			@name = name
 		end
 		
 		def to_s
-			"#{@var.real_text} = Field{ #{@type.text} .#{@name} }"
+			"#{@var.real_text} = #{@type.text}.#{@name}"
 		end
 	end
 	
@@ -60,7 +65,7 @@
 		@type_vars = []
 		@template_vars = {}
 		@var_name = 1
-		@constraints = []
+		@limit_name = 1
 		@func_instances = []
 		@limits = []
 		@views = {}
@@ -70,6 +75,12 @@
 		result = @var_name
 		@var_name += 1
 		"p#{result}"
+	end
+	
+	def new_limit_name
+		result = @limit_name
+		@limit_name += 1
+		"l#{result}"
 	end
 	
 	def new_var(source = nil)
@@ -105,7 +116,7 @@
 					template_args = type.arg_count.times.map { |i| args[i] || new_var(ast.source) }
 					result = type.template_dup(template_args)
 					if type.interface?
-						@limits << InterfaceConstraint.new(ast, result)
+						@limits << InterfaceLimit.new(self, ast, result)
 						@views[interface_result] = result
 						interface_result
 					else
@@ -161,14 +172,17 @@
 				lhs
 			when AST::Call
 				type = analyze(ast.obj, args)
+				result = new_var(ast.source)
 				call_args = ast.args.map { |arg| analyze(arg, args) }
 				interface = Types::FunctionClass.template_dup([type, Types::TypePack.new(ast.source, call_args)]).source_dup(ast.source)
-				@limits << InterfaceConstraint.new(ast, interface)
-				Types::TypeFunction.new(nil, AST::FunctionClassResult, interface)
+				limit = InterfaceLimit.new(self, ast, interface)
+				@limits << limit
+				@limits << TypeFunctionLimit.new(self, ast, result, AST::FunctionClassResult, limit)
+				result
 			when AST::Field
 				type = analyze(ast.obj, args)
 				result = new_var(ast.source)
-				@constraints << FieldConstraint.new(ast, result, type, ast.name)
+				@limits << FieldLimit.new(self, ast, result, type, ast.name)
 				result
 			when AST::Ref
 				result = @vars[ast.obj]
@@ -251,14 +265,14 @@
 		end
 	end
 	
-	InstArgs = Struct.new(:map, :base)
+	InstArgs = Struct.new(:map, :lmap, :base)
 	
 	def inst_limit(args, limit)
 		case limit
-			when InterfaceConstraint
-				InterfaceConstraint.new(limit.ast, inst_type(args, limit.var))
-			when EqualConstraint
-				EqualConstraint.new(limit.ast, inst_type(args, limit.var), inst_type(args, limit.other))
+			when InterfaceLimit
+				args.lmap[limit] ||= InterfaceLimit.new(self, limit.ast, inst_type(args, limit.var))
+			when TypeFunctionLimit
+				TypeFunctionLimit.new(self, limit.ast, inst_type(args, limit.var), limit.type_ast, inst_limit(args, limit.interface))
 			else
 				raise "Unknown limit #{limit.class}"
 		end
@@ -291,7 +305,7 @@
 		end
 		itype = obj.itype
 		map = {}
-		inst_args = InstArgs.new(map, base)
+		inst_args = InstArgs.new(map, {}, base)
 		
 		itype.template_vars.each_pair do |param, type|
 			var = inst_type(inst_args, type)
@@ -318,21 +332,14 @@
 		a = a.prune
 		b = b.prune
 		
-		case a
-			when Types::Variable
-				raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
-				a.instance = b
-				a.source = a.source || b.source
-				return
-			when Types::TypeFunction
-				@limits << EqualConstraint.new(a.source || b.source, a, b)
-				return
+		if a.is_a? Types::Variable
+			raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
+			a.instance = b
+			a.source = a.source || b.source
+			return
 		end
 		
-		case b
-			when Types::Variable, Types::TypeFunction
-				return unify(b, a, loc)
-		end
+		return unify(b, a, loc) if b.is_a? Types::Variable
 		
 		a_args = a.args
 		b_args = b.args
@@ -366,9 +373,11 @@
 	end
 	
 	def solve
-		nil while @constraints.reject! do |c|
+		nil while @limits.reject! do |c|
 			case c
-				when FieldConstraint
+				when InterfaceLimit
+				when TypeFunctionLimit
+				when FieldLimit
 					var = c.var.prune
 					type = c.type.prune
 					type = view(type) if type.is_a? Types::Variable
@@ -388,9 +397,8 @@
 						else
 							raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 					end
-				when EqualConstraint
 				else
-					raise "Unknown constraint #{c.class}"
+					raise "Unknown limit #{c.class}"
 			end
 		end
 	end
@@ -416,15 +424,6 @@
 		
 		solve
 		
-		unless @constraints.empty?
-			puts "constraints of #{func.name}"
-			puts *@constraints.map{|c| " - #{c}"}
-		end
-		
-		@constraints.each do |c|
-			@type_vars.delete(c.var.prune)
-		end
-		
 		finalize
 		
 		unless @func_instances.empty?
@@ -432,7 +431,7 @@
 			puts *@func_instances.map{|i| " - #{i}"}
 		end
 		
-		raise "Unresolved contraints of #{@obj.name}" unless @constraints.empty?
+		#raise "Unresolved contraints of #{@obj.name}" unless @limits.empty?
 		
 		@infer_args = nil
 		self
@@ -452,6 +451,10 @@
 		
 		unresolved_vars = @type_vars
 		@type_vars = @type_vars.select { |var| occurs_in?(var, @type) }
+		
+		@limits.each do |c|
+			@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
+		end
 		
 		unresolved_vars -= @type_vars
 		unresolved_vars -= @template_vars.values
