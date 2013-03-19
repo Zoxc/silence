@@ -1,4 +1,3 @@
-require 'treetop'
 require_relative 'types'
 
 module AST
@@ -580,55 +579,4 @@ module AST
 	Types::CharType = declare_type(:char)
 	
 	Types::FunctionClass = AST::FunctionClass.itype
-end
-
-class Treetop::Runtime::SyntaxNode
-	def auto_ast
-		return [] unless elements
-		
-		elements.map(&:ast).flatten
-	end
-	
-	def merge_rhe(lhs, rl, left = true)
-		rl_ast = rl.ast
-		
-		if rl_ast.empty?
-			auto_ast
-		else
-			result = single_ast(lhs)
-			
-			begin
-				re = left ? rl_ast.pop : rl_ast.shift
-				result = AST::BinOp.new(re[:op].source, result, re[:op].text_value.to_sym, re[:rhs])
-			end until rl_ast.empty?
-			
-			result
-		end
-	end
-	
-	def rhe(op, rhs)
-		{op: op, rhs: single_ast(rhs)}
-	end
-	
-	def source
-		AST::Source.new(input, interval)
-	end
-	
-	def single_ast(nodes)
-		ast = nodes.ast
-		case ast
-			when Array
-				ast.first
-			else
-				ast
-		end
-	end
-	
-	alias ast auto_ast
-	
-	alias inspect_old inspect
-	
-	def inspect(*args)
-		"#{ast.class.inspect.ljust(30)} - " + inspect_old(*args)
-	end
 end
