@@ -8,6 +8,10 @@ module AST
 			@range = range
 		end
 		
+		def extend(pos)
+			@range = (@range.first)...([pos, @range.last].max)
+		end
+		
 		def untab(str)
 			str.gsub("\t", " " * 8)
 		end
@@ -314,6 +318,41 @@ module AST
 			true
 		end
 
+	end
+	
+	class ClassInstance < Node
+		attr_accessor :name, :scope, :itype, :template_params
+	
+		def initialize(source, name, scope, template_params)
+			super(source)
+			@name = name
+			@scope = scope
+			@template_params = template_params
+		end
+		
+		def declare_pass(scope)
+			@itype = Types::Struct.new(nil, self, [])
+			
+			@scope.parent = scope
+			
+			@template_params.each do |param|
+				param.owner = self
+				param.itype = Types::TemplateParam.new(param.source, param)
+				@scope.declare(param.name, param.itype)
+			end
+		end
+		
+		def apply_pass(scope)
+			@scope
+		end
+		
+		def visit
+			@scope = yield scope
+		end
+		
+		def interface?
+			true
+		end
 	end
 	
 	class Struct < Interface

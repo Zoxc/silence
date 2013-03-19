@@ -6,22 +6,7 @@ require_relative 'gen'
 require_relative 'print'
 require_relative 'types'
 require_relative 'infer'
-
-Treetop.load "grammar"
-
-parser = ASTParser.new
-parser.root = :program
-
-input = File.open(ARGV.first) { |f| f.read }
-
-result = parser.parse(input)
-
-unless result
-	puts "failed - #{parser.failure_reason.inspect}"
-    puts input.lines.to_a[parser.failure_line - 1]
-    puts "#{'~' * (parser.failure_column - 1)}^"
-	exit
-end
+require_relative 'parser'
 
 def process(ast, parent)
 	ast.run_pass :declare_pass, false, parent.scope
@@ -38,7 +23,9 @@ def process(ast, parent)
 	end
 end
 
-ast = AST::Program.new(result.ast)
+input = File.open(ARGV.first) { |f| f.read }
+
+ast = Parser.new(input).program
 
 process(ast, AST::Builtin)
 

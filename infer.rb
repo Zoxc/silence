@@ -431,8 +431,6 @@
 			puts *@func_instances.map{|i| " - #{i}"}
 		end
 		
-		#raise "Unresolved contraints of #{@obj.name}" unless @limits.empty?
-		
 		@infer_args = nil
 		self
 	end
