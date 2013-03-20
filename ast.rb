@@ -19,7 +19,7 @@ module AST
 			lines = @input.lines.to_a
 			i = 0
 			line = 1
-			while i < @range.min - lines.first.size
+			while i < @range.min - lines.first.chomp.size
 				i += lines.first.size
 				line += 1
 				lines.shift

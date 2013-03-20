@@ -20,7 +20,7 @@ class Lexer
 		end
 	end
 	
-	attr_reader :pos, :tok, :tok_str, :tok_val, :last_ended, :indent
+	attr_reader :pos, :tok, :tok_str, :tok_val, :last_ended
 	
 	def initialize(str)
 		@src = str
@@ -30,7 +30,12 @@ class Lexer
 		@tok_str = ''
 		@scanner = StringScanner.new(str)
 		@blocks = []
+		get_line_indent
 		step
+	end
+	
+	def indent
+		[@indent, @indent_pos]
 	end
 	
 	def block
@@ -42,7 +47,7 @@ class Lexer
 	end
 	
 	def source(pos = @pos, str = @tok_str)
-		AST::Source.new(@src, pos...(pos + tok_str.size))
+		AST::Source.new(@src, pos...(pos + [1, tok_str.size].max))
 	end
 	
 	def expected(v)
@@ -77,51 +82,55 @@ class Lexer
 		
 		r = false
 		
-		if compare_indent(baseline, @indent) == :inc
-			@blocks << Block.new(baseline)
-			r = true
-		else
-			handle_line
+		case compare_indent(baseline.first, @indent)
+			when :inc
+				@blocks << Block.new(baseline)
+				r = true
+				@tok = nil
+				step
+			when :err
+				raise(Error, "Unable to find indentation size\n#{source(@indent_pos, @indent).format}\nRelative to baseline:\n#{source(baseline.last, baseline.first).format}")
+			else
+				handle_line
 		end
-		step
 		r
 	end
 	
 	def handle_line
 		@tok = nil
 		
-		unless block
+		if !block || block.ignore?
 			step
 			return
 		end
 		
-		case compare_indent(block.space, @indent)
+		case compare_indent(block.space.first, @indent)
 			when :dec, :same
 				@blocks.pop
 				i = 1
-				while [:dec, :same].include? compare_indent(block.space, @indent)
+				while block && ([:dec, :same].include? compare_indent(block.space.first, @indent))
 					i += 1
 					@blocks.pop
 				end
 				@tok_str, @tok, @tok_val = [@indent, :deindent, i]
+				produce_token
 			when :inc
 				step
 			when :err
-				raise(Error, "Mismatching indentation\n#{source(@indent_pos, @indent).format}")
+				raise(Error, "Mismatching indentation\n#{source(@indent_pos, @indent).format}\nRelative to baseline:\n#{source(block.space.last, block.space.first).format}")
 		end
 	end
 	
 	def pop_brace_level(brace)
 		i = @blocks.size - 1
 		
-		while i > 0
-			lvl = @blocks[i].levels[brace]
+		@blocks.reverse.each_with_index do |block, i|
+			lvl = block.levels[brace]
 			if lvl > 0
-				@blocks[i].levels[brace] = lvl - 1
-				@blocks = @blocks[0..i]
-				return (@blocks.size - 1) - i
+				block.levels[brace] = lvl - 1
+				@blocks = @blocks[0..(-1-i)]
+				return i
 			end
-			i -= 1
 		end
 		
 		return 0
@@ -134,7 +143,7 @@ class Lexer
 			when v = s.scan(/[ \t]+/)
 				find_token
 			when v = s.scan(/\r\n|\n|\r/)
-				[v, :line]
+				[v, :line, true]
 			when v = s.scan(/[0-9]+/)
 				[v, :int, v.to_i]
 			when v = s.scan(/[A-Za-z_]+\w*/)
@@ -154,12 +163,22 @@ class Lexer
 			when v = s.scan(/[\.*+=\-,:]/)
 				[v, :sym, v]
 			when s.eos?
-				@pos = 0
-				['end', :eos]
+				@pos = @src.size - 1
+				if block
+					r = ['', :deindent, @blocks.size]
+					@blocks = []
+					r
+				else
+					['', :eos, true]
+				end
 			else
 				puts "Unknown char '#{s.getch()}'"
 				find_token
 		end
+	end
+	
+	def produce_token
+		#puts "token: #{@tok}, #{@tok_val}\n#{source.format}"
 	end
 
 	def step_deindent
@@ -169,6 +188,7 @@ class Lexer
 			step
 		else
 			@tok_val -= 1
+			produce_token
 		end
 	end
 	
@@ -185,6 +205,6 @@ class Lexer
 		@last_ended = @pos + @tok_str.size
 		raise if @token == :eos
 		@tok_str, @tok, @tok_val = find_token
-		#puts "token: #{@tok}, #{@tok_val}\n#{source.format}"
+		produce_token
 	end
 end

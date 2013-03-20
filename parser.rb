@@ -23,23 +23,26 @@ class Parser
 	end
 	
 	def step
-		if tok == :line
-			@l.step_line
-		else
-			@l.step
+		case tok
+			when :line
+				@l.step_line
+			when :deindent
+				@l.step_deindent
+			else
+				@l.step
 		end
 	end
 	
 	def eq(t, v = nil)
 		if t == tok
-			return if v != tok_val
+			return if (v && v != tok_val)
 			tok_val
 		end
 	end
 	
 	def matches(t, v = nil)
 		if t == tok
-			return if v != tok_val
+			return if (v && v != tok_val)
 			r = tok_val
 			step
 			r
@@ -79,13 +82,24 @@ class Parser
 		r
 	end
 	
-	def global_scope
-		skip :line
-		match(:sym, '{')
-		r = global_scope_entries
-		match(:sym, '}')
-		r
-		AST::GlobalScope.new(r)
+	def parse_scope(baseline, &block)
+		if eq :line
+			if @l.indent_newline(baseline)
+				r = yield
+				match(:deindent)
+				return r
+			end
+		end
+		if matches(:sym, '{')
+			r = yield
+			match(:sym, '}')
+			return r
+		end
+		[]
+	end
+	
+	def global_scope(baseline)
+		AST::GlobalScope.new(parse_scope(baseline) { global_scope_entries })
 	end
 	
 	def global_scope_entries
@@ -135,20 +149,22 @@ class Parser
 	
 	def class
 		source do |s|
+			baseline = @l.indent
 			step
 			name = match :id
 			tp = template_parameters
-			scope = global_scope
+			scope = global_scope(baseline)
 			AST::Interface.new(s, name, scope, tp)
 		end
 	end
 	
 	def struct
 		source do |s|
+			baseline = @l.indent
 			step
 			name = match :id
 			tp = template_parameters
-			scope = global_scope
+			scope = global_scope(baseline)
 			AST::Struct.new(s, name, scope, tp)
 		end
 	end
@@ -178,11 +194,10 @@ class Parser
 		r
 	end
 	
-	def function(s, name)
+	def function(s, baseline, name)
 		params = function_params
 		result = opt_type_specifier
-		skip :line
-		group = group_braced if eq(:sym, '{')
+		group = group(baseline)
 		
 		func = AST::Function.new
 		func.source = s
@@ -196,9 +211,10 @@ class Parser
 	
 	def field_or_func
 		source do |s|
+			baseline = @l.indent
 			name = match :id
 			if matches(:sym, '(')
-				function s, name
+				function s, baseline, name
 			else
 				variable_decl s, name
 			end
@@ -244,28 +260,27 @@ class Parser
 		type
 	end
 	
-	def group_braced
-		match :sym, '{'
-		skip :line
-		
+	def group(baseline)
 		r = []
-		while is_expression do
-			r << expression
-			match :line unless eq :sym, '}'
+		if eq :line
+			if @l.indent_newline(baseline)
+				while is_expression do
+					r << expression
+					match :line unless eq :deindent
+				end
+				match(:deindent)
+				return AST::LocalScope.new(r)
+			end
 		end
-		match :sym, '}'
-		
+		if matches(:sym, '{')
+			skip :line
+			while is_expression do
+				r << expression
+				match :line unless eq :sym, '}'
+			end
+			match(:sym, '}')
+		end
 		AST::LocalScope.new(r)
-	end
-	
-	def group
-		if matches :line
-			entry = expression
-			
-			return entry if entry
-		end
-		
-		group_braced
 	end
 	
 	def expression
@@ -288,14 +303,17 @@ class Parser
 	end
 	
 	def _if
+		baseline = @l.indent
 		step
 		skip :line
 		exp = expression
-		grp = group
+		grp = group(baseline)
 		skip :line
 		
-		if matches :id, :else
-			else_grp = group
+		if eq :id, :else
+			baseline = @l.indent
+			step
+			else_grp = group(baseline)
 		end
 		
 		AST::If.new(exp, grp, else_grp)
