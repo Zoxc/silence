@@ -23,7 +23,11 @@ class Parser
 	end
 	
 	def step
-		@l.step
+		if tok == :line
+			@l.step_line
+		else
+			@l.step
+		end
 	end
 	
 	def eq(t, v = nil)
