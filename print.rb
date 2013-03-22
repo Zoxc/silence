@@ -53,6 +53,8 @@ def print_ast(ast)
 			format.(ast, [[:obj, :single], [:name]])
 		when AST::BinOp
 			format.(ast, [[:lhs, :single], [:op], [:rhs, :single]])
+		when AST::Tuple
+			format.(ast, [[:nodes, ast.nodes]])
 		when AST::If
 			format.(ast, [[:condition, :single], [:group, :single], [:else_node, :single]])
 		

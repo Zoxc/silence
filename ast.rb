@@ -136,6 +136,30 @@ module AST
 		end
 	end
 
+	class FunctionTypeNode < Node
+		attr_accessor :arg, :result
+		
+		def initialize(source, arg, result)
+			super(source)
+			@arg = arg
+			@result = result
+		end
+		
+		def to_s
+			"#{@arg.inspect} -> #{@result.inspect}"
+		end
+	end
+
+	class TypeCheckNode < Node
+		attr_accessor :node, :type
+		
+		def initialize(source, node, type)
+			super(source)
+			@node = node
+			@type = type
+		end
+	end
+
 	class Scope < Node
 		attr_accessor :nodes, :names, :parent, :owner
 		
@@ -269,6 +293,15 @@ module AST
 		end
 	end
 
+	class Tuple < Node
+		attr_accessor :nodes
+	
+		def initialize(source, nodes)
+			super(source)
+			@nodes = nodes
+		end
+	end
+	
 	class TypeFunctionNode < Node
 		attr_accessor :name, :itype
 	

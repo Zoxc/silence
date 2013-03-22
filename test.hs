@@ -1,19 +1,19 @@
 class Cool T, A
 	test: A
-	hello()
-		return test
+	hello
+		return a b c
 
-cool(v: Cool[int])
+cool v :: Cool[int] -> int
 	a: int
 	return a = v.hello()
 
-callable(s: int, v: bool)
+callable (s :: int, v :: bool)
 	return 1
 
-test(func, a)
+test (func, a)
 	return func(1, true) + a
 
-test2()
+test2 ()
 	return test(callable, 2)
 
 struct A Hm
@@ -22,5 +22,5 @@ struct A Hm
 	read()
 		return field
 
-hm(v: A)
+hm (v :: A)
 	return v.read

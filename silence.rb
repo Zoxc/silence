@@ -9,10 +9,11 @@ require_relative 'infer'
 require_relative 'parser'
 
 def process(ast, parent)
+	puts print_ast(ast)
+	
 	ast.run_pass :declare_pass, false, parent.scope
 	ast.run_pass :sema, true
 
-	puts print_ast(ast)
 
 	begin
 		InferUtils.infer_scope(ast.scope)
