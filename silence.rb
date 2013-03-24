@@ -8,12 +8,19 @@ require_relative 'types'
 require_relative 'infer'
 require_relative 'parser'
 
-def process(ast, parent)
-	puts print_ast(ast)
+InferUtils.infer_scope(AST::Builtin.scope)
+
+def process(file, parent)
+	puts "Processing #{file}"
 	
-	ast.run_pass :declare_pass, false, parent.scope
+	input = File.open(file) { |f| f.read }
+
+	ast = Parser.new(input).program
+
+	ast.run_pass :declare_pass, false, (parent.scope if parent)
 	ast.run_pass :sema, true
 
+	puts print_ast(ast)
 
 	begin
 		InferUtils.infer_scope(ast.scope)
@@ -22,13 +29,11 @@ def process(ast, parent)
 		$stderr.puts error.backtrace.join("\n")
 		exit
 	end
+	
+	ast
 end
 
-input = File.open(ARGV.first) { |f| f.read }
-
-ast = Parser.new(input).program
-
-process(ast, AST::Builtin)
+process(ARGV.first, AST::Builtin)
 
 output = File.open("output.c", "w") { |f| f.write codegen(ast) }
 `gcc output.c -Wall -o output`

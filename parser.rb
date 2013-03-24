@@ -120,25 +120,27 @@ class Parser
 						struct
 					when :class
 						self.class
+					when :type
+						type_function
 					else
 						field_or_func
 				end
 		end
 	end
 	
-	def template_parameter
+	def type_param
 		source do |s|
 			name = match :id
-			AST::Template::Parameter.new(s, name, nil)
+			AST::Complex::Param.new(s, name, nil)
 		end
 	end
 	
-	def template_parameters
+	def type_params
 		r = []
 		return r unless tok == :id
 		
 		loop do
-			r << template_parameter
+			r << type_param
 			if matches(:sym, ',')
 				skip :line
 			else
@@ -147,14 +149,22 @@ class Parser
 		end
 	end
 	
+	def type_function
+		source do |s|
+			step
+			name = match :id
+			AST::TypeFunction.new(s, name)
+		end
+	end
+	
 	def class
 		source do |s|
 			baseline = @l.indent
 			step
 			name = match :id
-			tp = template_parameters
+			tp = type_params
 			scope = global_scope(baseline)
-			AST::Interface.new(s, name, scope, tp)
+			AST::TypeClass.new(s, name, scope, tp)
 		end
 	end
 	
@@ -163,25 +173,25 @@ class Parser
 			baseline = @l.indent
 			step
 			name = match :id
-			tp = template_parameters
+			tp = type_params
 			scope = global_scope(baseline)
 			AST::Struct.new(s, name, scope, tp)
 		end
 	end
 	
-	def function_param
+	def function_param(func)
 		source do |s|
-			AST::Function::Parameter.new(s, match(:id), opt_type_specifier)
+			AST::Function::Param.new(s, func, match(:id), opt_type_specifier)
 		end
 	end
 	
-	def function_params
+	def function_params(func)
 		r = []
 		skip :line
 		
 		if tok == :id
 			loop do
-				r << function_param
+				r << function_param(func)
 				if matches(:sym, ',')
 					skip :line
 				else
@@ -195,54 +205,70 @@ class Parser
 	end
 	
 	def function(s, baseline, name)
-		params = pattern_factor
+		func = AST::Function.new
+		params = function_params(func)
 		
-		type_check_s = nil
-		type_check = nil
-		source do |s|
-			if matches(:sym, '::')
-				type_check = type
-				type_check_s = s
-			end
+		if matches :sym, '->'
+			skip :line
+			result = type
 		end
 		
 		group = group(baseline)
 		
-		func = AST::Function.new
 		func.source = s
 		func.name = name
 		func.params = params
+		func.result = result
 		func.attributes = []
 		func.scope = group
-		
-		type_check ? AST::TypeCheckNode.new(type_check_s, func, type_check) : func
+		func
 	end
 	
 	def field_or_func
 		source do |s|
 			baseline = @l.indent
 			name = match :id
-			if eq(:sym, ':')
-				variable_decl s, name
-			else
+			if matches(:sym, '(')
 				function s, baseline, name
+			else
+				variable_decl s, name
 			end
 		end
 	end
 	
 	def type
 		source do |s|
-			if matches(:sym, '*')
+			arg = type_factor
+			if matches(:sym, '->')
 				skip :line
-				AST::PtrTypeNode.new(s, type)
+				AST::FunctionType.new(s, arg, type)
 			else
-				AST::NamedTypeNode.new(s, match(:id), type_parameters)
+				arg
+			end
+			
+		end
+	end
+	
+	def type_factor
+		source do |s|
+			if eq(:sym, '(')
+				tuple(s) { type }
+			elsif matches(:sym, '*')
+				skip :line
+				AST::UnaryOp.new(s, :'*', type)
+			else
+				var = source { |s| AST::NameRef.new(s, match(:id)) }
+				
+				if matches(:sym, '[')
+					AST::Index.new(s, var, type_parameters)
+				else
+					var
+				end
 			end
 		end
 	end
 	
 	def type_parameters
-		return [] unless matches(:sym, '[')
 		r = []
 		skip :line
 		
@@ -434,10 +460,25 @@ class Parser
 	def chain
 		result = factor
 		
-		while matches(:sym, '.')
+		while tok == :sym && ['(', '.'].include?(tok_val)
 			source do |s|
-				skip :line
-				result = AST::Field.new(s, result, match(:id))
+				case tok_val
+					when '('
+						step
+						skip :line
+						if eq :sym, ')'
+							args = []
+						else
+							args = arguments
+						end
+						result = AST::Call.new(s, result, args)
+						match :sym, ')'
+					when '.'
+						step
+						name = match(:id)
+						skip :line
+						result = AST::Field.new(s, result, name)
+				end
 			end
 		end
 		
@@ -459,35 +500,9 @@ class Parser
 		match :sym, ')'
 		
 		if r.size == 1
-			r.first
+			AST::Grouped.new(s, r.first)
 		else
 			AST::Tuple.new(s, r)
-		end
-	end
-	
-	def pattern
-		source do |s|
-			factor = pattern_factor
-			
-			if factor && matches(:sym, '::')
-				AST::TypeCheckNode.new(s, factor, type)
-			else
-				factor
-			end
-		end
-	end
-	
-	def pattern_factor
-		source do |s|
-			case tok
-				when :sym
-					case tok_val
-						when '('
-							tuple(s) { pattern }
-					end
-				when :id
-					AST::VariableRef.new(s, match(:id))
-			end
 		end
 	end
 	
@@ -517,7 +532,7 @@ class Parser
 							if tok == :sym && [':=', ':'].include?(tok_val)
 								variable_decl(s, name)
 							else
-								AST::VariableRef.new(s, name)
+								AST::NameRef.new(s, name)
 							end
 					end
 				else

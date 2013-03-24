@@ -21,7 +21,7 @@ def gen_body(ast)
 			ident_str apply.(ast.nodes).map { |e| e + ";" }.join("\n")
 		when AST::IntegerLiteral
 			ast.value.to_s
-		when AST::VariableRef
+		when AST::NameRef
 			ast.name.to_s
 		when AST::Return
 			"return #{gen_body(ast.value)}"

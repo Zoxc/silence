@@ -28,24 +28,19 @@ def print_ast(ast)
 	case ast
 		when nil
 			"(nil)"
-		when AST::NamedTypeNode
-			ast.name.to_s
-		when AST::PtrTypeNode
-			"*" + print_ast(ast.target)
-		when AST::NullPtrTypeNode
-			"^" + print_ast(ast.target)
-		
+		when AST::FunctionType
+			format.(ast, [[:arg, :single], [:result, :single]])
 		when AST::Literal
 			format.(ast, [[:value]])
 		when AST::VariableDecl
-			format.(ast, [[:name], [:type, :inline], [:value, :single]])
+			format.(ast, [[:name], [:type, :single], [:value, :single]])
 		when AST::Return
 			format.(ast, [[:value, :single]])
 		when AST::Ref
 			format.(ast, [[:name, :value, ast.obj.name], [:id, :value, ast.obj.__id__]])
 		when AST::Variable
 			format.(ast, [[:name]])
-		when AST::VariableRef
+		when AST::NameRef
 			format.(ast, [[:name]])
 		when AST::Call
 			format.(ast, [[:obj, :single], [:args, ast.args]])
@@ -53,23 +48,30 @@ def print_ast(ast)
 			format.(ast, [[:obj, :single], [:name]])
 		when AST::BinOp
 			format.(ast, [[:lhs, :single], [:op], [:rhs, :single]])
+		when AST::UnaryOp
+			format.(ast, [[:node, :single], [:op]])
+		when AST::Index
+			format.(ast, [[:obj, :single], [:args, ast.args]])
 		when AST::Tuple
 			format.(ast, [[:nodes, ast.nodes]])
+		when AST::Grouped
+			format.(ast, [[:node, :single]])
 		when AST::If
 			format.(ast, [[:condition, :single], [:group, :single], [:else_node, :single]])
-		
 		when AST::Program
 			format.(ast, [[:scope, :single]])
 		when AST::Scope
 			format.(ast, [[:nodes, ast.nodes]])
-		when AST::Struct, AST::Interface
-			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single]])
-		when AST::Template
-			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single]])
+		when AST::Complex
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:params, ast.params]])
+		when AST::Complex::Param
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
+		when AST::TypeFunction
+			format.(ast, [[:name], [:id, :value, ast.__id__]])
 		when AST::Function
-			format.(ast, [[:name], [:id, :value, ast.__id__], [:attributes], [:result, :inline], [:params, ast.params], [:scope, :single]])
-		when AST::Function::Parameter
-			format.(ast, [[:name], [:type, :inline]])
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:attributes], [:result, :single], [:params, ast.params], [:scope, :single]])
+		when AST::Function::Param
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		else
 			"(unknown #{ast.class.inspect} - #{ast.inspect})"
 	end

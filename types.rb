@@ -1,15 +1,5 @@
 ﻿
 module Types
-	def self.type_array_eq?(a, b)
-		return unless a.size == b.size
-		
-		a.size.times do |i|
-			return unless a[i].type_eq? b[i]
-		end
-		
-		return true
-	end
-	
 	class Type
 		attr_accessor :source
 		
@@ -21,10 +11,10 @@ module Types
 			text
 		end
 		
-		def args
+		def type_args
 			[]
 		end
-			
+		
 		def prune
 			self
 		end
@@ -34,35 +24,28 @@ module Types
 		end
 		
 		def fixed_type?
-			true
+			type_args.all? { |t| t.fixed_type? }
 		end
 
-		def type_eq?(other)
-			self_pruned = prune
+		def ==(other)
 			other = other.prune
 			
-			return unless self_pruned.class == other.class
+			return if other.class != self.class
+			return true if equal?(other)
+			rest_eql(other)
+		end
+		
+		def rest_eql(other)
+			args = type_args
+			other_args = other.type_args
 			
-			Types.type_array_eq?(self_pruned.args, other.args)
+			return args == other_args
 		end
 		
 		def source_dup(source)
 			result = dup
 			result.source = source
 			result
-		end
-	end
-
-	class Fixed < Type
-		attr_accessor :name
-		
-		def initialize(source, name)
-			@source = source
-			@name = name
-		end
-		
-		def text
-			@name
 		end
 	end
 
@@ -75,6 +58,18 @@ module Types
 			@instance = instance
 		end
 		
+		def ==(other)
+			if @instance
+				return @instance.type_eq?(other)
+			else
+				super
+			end
+		end
+		
+		def rest_eql(other)
+			false
+		end
+		
 		def prune
 			if @instance
 				pruned = @instance.prune
@@ -85,6 +80,10 @@ module Types
 			end
 		end
 		
+		def type_args
+			@instance ? @instance.type_args : []
+		end
+
 		def fixed_type?
 			@instance.fixed_type? if @instance
 		end
@@ -111,8 +110,25 @@ module Types
 		end
 	end
 
+	class Ptr < Type
+		attr_accessor :type
+		
+		def initialize(source, type)
+			@source = source
+			@type = type
+		end
+		
+		def type_args
+			[@type]
+		end
+		
+		def text
+			"*#{@type.text}"
+		end
+	end
+	
 	class Function < Type
-		attr_accessor :result
+		attr_accessor :args, :result
 		
 		def initialize(source, args, result)
 			@source = source
@@ -120,95 +136,62 @@ module Types
 			@result = result
 		end
 		
-		def func_args
+		def type_args
+			[@args, @result]
+		end
+		
+		def text
+			"#{@args.text} -> #{@result.text}"
+		end
+	end
+	
+	class Complex < Type
+		attr_accessor :complex, :args
+		
+		def initialize(source, complex, args)
+			@source = source
+			@complex = complex
+			@args = args
+			
+			raise unless @args.is_a? Array
+		end
+		
+		def type_args
 			@args
 		end
 		
-		def name
-			:func
-		end
-		
-		def text
-			"(#{@args.map(&:text).join(", ")}): #{@result.text}"
-		end
-		
-		def fixed_type?
-			@args.all? { |arg| arg.fixed_type? }
-		end
-
-		def args
-			[*@args, @result]
-		end
-		
-		def args_dup(*args, result)
-			Function.new(@source, args, result)
-		end
-	end
-	
-	class TypePack < Type
-		attr_accessor :args
-		
-		def initialize(source, args)
-			@source = source
-			@args = args
-		end
-		
 		def fixed_type?
 			@args.all? { |v| v.fixed_type? }
 		end
 		
-		def text
-			"{#{@args.map(&:text).join(", ")}}"
-		end
-		
-		def template_dup(args)
-			self.class.new(@source, args)
-		end
-	end
-	
-	class Struct < Type
-		attr_accessor :struct, :args
-		
-		def initialize(source, struct, args)
-			@source = source
-			@struct = struct
-			@args = args
-		end
-		
-		def template?
-			arg_count > 0
-		end
-		
-		def arg_count
-			template_params.size
-		end
-		
-		def template_params
-			@struct.template_params
-		end
-		
-		def fixed_type?
-			@args.all? { |v| v.fixed_type? }
-		end
-		
-		def interface?
-			@struct.interface?
+		def type_class?
+			@complex.type_class?
 		end
 
 		def template_dup(args)
-			self.class.new(@source, @struct, args)
+			self.class.new(@source, @complex, args)
 		end
 		
-		def name
-			:struct
+		def tuple_map
+			case complex
+				when AST::Unit
+					[]
+				when AST::Cell
+					[@args[0], *@args[1].tuple_map]
+			end
 		end
 		
 		def text
-			"#{@struct.name}#{"[#{@args.map(&:text).join(", ")}]" if template?}"
+			case complex
+				when AST::Unit, AST::Cell
+					"(#{tuple_map.map(&:text).join(', ')})"
+				else
+					"#{@complex.name}#{"[#{@args.map(&:text).join(", ")}]" if @args.size > 0}"
+			end
 		end
 	end
 	
-	class TemplateParam < Type
+	class Param < Type
 		attr_accessor :param
 		
 		def initialize(source, param)
@@ -216,12 +199,25 @@ module Types
 			@param = param
 		end
 		
-		def name
-			:template_param
+		def tuple_map
+			[self]
 		end
 		
 		def text
 			"param #{@param.name}"
+		end
+	end
+	
+	class TypeFunc < Type
+		attr_accessor :func
+		
+		def initialize(source, func)
+			@source = source
+			@func = func
+		end
+		
+		def text
+			"type_func #{@func.name}"
 		end
 	end
 end

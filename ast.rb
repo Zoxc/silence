@@ -36,7 +36,7 @@ module AST
 	end
 	
 	class Node
-		attr_accessor :source
+		attr_accessor :source, :declared
 		
 		def run_pass(name, replace = false, args = nil, apply = :apply_pass)
 			result = if respond_to? name
@@ -94,49 +94,28 @@ module AST
 			@name = name
 			@type = type
 		end
+		
+		def visit
+			@type = yield @type
+		end
 	end
 	
-	class NamedTypeNode < Node
-		attr_accessor :name, :args
+	class Index < Node
+		attr_accessor :obj, :args
 		
-		def initialize(source, name, args)
+		def initialize(source, obj, args)
 			super(source)
-			@name = name
+			@obj = obj
 			@args = args
 		end
 		
-		def to_s
-			@name
+		def visit
+			@obj = yield @obj
+			@args.map! { |n| yield n }
 		end
 	end
 
-	class NullPtrTypeNode < Node
-		attr_accessor :target
-		
-		def initialize(source, target)
-			super(source)
-			@target = target
-		end
-		
-		def to_s
-			"^#{@target.inspect}"
-		end
-	end
-
-	class PtrTypeNode < Node
-		attr_accessor :target
-		
-		def initialize(source, target)
-			super(source)
-			@target = target
-		end
-		
-		def to_s
-			"*#{@target.inspect}"
-		end
-	end
-
-	class FunctionTypeNode < Node
+	class FunctionType < Node
 		attr_accessor :arg, :result
 		
 		def initialize(source, arg, result)
@@ -145,18 +124,37 @@ module AST
 			@result = result
 		end
 		
-		def to_s
-			"#{@arg.inspect} -> #{@result.inspect}"
+		def visit
+			@arg = yield @arg
+			@result = yield @result
 		end
 	end
 
-	class TypeCheckNode < Node
+	class TypeCheck < Node
 		attr_accessor :node, :type
 		
 		def initialize(source, node, type)
 			super(source)
 			@node = node
 			@type = type
+		end
+		
+		def visit
+			@node = yield @node
+			@type = yield @type
+		end
+	end
+
+	class Grouped < Node
+		attr_accessor :node
+		
+		def initialize(source, node)
+			super(source)
+			@node = node
+		end
+		
+		def visit
+			@node = yield @node
 		end
 	end
 
@@ -171,6 +169,7 @@ module AST
 		def declare(name, obj)
 			#puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
 			@names[name] = obj
+			self
 		end
 		
 		def inside?(scope)
@@ -179,16 +178,18 @@ module AST
 			return false
 		end
 		
-		def require(source, name , type = nil)
+		def require(source, name)
+			r = require_with_scope(source, name)
+			r ? r.first : nil
+		end
+		
+		def require_with_scope(source, name)
 			#puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
 			result = @names[name]
 			if result
-				if type && !result.kind_of?(type)
-					raise CompileError, "Found type '#{result.class}', but expected type '#{type}' for '#{name}'\n#{source.format}"
-				end
-				return result
+				return [result, self]
 			end
-			return @parent.require(source, name, type) if @parent
+			return @parent.require_with_scope(source, name) if @parent
 			raise CompileError, "Unknown identifier '#{name}'\n#{source.format}"
 		end
 		
@@ -198,79 +199,6 @@ module AST
 	end
 	
 	class GlobalScope < Scope
-	end
-
-	class Template < Node
-		attr_accessor :name, :scope, :params
-		
-		class TypeArgs < Node
-		end
-		
-		class Parameter < Node
-			attr_accessor :name, :type, :owner, :itype
-			
-			def initialize(source, name, type)
-				super(source)
-				@name = name
-				@type = type
-			end
-		end
-		
-		class Instance
-			attr_accessor :template, :args, :scope, :ast_ref
-			
-			def initialize(template, args)
-				@template = template
-				@args = args
-				run
-			end
-			
-			def run
-				puts "Creating template instance of #{@template.name} with args #{@args.map(&:text).join(", ")}"
-				scope = template.scope.dup_ast
-				
-				@args.size.times do |i|
-					scope.declare(template.params[i].name, @args[i])
-				end
-				
-				begin
-					scope.run_pass :promote_templates, true
-					scope.run_pass :update_templates, false, self, nil
-					scope.run_pass :declare_pass, false, scope
-					scope.run_pass :sema, true
-					puts print_ast(scope)
-					@scope = scope
-					infer_scope self
-					puts "Created template instance"
-				rescue CompileError => error
-					error.message << "\nIn template instance #{@template.name} with args #{@args.map(&:text).join(", ")}"
-				end
-			end
-			
-			def itype
-				ast_ref.itype
-			end
-		end
-		
-		def get_instance(source, args)
-			existing = @instances.keys.find { |k| Types.type_array_eq?(k, args) }
-			return @instances[existing] if existing
-			instance = @instances[args] = Instance.new(self, args)
-			return instance
-		end
-	
-		def declare_pass(scope)
-			scope.declare(@name, Types::TemplateRef.new(@source, self))
-			@scope.parent = scope
-		end
-		
-		def initialize(source, name, scope, params)
-			super(source)
-			@name = name
-			@scope = scope
-			@params = params
-			@instances = {}
-		end
 	end
 
 	class Program < Node
@@ -302,7 +230,7 @@ module AST
 		end
 	end
 	
-	class TypeFunctionNode < Node
+	class TypeFunction < Node
 		attr_accessor :name, :itype
 	
 		def initialize(source, name)
@@ -311,66 +239,42 @@ module AST
 		end
 		
 		def declare_pass(scope)
-			@itype = Types::TypeFunction.new(nil, self, nil)
-			scope.declare(@name, @itype)
+			@declared = scope.declare(@name, self)
 		end
 	end
-	
-	class Interface < Node
-		attr_accessor :name, :scope, :itype, :template_params
-	
-		def initialize(source, name, scope, template_params)
-			super(source)
-			@name = name
-			@scope = scope
-			@template_params = template_params
-		end
-		
-		def declare_pass(scope)
-			@itype = Types::Struct.new(nil, self, [])
-			scope.declare(@name, @itype)
-			@scope.parent = scope
-			
-			@template_params.each do |param|
-				param.owner = self
-				param.itype = Types::TemplateParam.new(param.source, param)
-				@scope.declare(param.name, param.itype)
-			end
-		end
-		
-		def apply_pass(scope)
-			@scope
-		end
-		
-		def visit
-			@scope = yield scope
-		end
-		
-		def interface?
-			true
-		end
 
-	end
-	
-	class ClassInstance < Node
-		attr_accessor :name, :scope, :itype, :template_params
-	
-		def initialize(source, name, scope, template_params)
+	class Complex < Node
+		attr_accessor :name, :scope, :itype, :params
+		
+		class Param < Node
+			attr_accessor :name, :type, :owner, :itype
+			
+			def initialize(source, name, type)
+				super(source)
+				@name = name
+				@type = type
+			end
+			
+			def visit
+				@type = yield @type if @type
+			end
+		end
+		
+		def initialize(source, name, scope, params)
 			super(source)
 			@name = name
 			@scope = scope
-			@template_params = template_params
+			@params = params
 		end
 		
 		def declare_pass(scope)
-			@itype = Types::Struct.new(nil, self, [])
-			
+			@declared = scope.declare(@name, self)
 			@scope.parent = scope
 			
-			@template_params.each do |param|
+			@params.each do |param|
 				param.owner = self
-				param.itype = Types::TemplateParam.new(param.source, param)
-				@scope.declare(param.name, param.itype)
+				param.itype = Types::Param.new(param.source, param)
+				param.declared = @scope.declare(param.name, param)
 			end
 		end
 		
@@ -379,16 +283,19 @@ module AST
 		end
 		
 		def visit
+			@params.map! { |n| yield n }
 			@scope = yield scope
 		end
-		
-		def interface?
+	end
+	
+	class TypeClass < Complex
+		def type_class?
 			true
 		end
 	end
 	
-	class Struct < Interface
-		def interface?
+	class Struct < Complex
+		def type_class?
 			false
 		end
 	end
@@ -399,11 +306,12 @@ module AST
 	class Function < Node
 		attr_accessor :name, :params, :result, :attributes, :scope, :type, :itype, :parent_scope, :instances
 		
-		class Parameter < Node
+		class Param < Node
 			attr_accessor :name, :type, :var
 			
-			def initialize(source, name, type)
+			def initialize(source, func, name, type)
 				super(source)
+				@func = func
 				@name = name
 				@type = type
 			end
@@ -411,7 +319,21 @@ module AST
 			def declare_pass(scope)
 				if scope
 					@var = Variable.new(@source, @name, @type)
-					scope.declare(@name, @var)
+					@declared = scope.declare(@name, @var)
+				end
+			end
+			
+			def visit
+				@var = yield @var if @var
+				@type = yield @type if @type
+			end
+			if nil
+				def sema(scope)
+					if scope
+						Ref.new(@source, @var)
+					else
+						self
+					end
 				end
 			end
 		end
@@ -440,7 +362,7 @@ module AST
 		end
 		
 		def declare_pass(scope)
-			scope.declare(@name, self)
+			@declared = scope.declare(@name, self)
 			
 			if @scope
 				@scope.parent = scope
@@ -455,7 +377,22 @@ module AST
 		
 		def visit
 			@params.map! { |n| yield n }
-			@scope = yield scope if @scope
+			@result = yield @result
+			@scope = yield @scope if @scope
+		end
+	end
+	
+	class UnaryOp < ExpressionNode
+		attr_accessor :op, :node
+		
+		def initialize(source, op, node)
+			super(source)
+			@op = op
+			@node = node
+		end
+		
+		def visit
+			@node = yield @node
 		end
 	end
 	
@@ -488,7 +425,7 @@ module AST
 		
 		def declare_pass(scope)
 			@var = Variable.new(@source, @name, @type)
-			scope.declare(@name, @var)
+			@declared = scope.declare(@name, @var)
 		end
 		
 		def sema(scope)
@@ -502,6 +439,8 @@ module AST
 		end
 		
 		def visit
+			@var = yield @var if @var
+			@type = yield @type if @type
 			@value = yield @value if @value
 		end
 	end
@@ -515,7 +454,7 @@ module AST
 		end
 	end
 	
-	class VariableRef < ExpressionNode
+	class NameRef < ExpressionNode
 		attr_accessor :name
 		
 		def initialize(source, name)
@@ -596,20 +535,25 @@ module AST
 	end
 	
 	Builtin = Program.new(Scope.new([]))
-	function_args = [Template::Parameter.new(nil, :T, nil), Template::Parameter.new(nil, :Args, Template::TypeArgs.new(nil))]
-	FunctionClassResult = TypeFunctionNode.new(nil, :Result)
-	FunctionClass = Interface.new(nil, :Callable, GlobalScope.new([FunctionClassResult]), function_args)
-	FunctionClass.declare_pass(Builtin.scope)
+	BuiltinNodes = Builtin.scope.nodes
 	
-	def self.declare_type(name)
-		Builtin.scope.declare(name, Types::Fixed.new(nil, name))
+	def self.complex_type(name, args = [], klass = Struct, scope = [])
+		r = klass.new(nil, name, GlobalScope.new(scope), args.map { |a| Complex::Param.new(nil, a, nil) })
+		BuiltinNodes << r
+		r
 	end
 	
-	Types::IntType = declare_type(:int)
-	Types::UnitType = declare_type(:unit)
-	Types::BoolType = declare_type(:bool)
-	Types::StringType = declare_type(:string)
-	Types::CharType = declare_type(:char)
+	Unit = complex_type(:Unit)
+	Cell = complex_type(:Cell, [:Val, :Next])
 	
-	Types::FunctionClass = AST::FunctionClass.itype
+	Int = complex_type(:int)
+	Bool = complex_type(:bool)
+	String = complex_type(:string)
+	Char = complex_type(:char)
+	
+	function_args = [Complex::Param.new(nil, :T, nil), Complex::Param.new(nil, :Args, nil)]
+	CallableResult = TypeFunction.new(nil, :Result)
+	Callable = complex_type(:Callable, [:T, :Args], TypeClass, [CallableResult])
+	
+	Builtin.run_pass(:declare_pass, false)
 end
