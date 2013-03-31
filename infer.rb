@@ -19,24 +19,30 @@
 	end
 	
 	class TypeClassLimit < Limit
-		attr_accessor :type
+		attr_accessor :instance
+		
+		def initialize(system, ast, var)
+			@system = system
+			@ast = ast
+			@var = var
+		end
 		
 		def to_s
-			"#{name} := #{@var.text}"
+			"#{name} := #{@var.text}#{" #{instance.text}" if instance}"
 		end
 	end
 	
 	class TypeFunctionLimit < Limit
-		attr_accessor :type_ast, :interface
+		attr_accessor :type_ast, :typeclass_limit
 		
-		def initialize(system, ast, var, type_ast, interface)
+		def initialize(system, ast, var, type_ast, typeclass_limit)
 			super(system, ast, var)
 			@type_ast = type_ast
-			@interface = interface
+			@typeclass_limit = typeclass_limit
 		end
 		
 		def to_s
-			"#{@var.real_text} = #{@interface.name}.#{@type_ast.name}"
+			"#{@var.real_text} = #{@typeclass_limit.name}.#{@type_ast.name}"
 		end
 	end
 	
@@ -94,36 +100,38 @@
 	def unit_default(type)
 	end
 	
-	def make_type(source, scope, ast)
+	def make_type(source, ast)
 		return new_var(source) unless ast
 		
 		case ast
 			when AST::Function
-				Types::Function.new(ast.source, ast.params.map { |p| make_type(ast.source, scope, p) }, make_type(ast.source, scope, ast.result))
+				Types::Function.new(ast.source, ast.params.map { |p| make_type(ast.source, p) }, make_type(ast.source, ast.result))
 			when AST::Function::Param
-				make_type(ast.source, scope, ast.type)
+				make_type(ast.source, ast.type)
 			when AST::UnaryOp
 				raise TypeError.new("Only pointer (*) unary operator allowed on types\n#{ast.source.format}") if ast.op != :'*'
-				Types::Ptr.new(make_type(ast.source, scope, ast.node))
+				Types::Ptr.new(make_type(ast.source, ast.node))
 			when AST::FunctionType
 				func_args = case ast.arg
 					when AST::Grouped
-						arg = make_type(ast.arg.source, scope, ast.arg.node)
+						arg = make_type(ast.arg.source, ast.arg.node)
 						Types::Complex.new(ast.source, AST::Cell, [arg, AST::Unit.itype.type])
 					when AST::Tuple
-						make_type(ast.source, scope, ast.arg)
+						make_type(ast.source, ast.arg)
 					else
-						raise TypeError.new("Only tuples type allowed as arguments to function type constructor (->)\n#{ast.arg.source.format}")
+						make_type(ast.source, ast.arg)
+						# TODO: Constraint to tuple type instances only!
+						#raise TypeError.new("Only tuple types allowed as arguments to function type constructor (->)\n#{ast.arg.source.format}")
 				end				
 				
-				Types::Function.new(ast.source, func_args, make_type(ast.source, scope, ast.result))
+				Types::Function.new(ast.source, func_args, make_type(ast.source, ast.result))
 			when AST::Grouped
-				make_type(ast.source, scope, ast.node)
+				make_type(ast.source, ast.node)
 			when AST::Index
-				type = make_type(ast.source, scope, ast.obj)
+				type = make_type(ast.source, ast.obj)
 				
 				if type.kind_of?(Types::Complex) && (type.args.size > 0)
-					args = ast.args.map { |n| make_type(ast.source, scope, n) }
+					args = ast.args.map { |n| make_type(ast.source, n) }
 					if type.type_class?
 						type_class_result = new_var(ast.source)
 						args.unshift(type_class_result) 
@@ -146,11 +154,11 @@
 				if ref.kind_of? AST::Complex::Param
 					@template_vars[ref] ||= new_var(ref.source)
 				else
-					InferUtils.infer_type(ref, ref.declared, @infer_args)
+					InferUtils.infer_type(ref, @infer_args)
 					ref.itype.type # remove Complex::Params?
 				end
 			when AST::Variable
-				make_type(ast.source, scope, ast.type)
+				make_type(ast.source, ast.type)
 			else
 				raise "Unknown AST #{ast.class}"
 		end
@@ -224,11 +232,11 @@
 						raise "Unknown literal type #{ast.type}"
 				end.source_dup(ast.source)
 			when AST::Function
-				@result = (make_type(ast.source, @obj.scope, ast.result) if ast.result)
+				@result = (make_type(ast.source, ast.result) if ast.result)
 				new_args = args.dup
 				
 				ast.scope.names.each_value do |var|
-					@vars[var] = make_type(ast.source, @obj.scope, var)
+					@vars[var] = make_type(ast.source, var)
 				end
 				
 				new_args.func = ast
@@ -294,7 +302,7 @@
 			when TypeClassLimit
 				args.lmap[limit] ||= TypeClassLimit.new(self, limit.ast, inst_type(args, limit.var))
 			when TypeFunctionLimit
-				TypeFunctionLimit.new(self, limit.ast, inst_type(args, limit.var), limit.type_ast, inst_limit(args, limit.interface))
+				TypeFunctionLimit.new(self, limit.ast, inst_type(args, limit.var), limit.type_ast, inst_limit(args, limit.typeclass_limit))
 			else
 				raise "Unknown limit #{limit.class}"
 		end
@@ -317,12 +325,7 @@
 	end
 	
 	def inst(obj, base = nil)
-		case obj
-			when AST::Function, AST::Variable
-				InferUtils.infer_type(obj, @obj.scope, @infer_args)
-			else
-				raise "Undefined #{print_ast(obj)}"
-		end
+		InferUtils.infer_type(obj, @infer_args)
 		itype = obj.itype
 		map = {}
 		inst_args = InstArgs.new(map, {}, base)
@@ -361,8 +364,8 @@
 		
 		return unify(b, a, loc) if b.is_a? Types::Variable
 		
-		a_args = a.args
-		b_args = b.args
+		a_args = a.type_args
+		b_args = b.type_args
 		
 		raise TypeError.new(errmsg(a, b) + loc.()) if (a.class != b.class) || (a_args.size != b_args.size)
 		
@@ -396,7 +399,28 @@
 		nil while @limits.reject! do |c|
 			case c
 				when TypeClassLimit
+					unless c.instance
+						puts "Searching instance for #{c}"
+						inst = TypeClass.find_instance(@infer_args, c.var)
+						if inst
+							typeclass_args = c.var.complex.params.map { new_var(c.ast.source) }
+							c.instance = inst(inst, Types::Complex.new(c.ast.source, inst, typeclass_args))
+							unify(c.var, Types::Complex.new(c.ast.source, c.var.complex, c.instance.args))
+							puts "Found instance for #{c} - #{inst.itype.type.text}"
+							false
+						elsif c.var.fixed_type?
+							raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.ast.source.format}")
+						end
+					end
 				when TypeFunctionLimit
+					inst = c.typeclass_limit.instance
+					if inst
+						#ast = inst.scope.require(c.ast.source, c.type_ast.name)
+						
+						#unify(inst(ast, inst), c.var)
+						
+						#true
+					end
 				when FieldLimit
 					var = c.var.prune
 					type = c.type.prune
@@ -455,10 +479,10 @@
 		self
 	end
 	
-	def infer_fixed(obj, scope, infer_args)
+	def infer_fixed(obj, infer_args)
 		@infer_args = infer_args
 		@obj = obj
-		@type = make_type(obj.source, scope, obj)
+		@type = make_type(obj.source, obj)
 		finalize
 		self
 	end
@@ -466,6 +490,14 @@
 	def wrap(obj, type)
 		@obj = obj
 		@type = type
+		finalize
+		self
+	end
+	
+	def infer_instance(obj, infer_args)
+		@infer_args = infer_args
+		@obj = obj
+		@type = Types::Complex.new(obj.source, obj, obj.args.map { |arg| make_type(arg.source, arg) })
 		finalize
 		self
 	end
@@ -485,85 +517,62 @@
 		unresolved_vars -= @type_vars
 		unresolved_vars -= @template_vars.values
 		
+		puts "Type of #{@obj.name} is #{@type.text}"
+		
 		unless @limits.empty?
-			puts "limits of #{@obj.name}"
-			@limits.each{|i| puts " - #{i}"}
+			puts "  limits:"
+			@limits.each{|i| puts "    - #{i}"}
 		end
 		
 		unless @views.empty?
-			puts "views of #{@obj.name}"
-			@views.each_pair{|k,v| puts " - #{k.text} <= #{v.text}"}
+			puts "  views:"
+			@views.each_pair{|k,v| puts "    - #{k.text} <= #{v.text}"}
 		end
 		
 		unless @template_vars.empty?
-			puts "template_vars of #{@obj.name}"
-			@template_vars.each_pair{|k,v| puts " - #{k.name} => #{v.text}"}
+			puts "  template_vars:"
+			@template_vars.each_pair{|k,v| puts "    - #{k.name} => #{v.text}"}
 		end
 		
-		puts "Type of #{@obj.name} is #{@type.text}"
-		
 		unless unresolved_vars.empty?
-			raise TypeError, "Unresolved vars of #{@obj.name}\n#{unresolved_vars.map{|c| " - #{c.text}"}.join("\n")}\n#{obj.source.format}"
+			raise TypeError, "Unresolved vars of #{@obj.name}\n#{unresolved_vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}"}.join("\n")}\n#{obj.source.format}"
 		end
 		
 		@obj.itype = self
 	end
 end
 
-def get_type(source, scope, ast, args)
-	InternalType.new.infer_fixed(ast, scope, args)
+def get_type(source, ast, args)
+	InternalType.new.infer_fixed(ast, args)
 end
 
 InferArgs = Struct.new :visited
 
 module InferUtils
-	def self.done?(ast, args)
-		return true if ast.itype
-		raise "Recursive #{ast.name}" if args.visited[ast]
-		args.visited[ast] = true
-		false
-	end
-	
-	def self.infer_function(func, args)
-		return if done? func, args
+	def self.infer_type(value, args)
+		return if value.itype
+		raise "Recursive #{value.name}" if args.visited[value]
+		args.visited[value] = true
 		
-		if func.scope
-			InternalType.new.infer_function(func, args)
-		else
-			func.itype = get_type(func.source, func.parent_scope, func, args)
-		end
-	end
-
-	def self.infer_var(var, scope, args)
-		return if done? var, args
-		
-		var.itype = get_type(var.source, scope, var, args)
-	end
-
-	def self.infer_complex(complex, args)
-		return if done? complex, args
-		
-		complex.itype = InternalType.new.wrap(complex, Types::Complex.new(complex.source, complex, complex.params.map { |p| Types::Param.new(p.source, p) }))
-		
-		infer_scope(complex.scope, args)
-	end
-
-	def self.infer_type_function(func, args)
-		return if done? func, args
-		
-		func.itype = InternalType.new.wrap(func, Types::TypeFunc.new(func.source, func))
-	end
-
-	def self.infer_type(value, scope, args)
 		case value
+			when AST::TypeClassInstance
+				value.itype = InternalType.new.infer_instance(value, args)
+				infer_scope(value.scope, args)
+			when AST::Complex::Param
+				value.itype = InternalType.new.wrap(value, Types::Param.new(value.source, value))
 			when AST::Complex
-				infer_complex(value, args)
+				value.itype = InternalType.new.wrap(value, Types::Complex.new(value.source, value, value.params.map { |p| Types::Param.new(p.source, p) }))
+				infer_scope(value.scope, args)
 			when AST::Variable
-				infer_var(value, scope, args)
+				value.itype = get_type(value.source, value, args)
 			when AST::Function
-				infer_function(value, args)
+				if value.scope
+					InternalType.new.infer_function(value, args)
+				else
+					value.itype = get_type(value.source, value, args)
+				end
 			when AST::TypeFunction
-				infer_type_function(value, args)
+				value.itype = InternalType.new.wrap(value, Types::TypeFunc.new(value.source, value))
 			else
 				raise "Unknown value #{value.class}"
 		end
@@ -571,8 +580,7 @@ module InferUtils
 
 	def self.infer_scope(scope, args = InferArgs.new({}))
 		scope.names.each_pair do |name, value|
-			next if value.kind_of? AST::Complex::Param
-			infer_type(value, scope, args)
+			infer_type(value, args)
 		end
 	end
 end

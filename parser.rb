@@ -118,6 +118,8 @@ class Parser
 				case tok_val
 					when :struct
 						struct
+					when :instance
+						instance
 					when :class
 						self.class
 					when :type
@@ -165,6 +167,23 @@ class Parser
 			tp = type_params
 			scope = global_scope(baseline)
 			AST::TypeClass.new(s, name, scope, tp)
+		end
+	end
+	
+	def instance
+		source do |s|
+			baseline = @l.indent
+			step
+			if matches(:sym, '[')
+				skip :line
+				tp = type_params
+				match(:sym, ']')
+			end
+			type_class = source { |s| AST::NameRef.new(s, match(:id)) }
+			args = type_parameters(false)
+			
+			scope = global_scope(baseline)
+			AST::TypeClassInstance.new(s, type_class, args, scope, tp || [])
 		end
 	end
 	
@@ -268,7 +287,7 @@ class Parser
 		end
 	end
 	
-	def type_parameters
+	def type_parameters(terminate = true)
 		r = []
 		skip :line
 		
@@ -281,7 +300,7 @@ class Parser
 			end
 		end
 		
-		match :sym, ']'
+		match(:sym, ']') if terminate
 		r
 	end
 	

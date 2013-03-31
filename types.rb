@@ -141,7 +141,7 @@ module Types
 		end
 		
 		def text
-			"#{@args.text} -> #{@result.text}"
+			"{#{@args.text} -> #{@result.text}}"
 		end
 	end
 	

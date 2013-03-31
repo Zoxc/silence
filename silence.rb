@@ -6,6 +6,7 @@ require_relative 'gen'
 require_relative 'print'
 require_relative 'types'
 require_relative 'infer'
+require_relative 'typeclass'
 require_relative 'parser'
 
 InferUtils.infer_scope(AST::Builtin.scope)
@@ -19,8 +20,9 @@ def process(file, parent)
 
 	ast.run_pass :declare_pass, false, (parent.scope if parent)
 	ast.run_pass :sema, true
+	ast.run_pass :ref_pass
 
-	puts print_ast(ast)
+	#puts print_ast(ast)
 
 	begin
 		InferUtils.infer_scope(ast.scope)
@@ -34,7 +36,7 @@ def process(file, parent)
 end
 
 process(ARGV.first, AST::Builtin)
-
+exit
 output = File.open("output.c", "w") { |f| f.write codegen(ast) }
 `gcc output.c -Wall -o output`
 `output.exe`

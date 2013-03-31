@@ -268,12 +268,11 @@ module AST
 		end
 		
 		def declare_pass(scope)
-			@declared = scope.declare(@name, self)
+			(@declared = scope.declare(@name, self)) if @name
 			@scope.parent = scope
 			
 			@params.each do |param|
 				param.owner = self
-				param.itype = Types::Param.new(param.source, param)
 				param.declared = @scope.declare(param.name, param)
 			end
 		end
@@ -289,8 +288,43 @@ module AST
 	end
 	
 	class TypeClass < Complex
+		attr_reader :instances
+		
+		def initialize(*args)
+			super
+			@instances = []
+		end
+		
 		def type_class?
 			true
+		end
+	end
+	
+	class TypeClassInstance < Complex
+		attr_accessor :typeclass, :args
+		
+		def initialize(source, typeclass, args, scope, params)
+			super(source, nil, scope, params)
+			@typeclass = typeclass
+			@args = args
+		end
+		
+		def ref_pass(scope)
+			@typeclass.obj.instances << self
+		end
+		
+		def name
+			"##{@typeclass.obj.name}"
+		end
+		
+		def visit
+			super
+			@args.map! { |n| yield n }
+			@typeclass = yield @typeclass
+		end
+		
+		def type_class?
+			false
 		end
 	end
 	
@@ -534,11 +568,18 @@ module AST
 		end
 	end
 	
+	Src = Object.new
+	class << Src
+		def format
+			"<builtin>"
+		end
+	end
+	
 	Builtin = Program.new(Scope.new([]))
 	BuiltinNodes = Builtin.scope.nodes
 	
 	def self.complex_type(name, args = [], klass = Struct, scope = [])
-		r = klass.new(nil, name, GlobalScope.new(scope), args.map { |a| Complex::Param.new(nil, a, nil) })
+		r = klass.new(Src, name, GlobalScope.new(scope), args.map { |a| a.is_a?(Symbol) ? Complex::Param.new(nil, a, nil) : a })
 		BuiltinNodes << r
 		r
 	end
@@ -551,9 +592,16 @@ module AST
 	String = complex_type(:string)
 	Char = complex_type(:char)
 	
-	function_args = [Complex::Param.new(nil, :T, nil), Complex::Param.new(nil, :Args, nil)]
-	CallableResult = TypeFunction.new(nil, :Result)
+	function_args = [Complex::Param.new(Src, :T, nil), Complex::Param.new(Src, :Args, nil)]
+	CallableResult = TypeFunction.new(Src, :Result)
 	Callable = complex_type(:Callable, [:T, :Args], TypeClass, [CallableResult])
-	
+
+	proc do
+		args = Complex::Param.new(Src, :Args, nil)
+		result = Complex::Param.new(Src, :Result, nil)
+		BuiltinNodes << TypeClassInstance.new(Src, Ref.new(Src, Callable), [FunctionType.new(Src, Ref.new(Src, args), Ref.new(Src, result)), Ref.new(Src, args)], GlobalScope.new([]), [args, result])
+	end.()
+
 	Builtin.run_pass(:declare_pass, false)
+	Builtin.run_pass(:ref_pass)
 end
