@@ -1,6 +1,11 @@
+class Cool T, A
+	test: (A) -> int
+	hello()
+		return test
 
-a()
-	return 1
-	
-b()
-	return a()
+instance[T] Cool T, bool
+
+a(v: Cool, t)
+	a: int
+	r := v.hello()
+	return r(t)

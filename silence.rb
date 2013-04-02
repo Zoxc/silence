@@ -9,7 +9,7 @@ require_relative 'infer'
 require_relative 'typeclass'
 require_relative 'parser'
 
-InferUtils.infer_scope(AST::Builtin.scope)
+TypeContext.infer_scope(AST::Builtin.scope)
 
 def process(file, parent)
 	puts "Processing #{file}"
@@ -17,7 +17,7 @@ def process(file, parent)
 	input = File.open(file) { |f| f.read }
 
 	ast = Parser.new(input).program
-
+	
 	ast.run_pass :declare_pass, false, (parent.scope if parent)
 	ast.run_pass :sema, true
 	ast.run_pass :ref_pass
@@ -25,7 +25,7 @@ def process(file, parent)
 	#puts print_ast(ast)
 
 	begin
-		InferUtils.infer_scope(ast.scope)
+		TypeContext.infer_scope(ast.scope)
 	rescue CompileError => error
 		$stderr.puts "Fatal errors:", error.message
 		$stderr.puts error.backtrace.join("\n")

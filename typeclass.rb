@@ -1,32 +1,28 @@
 ﻿module TypeClass
-	def self.find_instance(args, input)
-		input.complex.instances.find do |inst|
-			InferUtils.infer_type(inst, args)
-			is_instance?(args, input, inst.itype.type)
-		end
-	end
-	
 	def self.is_instance?(args, input, inst)
 		map = {}
-		can_be_instance?(args, map, input, inst)
+		[can_be_instance?(args, map, input, inst), map]
 	end
 	
 	def self.can_be_instance?(args, map, input, inst)
 		input = input.prune
 		inst = inst.prune
 		
-		if inst.is_a? Types::Variable
+		if inst.is_a? Types::Param
 			# TODO: Make sure constraints on inst are met
 			
-			if map.key? inst
-				return map[inst] == input
+			if map.key? inst.param
+				return map[inst.param] == input
 			else
-				map[inst] = input
+				map[inst.param] = input
 				return true 
 			end
 		end
 		
-		return false if input.is_a? Types::Variable
+		if input.is_a? Types::Variable
+			puts "var-Comparing #{inst.text} with #{input.text}"
+			return false
+		end
 		
 		return true if inst == input
 		

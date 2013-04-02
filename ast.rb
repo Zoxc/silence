@@ -2,6 +2,8 @@ require_relative 'types'
 
 module AST
 	class Source
+		attr_accessor :input, :range
+		
 		def initialize(input, range)
 			@input = input
 			@range = range
@@ -87,11 +89,12 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type, :itype
+		attr_accessor :name, :type, :declared, :ctype
 		
-		def initialize(source, name, type)
+		def initialize(source, name, declared, type)
 			super(source)
 			@name = name
+			@declared = declared
 			@type = type
 		end
 		
@@ -214,6 +217,7 @@ module AST
 		
 		def declare_pass(scope)
 			@scope.parent = scope
+			@scope.owner = self
 		end
 		
 		def visit
@@ -231,7 +235,7 @@ module AST
 	end
 	
 	class TypeFunction < Node
-		attr_accessor :name, :itype
+		attr_accessor :name, :ctype
 	
 		def initialize(source, name)
 			super(source)
@@ -244,10 +248,10 @@ module AST
 	end
 
 	class Complex < Node
-		attr_accessor :name, :scope, :itype, :params
+		attr_accessor :name, :scope, :ctype, :params
 		
 		class Param < Node
-			attr_accessor :name, :type, :owner, :itype
+			attr_accessor :name, :type, :owner, :ctype
 			
 			def initialize(source, name, type)
 				super(source)
@@ -260,6 +264,11 @@ module AST
 			end
 		end
 		
+		def parent
+			ast = @scope.parent.owner
+			ast.is_a?(Program) ? nil : ast
+		end
+		
 		def initialize(source, name, scope, params)
 			super(source)
 			@name = name
@@ -270,6 +279,7 @@ module AST
 		def declare_pass(scope)
 			(@declared = scope.declare(@name, self)) if @name
 			@scope.parent = scope
+			@scope.owner = self
 			
 			@params.each do |param|
 				param.owner = self
@@ -338,7 +348,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type, :itype, :parent_scope, :instances
+		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :parent_scope, :instances
 		
 		class Param < Node
 			attr_accessor :name, :type, :var
@@ -352,7 +362,7 @@ module AST
 			
 			def declare_pass(scope)
 				if scope
-					@var = Variable.new(@source, @name, @type)
+					@var = Variable.new(@source, @name, scope, @type)
 					@declared = scope.declare(@name, @var)
 				end
 			end
@@ -372,29 +382,6 @@ module AST
 			end
 		end
 	
-		class Instance
-			attr_accessor :function, :input_map, :full_map, :itype
-			
-			def initialize(function, input_map, full_map, itype)
-				@function = function
-				@input_map = input_map
-				@full_map = full_map
-				@itype = itype
-			end
-		end
-		
-		def initialize
-			@instances = {}
-		end
-		
-		def create_instance(map)
-			map = map.dup
-			map.each_pair { |k, v| map[k] = v.prune }
-			existing = @instances[map]
-			return existing if existing
-			@instances[map] = InferSystem.create_function_instance(self, map)
-		end
-		
 		def declare_pass(scope)
 			@declared = scope.declare(@name, self)
 			
@@ -458,7 +445,7 @@ module AST
 		end
 		
 		def declare_pass(scope)
-			@var = Variable.new(@source, @name, @type)
+			@var = Variable.new(@source, @name, scope, @type)
 			@declared = scope.declare(@name, @var)
 		end
 		
@@ -571,7 +558,7 @@ module AST
 	Src = Object.new
 	class << Src
 		def format
-			"<builtin>"
+			"  <builtin>\n\n"
 		end
 	end
 	
@@ -579,27 +566,35 @@ module AST
 	BuiltinNodes = Builtin.scope.nodes
 	
 	def self.complex_type(name, args = [], klass = Struct, scope = [])
-		r = klass.new(Src, name, GlobalScope.new(scope), args.map { |a| a.is_a?(Symbol) ? Complex::Param.new(nil, a, nil) : a })
+		r = klass.new(Src, name, GlobalScope.new(scope), args)
 		BuiltinNodes << r
 		r
 	end
 	
 	Unit = complex_type(:Unit)
-	Cell = complex_type(:Cell, [:Val, :Next])
+	
+	module Cell
+		Val = Complex::Param.new(Src, :Val, nil)
+		Next = Complex::Param.new(Src, :Next, nil)
+		Node = AST.complex_type(:Cell, [Val, Next])
+	end
 	
 	Int = complex_type(:int)
 	Bool = complex_type(:bool)
 	String = complex_type(:string)
 	Char = complex_type(:char)
 	
-	function_args = [Complex::Param.new(Src, :T, nil), Complex::Param.new(Src, :Args, nil)]
-	CallableResult = TypeFunction.new(Src, :Result)
-	Callable = complex_type(:Callable, [:T, :Args], TypeClass, [CallableResult])
+	module Callable
+		Args = TypeFunction.new(Src, :Args)
+		Result = TypeFunction.new(Src, :Result)
+		T = Complex::Param.new(Src, :T, nil)
+		Node = AST.complex_type(:Callable, [T], TypeClass, [Args, Result])
+	end
 
 	proc do
 		args = Complex::Param.new(Src, :Args, nil)
 		result = Complex::Param.new(Src, :Result, nil)
-		BuiltinNodes << TypeClassInstance.new(Src, Ref.new(Src, Callable), [FunctionType.new(Src, Ref.new(Src, args), Ref.new(Src, result)), Ref.new(Src, args)], GlobalScope.new([]), [args, result])
+		BuiltinNodes << TypeClassInstance.new(Src, Ref.new(Src, Callable::Node), [FunctionType.new(Src, Ref.new(Src, args), Ref.new(Src, result))], GlobalScope.new([]), [args, result])
 	end.()
 
 	Builtin.run_pass(:declare_pass, false)

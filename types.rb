@@ -31,8 +31,7 @@ module Types
 			other = other.prune
 			
 			return if other.class != self.class
-			return true if equal?(other)
-			rest_eql(other)
+			equal?(other) || rest_eql(other)
 		end
 		
 		def rest_eql(other)
@@ -60,7 +59,7 @@ module Types
 		
 		def ==(other)
 			if @instance
-				return @instance.type_eq?(other)
+				return @instance == other
 			else
 				super
 			end
@@ -153,40 +152,43 @@ module Types
 			@complex = complex
 			@args = args
 			
-			raise unless @args.is_a? Array
+			raise "Expected hash" unless @args.is_a? Hash
+			raise "Expected param" unless @args.keys.all? { |k| k.is_a? AST::Complex::Param }
+			raise "Expected type" unless @args.values.all? { |v| v.is_a? Type }
+		end
+		
+		def rest_eql(other)
+			return false if @complex != other.complex
+			super
 		end
 		
 		def type_args
-			@args
+			@args.values
 		end
 		
 		def fixed_type?
-			@args.all? { |v| v.fixed_type? }
+			@args.values.all? { |v| v.fixed_type? }
 		end
 		
 		def type_class?
 			@complex.type_class?
 		end
 
-		def template_dup(args)
-			self.class.new(@source, @complex, args)
-		end
-		
 		def tuple_map
 			case complex
 				when AST::Unit
 					[]
-				when AST::Cell
-					[@args[0], *@args[1].tuple_map]
+				when AST::Cell::Node
+					[@args[AST::Cell::Val], *@args[AST::Cell::Next].tuple_map]
 			end
 		end
 		
 		def text
 			case complex
-				when AST::Unit, AST::Cell
+				when AST::Unit, AST::Cell::Node
 					"(#{tuple_map.map(&:text).join(', ')})"
 				else
-					"#{@complex.name}#{"[#{@args.map(&:text).join(", ")}]" if @args.size > 0}"
+					"#{@complex.name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end
 		end
 	end

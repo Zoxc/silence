@@ -63,12 +63,6 @@ class Parser
 		end
 	end
 	
-	def until_tok(t, v = nil)
-		while !(tok == t && (!v || tok_val == v)) && tok != :eos
-			yield
-		end
-	end
-	
 	def source
 		src = @l.source
 		r = yield src
@@ -232,9 +226,11 @@ class Parser
 			result = type
 		end
 		
+		func.source = AST::Source.new(s.input, s.range)
+		func.source.extend(@l.last_ended)
+		
 		group = group(baseline)
 		
-		func.source = s
 		func.name = name
 		func.params = params
 		func.result = result
@@ -257,7 +253,7 @@ class Parser
 	
 	def type
 		source do |s|
-			arg = type_factor
+			arg = type_chain
 			if matches(:sym, '->')
 				skip :line
 				AST::FunctionType.new(s, arg, type)
@@ -266,6 +262,21 @@ class Parser
 			end
 			
 		end
+	end
+	
+	def type_chain
+		result = type_factor
+		
+		while eq(:sym, '.')
+			source do |s|
+				step
+				name = match(:id)
+				skip :line
+				result = AST::Field.new(s, result, name)
+			end
+		end
+		
+		result
 	end
 	
 	def type_factor
