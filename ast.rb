@@ -247,22 +247,22 @@ module AST
 		end
 	end
 
+	class TypeParam < Node
+		attr_accessor :name, :type, :owner, :ctype
+		
+		def initialize(source, name, type)
+			super(source)
+			@name = name
+			@type = type
+		end
+		
+		def visit
+			@type = yield @type if @type
+		end
+	end
+	
 	class Complex < Node
 		attr_accessor :name, :scope, :ctype, :params
-		
-		class Param < Node
-			attr_accessor :name, :type, :owner, :ctype
-			
-			def initialize(source, name, type)
-				super(source)
-				@name = name
-				@type = type
-			end
-			
-			def visit
-				@type = yield @type if @type
-			end
-		end
 		
 		def parent
 			ast = @scope.parent.owner
@@ -348,7 +348,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :parent_scope, :instances
+		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :instances, :type_params
 		
 		class Param < Node
 			attr_accessor :name, :type, :var
@@ -371,25 +371,12 @@ module AST
 				@var = yield @var if @var
 				@type = yield @type if @type
 			end
-			if nil
-				def sema(scope)
-					if scope
-						Ref.new(@source, @var)
-					else
-						self
-					end
-				end
-			end
 		end
 	
 		def declare_pass(scope)
 			@declared = scope.declare(@name, self)
 			
-			if @scope
-				@scope.parent = scope
-			else
-				@parent_scope = scope
-			end
+			@scope.parent = scope if @scope
 		end
 		
 		def apply_pass(scope)
@@ -574,8 +561,8 @@ module AST
 	Unit = complex_type(:Unit)
 	
 	module Cell
-		Val = Complex::Param.new(Src, :Val, nil)
-		Next = Complex::Param.new(Src, :Next, nil)
+		Val = TypeParam.new(Src, :Val, nil)
+		Next = TypeParam.new(Src, :Next, nil)
 		Node = AST.complex_type(:Cell, [Val, Next])
 	end
 	
@@ -587,13 +574,13 @@ module AST
 	module Callable
 		Args = TypeFunction.new(Src, :Args)
 		Result = TypeFunction.new(Src, :Result)
-		T = Complex::Param.new(Src, :T, nil)
+		T = TypeParam.new(Src, :T, nil)
 		Node = AST.complex_type(:Callable, [T], TypeClass, [Args, Result])
 	end
 
 	proc do
-		args = Complex::Param.new(Src, :Args, nil)
-		result = Complex::Param.new(Src, :Result, nil)
+		args = TypeParam.new(Src, :Args, nil)
+		result = TypeParam.new(Src, :Result, nil)
 		BuiltinNodes << TypeClassInstance.new(Src, Ref.new(Src, Callable::Node), [FunctionType.new(Src, Ref.new(Src, args), Ref.new(Src, result))], GlobalScope.new([]), [args, result])
 	end.()
 

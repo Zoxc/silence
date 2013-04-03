@@ -127,7 +127,7 @@ class Parser
 	def type_param
 		source do |s|
 			name = match :id
-			AST::Complex::Param.new(s, name, nil)
+			AST::TypeParam.new(s, name, nil)
 		end
 	end
 	
@@ -218,7 +218,15 @@ class Parser
 	end
 	
 	def function(s, baseline, name)
+		if matches(:sym, '[')
+			skip :line
+			tp = type_params
+			match(:sym, ']')
+		end
+		
 		func = AST::Function.new
+		
+		match(:sym, '(')
 		params = function_params(func)
 		
 		if matches :sym, '->'
@@ -233,6 +241,7 @@ class Parser
 		
 		func.name = name
 		func.params = params
+		func.type_params = tp
 		func.result = result
 		func.attributes = []
 		func.scope = group
@@ -243,7 +252,7 @@ class Parser
 		source do |s|
 			baseline = @l.indent
 			name = match :id
-			if matches(:sym, '(')
+			if eq(:sym, '[') ||  eq(:sym, '(')
 				function s, baseline, name
 			else
 				variable_decl s, name
@@ -254,7 +263,7 @@ class Parser
 	def type
 		source do |s|
 			arg = type_chain
-			if matches(:sym, '->')
+			if matches(:sym, '->') || matches(:sym, '->')
 				skip :line
 				AST::FunctionType.new(s, arg, type)
 			else

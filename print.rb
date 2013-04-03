@@ -66,7 +66,7 @@ def print_ast(ast)
 			format.(ast, [[:params, ast.params], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
 		when AST::Complex
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:params, ast.params]])
-		when AST::Complex::Param
+		when AST::TypeParam
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		when AST::TypeFunction
 			format.(ast, [[:name], [:id, :value, ast.__id__]])

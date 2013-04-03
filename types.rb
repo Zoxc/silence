@@ -157,7 +157,7 @@ module Types
 			@args = args
 			
 			raise "Expected hash" unless @args.is_a? Hash
-			raise "Expected param" unless @args.keys.all? { |k| k.is_a? AST::Complex::Param }
+			raise "Expected param" unless @args.keys.all? { |k| k.is_a? AST::TypeParam }
 			raise "Expected type" unless @args.values.all? { |v| v.is_a? Type }
 		end
 		
