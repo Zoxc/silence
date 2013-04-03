@@ -107,18 +107,29 @@
 		attr_accessor :scoped, :index
 		def initialize
 			@scoped = false
-			@index = nil
+			@index = {}
 		end
 		
 		def next(opts = {})
 			new = dup
 			new.scoped = opts[:scoped] || @scoped
-			new.index = opts[:index]
+			new.index = opts[:index] || {}
 			new
 		end
 	end
 	
+	def map_type_params(source, parent_args, params, args, desc)
+		raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{args.size} but maximum is #{params.size}\n#{source.format}") if params.size < args.size
+		
+		args.each_with_index do |arg, i|
+			parent_args[params[i]] = arg
+		end
+	end
+	
 	def analyze_ref(source, inst_obj, direct, parent_args, args, type)
+		args[:used] = true
+		args = args[:args]
+		
 		if type.kind_of?(Types::Complex)
 			args ||= []
 			
@@ -127,11 +138,7 @@
 				args.unshift(type_class_result)
 			end
 			
-			raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{args.size} but maximum is #{type.complex.params.size}\n#{ast.source.format}") if type.complex.params.size < args.size
-			
-			args.each_with_index do |arg, i|
-				parent_args[type.complex.params[i]] = arg
-			end
+			map_type_params(source, parent_args, type.complex.params, args, type.text)
 			
 			type.complex.params.each do |param|
 				parent_args[param] ||= new_var(source)
@@ -171,10 +178,6 @@
 		case ast
 			# Types only
 			
-			# TODO: Remove AST::Function, AST::Function::Param and AST::Variable from here?
-			when AST::Function
-				raise "HEELLLO!"
-				[Types::Function.new(ast.source, ast.params.map { |p| analyze_type(p, args.next) }, ast.result ? analyze_type(ast.result, args.next) : new_var(ast.source)), false]
 			when AST::Function::Param, AST::Variable
 				if ast.type
 					[analyze_type(ast.type, args.next), true]
@@ -269,7 +272,14 @@
 				else
 					type = infer(ast.obj)
 					if ast.obj.ctype.value
-						[inst(ast.obj), true]
+						parent_args = {}
+						
+						if ast.obj.is_a?(AST::Function) && args.index[:args]
+							args.index[:used] = true
+							
+							map_type_params(ast.source, parent_args, ast.obj.type_params, args.index[:args], ast.obj.name)
+						end
+						[inst(ast.obj, parent_args), true]
 					else
 						analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index, type)
 					end
@@ -291,10 +301,10 @@
 				end
 				
 			when AST::Index
-				index = ast.args.map { |n| analyze_type(n, args.next) }
+				index = {args: ast.args.map { |n| analyze_type(n, args.next) }, used: false}
 				type, value = analyze(ast.obj, args.next(index: index))
 				
-				raise TypeError.new("[] operator unsupported for values\n#{ast.source.format}") if value
+				raise TypeError.new("[] operator unsupported for values\n#{ast.source.format}") if value && !index[:used]
 				
 				[type, value]
 			else
@@ -496,6 +506,7 @@
 		@result = (analyze_type(func.result, analyze_args) if func.result)
 		
 		func.scope.names.each_value do |var|
+			next if var.is_a? AST::TypeParam
 			@vars[var] = analyze_value(var, analyze_args)
 		end
 		

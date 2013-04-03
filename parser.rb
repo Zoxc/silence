@@ -222,6 +222,8 @@ class Parser
 			skip :line
 			tp = type_params
 			match(:sym, ']')
+		else
+			tp = []
 		end
 		
 		func = AST::Function.new
@@ -307,12 +309,12 @@ class Parser
 		end
 	end
 	
-	def type_parameters(terminate = true)
+	def type_parameters(terminate = true, expr = proc { type })
 		r = []
 		skip :line
 		
 		loop do
-			r << type
+			r << expr.()
 			if matches(:sym, ',')
 				skip :line
 			else
@@ -499,9 +501,14 @@ class Parser
 	def chain
 		result = factor
 		
-		while tok == :sym && ['(', '.'].include?(tok_val)
+		while tok == :sym && ['(', '.', '['].include?(tok_val)
 			source do |s|
 				case tok_val
+					when '['
+						step
+						skip :line
+						
+						result = AST::Index.new(s, result, type_parameters(true, proc { expression }))
 					when '('
 						step
 						skip :line
@@ -551,7 +558,7 @@ class Parser
 				when :sym
 					case tok_val
 						when '('
-							tuple(s) { expression}
+							tuple(s) { expression }
 						else
 							expected 'expression'
 					end

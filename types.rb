@@ -209,6 +209,10 @@ module Types
 			[self]
 		end
 		
+		def fixed_type?
+			false
+		end
+
 		def text
 			"param #{@param.name}"
 		end

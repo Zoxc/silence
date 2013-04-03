@@ -248,12 +248,16 @@ module AST
 	end
 
 	class TypeParam < Node
-		attr_accessor :name, :type, :owner, :ctype
+		attr_accessor :name, :type, :ctype
 		
 		def initialize(source, name, type)
 			super(source)
 			@name = name
 			@type = type
+		end
+		
+		def declare_pass(scope)
+			@declared = scope.declare(@name, self)
 		end
 		
 		def visit
@@ -280,11 +284,6 @@ module AST
 			(@declared = scope.declare(@name, self)) if @name
 			@scope.parent = scope
 			@scope.owner = self
-			
-			@params.each do |param|
-				param.owner = self
-				param.declared = @scope.declare(param.name, param)
-			end
 		end
 		
 		def apply_pass(scope)
@@ -385,6 +384,7 @@ module AST
 		
 		def visit
 			@params.map! { |n| yield n }
+			@type_params.map! { |n| yield n }
 			@result = yield @result
 			@scope = yield @scope if @scope
 		end

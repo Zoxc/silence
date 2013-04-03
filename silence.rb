@@ -22,7 +22,7 @@ def process(file, parent)
 	ast.run_pass :sema, true
 	ast.run_pass :ref_pass
 
-	#puts print_ast(ast)
+	puts print_ast(ast)
 
 	begin
 		TypeContext.infer_scope(ast.scope)
