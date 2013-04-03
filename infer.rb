@@ -105,16 +105,16 @@
 	def unit_default(type)
 	end
 	
-	def make_type_ref(ast, args)
+	def make_type_ref(ast, direct, args)
 		parent_args = {}
 		case ast
 			when AST::Ref
 				inst_obj = ast.obj
 				type = infer(ast.obj)
 			when AST::Field
-				parent = make_type(ast.source, ast.obj)
+				parent = make_type(ast.source, ast.obj, false)
 				if parent.kind_of? Types::Complex
-					ref = parent.complex.scope.require(ast.source, ast.name)
+					ref = parent.complex.scope.require(ast.source, ast.name, proc { "Can't find '#{ast.name}' in scope '#{parent.text}'" })
 					inst_obj = ref
 					parent_args = parent.args
 					type = infer(ref)
@@ -130,9 +130,9 @@
 		if type.kind_of?(Types::Complex)
 			args ||= []
 			
-			if type.type_class?
+			if direct && type.type_class?
 				type_class_result = new_var(ast.source)
-				args.unshift(type_class_result) 
+				args.unshift(type_class_result)
 			end
 			
 			raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{args.size} but maximum is #{type.complex.params.size}\n#{ast.source.format}") if type.complex.params.size < args.size
@@ -149,8 +149,10 @@
 			
 			if type.type_class?
 				@limits << TypeClassLimit.new(self, ast, result)
-				@views[type_class_result] = result
-				result = type_class_result
+				if direct
+					@views[type_class_result] = result 
+					result = type_class_result
+				end
 			end
 		elsif args
 			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{ast.source.format}")
@@ -161,7 +163,11 @@
 		result
 	end
 	
-	def make_type(source, ast)
+	def make_tuple(source, args)
+		args.reverse.inject(AST::Unit.ctype.type.source_dup(source)) { |m, p| Types::Complex.new(source, AST::Cell::Node, {AST::Cell::Val => p, AST::Cell::Next => m}) }
+	end
+	
+	def make_type(source, ast, direct = true)
 		return new_var(source) unless ast
 		
 		case ast
@@ -172,11 +178,13 @@
 			when AST::UnaryOp
 				raise TypeError.new("Only pointer (*) unary operator allowed on types\n#{ast.source.format}") if ast.op != :'*'
 				Types::Ptr.new(make_type(ast.source, ast.node))
+			when AST::Tuple
+				make_tuple(ast.source, ast.nodes.map { |n| make_type(ast.source, n) })
 			when AST::FunctionType
 				func_args = case ast.arg
 					when AST::Grouped
 						arg = make_type(ast.arg.source, ast.arg.node)
-						Types::Complex.new(ast.arg.source, AST::Cell::Node, {AST::Cell::Val => arg,  AST::Cell::Next => AST::Unit.ctype.type.source_dup(ast.arg.source)})
+						make_tuple(ast.arg.source, [arg])
 					when AST::Tuple
 						make_type(ast.source, ast.arg)
 					else
@@ -189,9 +197,9 @@
 			when AST::Grouped
 				make_type(ast.source, ast.node)
 			when AST::Index
-				make_type_ref(ast.obj, ast.args.map { |n| make_type(ast.source, n) })
+				make_type_ref(ast.obj, direct, ast.args.map { |n| make_type(ast.source, n) })
 			when AST::Ref, AST::Field
-				make_type_ref(ast, nil)
+				make_type_ref(ast, direct, nil)
 			when AST::Variable
 				make_type(ast.source, ast.type)
 			else
@@ -228,9 +236,8 @@
 			when AST::Call
 				type = analyze(ast.obj, args)
 				result = new_var(ast.source)
-				call_args = ast.args.map { |arg| analyze(arg, args) }
 				
-				callable_args = call_args.reverse.inject(AST::Unit.ctype.type.source_dup(ast.source)) { |m, t| Types::Complex.new(ast.source, AST::Cell::Node, {AST::Cell::Val => t, AST::Cell::Next => m}) }
+				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze(arg, args) })
 				
 				type_class = Types::Complex.new(ast.source, AST::Callable::Node, {AST::Callable::T => type})
 				limit = TypeClassLimit.new(self, ast, type_class)
@@ -328,6 +335,12 @@
 				args.map[type] ||= new_var(type.source)
 			when Types::Param
 				args.params[type.param] || type
+			when Types::TypeFunc
+				limit = @limits.find { |l| l.is_a?(TypeClassLimit) && l.var.complex == type.func.declared.owner && l.var.args == args.params }
+				raise "Unable to find limit for #{type.text}" unless limit
+				result = new_var(type.source)
+				@limits << TypeFunctionLimit.new(self, type.func, result, type.func, limit)
+				result
 			when Types::Ptr
 				Types::Ptr.new(type.source, inst_type(args, type.type))
 			when Types::Function
@@ -398,7 +411,7 @@
 		[input.complex.instances.find do |inst|
 			infer(inst)
 			result, map = TypeClass.is_instance?(@infer_args, input, inst.ctype.typeclass)
-			puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}"
+			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}"
 			result
 		end, map]
 	end
@@ -408,12 +421,12 @@
 			case c
 				when TypeClassLimit
 					unless c.instance
-						puts "Searching instance for #{c}"
+						#puts "Searching instance for #{c}"
 						inst, map = find_instance(c.var)
 						if inst
 							c.instance = inst(inst, map)
-							puts "Found instance for #{c}"
-							false
+							#puts "Found instance for #{c}"
+							true
 						elsif c.var.fixed_type?
 							raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.ast.source.format}")
 						end
@@ -424,7 +437,6 @@
 						ast = inst.complex.scope.require(c.ast.source, c.type_ast.name)
 						
 						result = inst(ast, inst.args)
-						puts "Found typefunction result for #{c} - #{result.text}"
 						
 						unify(result, c.var)
 						
@@ -464,14 +476,12 @@
 			@vars[var] = make_type(var.source, var)
 		end
 		
-		func_args = func.params.reverse.inject(AST::Unit.ctype.type.source_dup(func.source)) { |m, p| Types::Complex.new(func.source, AST::Cell::Node, {AST::Cell::Val => @vars[p.var], AST::Cell::Next => m}) }
+		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
 		
 		analyze(func.scope, AnalyzeArgs.new(func))
 		
 		# TODO: make @result default to Unit, so the function can reference itself
 		func_result = Types::Function.new(func.source, func_args, @result || AST::Unit.ctype.type.source_dup(func.source))
-		
-		solve
 		
 		finalize(func_result)
 		
@@ -483,6 +493,8 @@
 	
 	def finalize(type)
 		type = type.prune
+		
+		solve
 		
 		@type_vars.reject! { |var| var.instance }
 		
@@ -524,8 +536,20 @@
 		typeclass = @obj.typeclass.obj
 		raise TypeError, "Expected #{typeclass.params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.params.size
 		@typeclass = Types::Complex.new(@obj.source, typeclass, Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.params[i], make_type(arg.source, arg)] }])
-		puts "typeclass instance #{@typeclass.text}"
 		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.params.map { |p| [p, Types::Param.new(p.source, p)] }]))
+		
+		TypeContext.infer_scope(@obj.scope)
+		
+		infer(typeclass)
+		
+		typeclass.scope.names.each_pair do |name, value|
+			next if value.is_a? AST::Complex::Param
+			member, = @obj.scope.require_with_scope(@obj.source, name, proc { "Expected '#{name}' in instance of typeclass #{typeclass.name}" })
+			next if value.is_a? AST::TypeFunction
+			m = infer(member)
+			b = inst(value, @typeclass.args)
+			raise TypeError, "Expected type '#{b.text}' for #{name}, but '#{m.text}' found\n#{member.source.format}" unless m == b
+		end
 	end
 	
 	def process_fixed(obj)
@@ -538,7 +562,6 @@
 		case value
 			when AST::TypeClassInstance
 				process_instance
-				TypeContext.infer_scope(value.scope)
 			when AST::Complex::Param
 				finalize(Types::Param.new(value.source, value))
 			when AST::Complex

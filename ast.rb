@@ -181,19 +181,19 @@ module AST
 			return false
 		end
 		
-		def require(source, name)
-			r = require_with_scope(source, name)
+		def require(source, name, err_msg = proc { "Unknown identifier '#{name}'" })
+			r = require_with_scope(source, name, err_msg)
 			r ? r.first : nil
 		end
 		
-		def require_with_scope(source, name)
+		def require_with_scope(source, name, err_msg)
 			#puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
 			result = @names[name]
 			if result
 				return [result, self]
 			end
-			return @parent.require_with_scope(source, name) if @parent
-			raise CompileError, "Unknown identifier '#{name}'\n#{source.format}"
+			return @parent.require_with_scope(source, name, err_msg) if @parent
+			raise CompileError, "#{err_msg.()}\n#{source.format}"
 		end
 		
 		def visit

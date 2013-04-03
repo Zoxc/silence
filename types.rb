@@ -107,6 +107,10 @@ module Types
 				@source
 			end
 		end
+		
+		def source_dup(source)
+			self
+		end
 	end
 
 	class Ptr < Type

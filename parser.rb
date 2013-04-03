@@ -165,20 +165,20 @@ class Parser
 	end
 	
 	def instance
-		source do |s|
-			baseline = @l.indent
-			step
-			if matches(:sym, '[')
-				skip :line
-				tp = type_params
-				match(:sym, ']')
-			end
-			type_class = source { |s| AST::NameRef.new(s, match(:id)) }
-			args = type_parameters(false)
-			
-			scope = global_scope(baseline)
-			AST::TypeClassInstance.new(s, type_class, args, scope, tp || [])
+		s = @l.source
+		baseline = @l.indent
+		step
+		if matches(:sym, '[')
+			skip :line
+			tp = type_params
+			match(:sym, ']')
 		end
+		type_class = source { |s| AST::NameRef.new(s, match(:id)) }
+		args = type_parameters(false)
+		s.extend(@l.last_ended)
+		
+		scope = global_scope(baseline)
+		AST::TypeClassInstance.new(s, type_class, args, scope, tp || [])
 	end
 	
 	def struct

@@ -19,10 +19,7 @@
 			end
 		end
 		
-		if input.is_a? Types::Variable
-			puts "var-Comparing #{inst.text} with #{input.text}"
-			return false
-		end
+		return false if input.is_a? Types::Variable
 		
 		return true if inst == input
 		
