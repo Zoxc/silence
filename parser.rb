@@ -415,6 +415,7 @@ class Parser
 			break if pred < min
 			
 			step
+			skip :line
 			
 			source do |s|
 				right = unary
@@ -521,8 +522,8 @@ class Parser
 						match :sym, ')'
 					when '.'
 						step
-						name = match(:id)
 						skip :line
+						name = match(:id)
 						result = AST::Field.new(s, result, name)
 				end
 			end

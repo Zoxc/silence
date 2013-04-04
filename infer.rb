@@ -1,5 +1,5 @@
 ﻿class TypeContext
-	attr_accessor :obj, :type, :type_vars, :template_vars, :limits, :typeclass, :value
+	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value
 	
 	class TypeError < CompileError
 	end
@@ -41,16 +41,17 @@
 	end
 	
 	class FieldLimit < Limit
-		attr_accessor :type, :name
+		attr_accessor :type, :name, :args
 		
-		def initialize(system, source, var, type, name)
+		def initialize(system, source, var, type, name, args)
 			super(system, source, var)
 			@type = type
 			@name = name
+			@args = args
 		end
 		
 		def to_s
-			"#{@var.real_text} = #{@type.text}.#{@name}"
+			"#{@var.real_text} = #{@type.text}.#{@name} [#{args.map{ |t|t .text }.join(", ")}]"
 		end
 	end
 	
@@ -67,7 +68,6 @@
 		@vars = {}
 		@var_allocs = {}
 		@type_vars = []
-		@template_vars = {}
 		@var_name = 1
 		@limit_name = 1
 		@func_instances = []
@@ -119,10 +119,14 @@
 	end
 	
 	def map_type_params(source, parent_args, params, args, desc)
-		raise TypeError.new("Too many type parameter(s) for #{type.text}, got #{args.size} but maximum is #{params.size}\n#{source.format}") if params.size < args.size
+		raise TypeError.new("Too many type parameter(s) for #{desc}, got #{args.size} but maximum is #{params.size}\n#{source.format}") if params.size < args.size
 		
 		args.each_with_index do |arg, i|
 			parent_args[params[i]] = arg
+		end
+		
+		params.each do |param|
+			parent_args[param] ||= new_var(source)
 		end
 	end
 	
@@ -140,10 +144,6 @@
 			
 			map_type_params(source, parent_args, type.complex.params, args, type.text)
 			
-			type.complex.params.each do |param|
-				parent_args[param] ||= new_var(source)
-			end
-
 			result = inst(inst_obj, parent_args, type).source_dup(source)
 			
 			if type.type_class?
@@ -174,6 +174,15 @@
 		type
 	end
 	
+	def get_index_args(args)
+		if args.index[:args]
+			args.index[:used] = true
+			args.index[:args]
+		else
+			[]
+		end
+	end
+	
 	def analyze(ast, args)
 		case ast
 			# Types only
@@ -186,7 +195,7 @@
 				end
 			when AST::UnaryOp
 				raise TypeError.new("Only pointer (*) unary operator allowed on types\n#{ast.source.format}") if ast.op != :'*'
-				[Types::Ptr.new(analyze_type(ast.node, args.next)), false]
+				[Types::Ptr.new(ast.source, analyze_type(ast.node, args.next)), false]
 			when AST::Tuple
 				[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
 			when AST::FunctionType
@@ -274,11 +283,10 @@
 					if ast.obj.ctype.value
 						parent_args = {}
 						
-						if ast.obj.is_a?(AST::Function) && args.index[:args]
-							args.index[:used] = true
-							
-							map_type_params(ast.source, parent_args, ast.obj.type_params, args.index[:args], ast.obj.name)
+						if ast.obj.is_a?(AST::Function)
+							map_type_params(ast.source, parent_args, ast.obj.type_params, get_index_args(args), ast.obj.name)
 						end
+						
 						[inst(ast.obj, parent_args), true]
 					else
 						analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index, type)
@@ -289,7 +297,7 @@
 				
 				if value
 					result = new_var(ast.source)
-					@limits << FieldLimit.new(self, ast.source, result, type, ast.name)
+					@limits << FieldLimit.new(self, ast.source, result, type, ast.name, get_index_args(args))
 					[result, true]
 				else
 					if type.kind_of? Types::Complex
@@ -483,7 +491,14 @@
 							
 							raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 							
-							field_type = inst(field, type.args)
+							if field.is_a?(AST::Function)
+								parent_args = type.args.dup
+								map_type_params(c.source, parent_args, field.type_params, c.args, field.name)
+							else
+								parent_args = type.args
+							end
+							
+							field_type = inst(field, parent_args)
 							
 							unify(field_type, var)
 							
@@ -540,7 +555,10 @@
 		end
 		
 		unresolved_vars -= @type_vars
-		unresolved_vars -= @template_vars.values
+		
+		@limits.each do |c|
+			unresolved_vars.delete(c.var.prune) if c.is_a? TypeFunctionLimit
+		end
 		
 		puts "Type of #{@obj.name} is #{type.text}"
 		
@@ -552,11 +570,6 @@
 		unless @views.empty?
 			puts "  views:"
 			@views.each_pair{|k,v| puts "    - #{k.text} <= #{v.text}"}
-		end
-		
-		unless @template_vars.empty?
-			puts "  template_vars:"
-			@template_vars.each_pair{|k,v| puts "    - #{k.name} => #{v.text}"}
 		end
 		
 		unless unresolved_vars.empty?
