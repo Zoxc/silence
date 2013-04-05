@@ -99,6 +99,10 @@ module AST
 			@props = props
 		end
 		
+		def type_params
+			[]
+		end
+		
 		def visit
 			@type = yield @type
 		end
@@ -233,6 +237,10 @@ module AST
 			super(source)
 			@nodes = nodes
 		end
+		
+		def visit
+			@nodes.map! { |n| yield n }
+		end
 	end
 	
 	class TypeFunction < Node
@@ -267,18 +275,18 @@ module AST
 	end
 	
 	class Complex < Node
-		attr_accessor :name, :scope, :ctype, :params
+		attr_accessor :name, :scope, :ctype, :type_params
 		
 		def parent
 			ast = @scope.parent.owner
 			ast.is_a?(Program) ? nil : ast
 		end
 		
-		def initialize(source, name, scope, params)
+		def initialize(source, name, scope, type_params)
 			super(source)
 			@name = name
 			@scope = scope
-			@params = params
+			@type_params = type_params
 		end
 		
 		def declare_pass(scope)
@@ -292,7 +300,7 @@ module AST
 		end
 		
 		def visit
-			@params.map! { |n| yield n }
+			@type_params.map! { |n| yield n }
 			@scope = yield scope
 		end
 	end
@@ -313,8 +321,8 @@ module AST
 	class TypeClassInstance < Complex
 		attr_accessor :typeclass, :args
 		
-		def initialize(source, typeclass, args, scope, params)
-			super(source, nil, scope, params)
+		def initialize(source, typeclass, args, scope, type_params)
+			super(source, nil, scope, type_params)
 			@typeclass = typeclass
 			@args = args
 		end
@@ -362,7 +370,7 @@ module AST
 			
 			def declare_pass(scope)
 				if scope
-					@var = Variable.new(@source, @name, scope, @type)
+					@var = Variable.new(@source, @name, scope, @type, @props)
 					@declared = scope.declare(@name, @var)
 				end
 			end
@@ -456,7 +464,7 @@ module AST
 	end
 	
 	class Ref < ExpressionNode
-		attr_accessor :obj
+		attr_accessor :obj, :gen
 		
 		def initialize(source, obj)
 			super(source)
@@ -504,7 +512,7 @@ module AST
 	end
 
 	class Field < ExpressionNode
-		attr_accessor :obj, :name
+		attr_accessor :obj, :name, :gen
 		
 		def initialize(source, obj, name)
 			@source = source

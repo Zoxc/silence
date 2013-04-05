@@ -65,13 +65,13 @@ def print_ast(ast)
 		when AST::TypeClassInstance
 			format.(ast, [[:params, ast.params], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
 		when AST::Complex
-			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:params, ast.params]])
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:type_params, ast.type_params]])
 		when AST::TypeParam
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		when AST::TypeFunction
 			format.(ast, [[:name], [:id, :value, ast.__id__]])
 		when AST::Function
-			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:attributes], [:result, :single], [:params, ast.params], [:scope, :single]])
+			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:attributes], [:result, :single], [:params, ast.params], [:scope, :single], [:type_params, ast.type_params]])
 		when AST::Function::Param
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		else

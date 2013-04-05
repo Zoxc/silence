@@ -41,23 +41,18 @@
 	end
 	
 	class FieldLimit < Limit
-		attr_accessor :type, :name, :args
+		attr_accessor :type, :name, :args, :ast
 		
-		def initialize(system, source, var, type, name, args)
+		def initialize(system, source, var, type, name, args, ast)
 			super(system, source, var)
 			@type = type
 			@name = name
 			@args = args
+			@ast = ast
 		end
 		
 		def to_s
 			"#{@var.real_text} = #{@type.text}.#{@name} [#{args.map{ |t|t .text }.join(", ")}]"
-		end
-	end
-	
-	FuncInst = Struct.new(:func, :vars) do
-		def to_s
-			"#{func.name}, {#{vars.size.times.map{|i| "#{func.type_vars[i].text} => #{vars[i].text}" }.join(", ")}}"
 		end
 	end
 	
@@ -70,7 +65,6 @@
 		@type_vars = []
 		@var_name = 1
 		@limit_name = 1
-		@func_instances = []
 		@limits = []
 		@views = {}
 	end
@@ -153,7 +147,7 @@
 				args.unshift(type_class_result)
 			end
 			
-			map_type_params(source, parent_args, type.complex.params, args, type.text)
+			map_type_params(source, parent_args, type.complex.type_params, args, type.text)
 			
 			result = inst(inst_obj, parent_args, type).source_dup(source)
 			
@@ -300,7 +294,9 @@
 						
 						ensure_shared(ast.obj, ast.source) if shared?
 						
-						[inst(ast.obj, parent_args), true]
+						ast.gen = inst_ex(ast.obj, parent_args)
+						
+						[ast.gen.first, true]
 					else
 						analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index, type)
 					end
@@ -310,15 +306,21 @@
 				
 				if value
 					result = new_var(ast.source)
-					@limits << FieldLimit.new(self, ast.source, result, type, ast.name, get_index_args(args))
+					@limits << FieldLimit.new(self, ast.source, result, type, ast.name, get_index_args(args), ast)
 					[result, true]
 				else
 					if type.kind_of? Types::Complex
-						ref = type.complex.scope.require(ast.source, ast.name, proc { "Can't find '#{ast.name}' in scope '#{type.text}'" })
+						ref = type.complex.scope.names[ast.name]
+						
+						raise TypeError.new("'#{ast.name}' is not a member of type '#{type.text}'\n#{ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless ref
 						
 						ensure_shared(ref, ast.source)
 						
-						analyze_ref(ast.source, ref, !args.scoped, type.args, args.index, infer(ref))
+						result = analyze_ref(ast.source, ref, !args.scoped, type.args, args.index, infer(ref))
+						
+						ast.gen = [:single, ref, result]
+						
+						result
 					else
 						raise TypeError.new("Type #{type.text} doesn't have a scope\n#{ast.source.format}")
 					end
@@ -369,7 +371,15 @@
 		end
 	end
 	
-	InstArgs = Struct.new(:map, :lmap, :params)
+	InstArgs = Struct.new(:map, :lmap, :params) do
+		def to_s
+			"{#{map.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}}, [#{params.each.map { |p| "#{p.first.name}: #{p.last.text}" }.join(", ")}]"
+		end
+		
+		def merged
+			map.merge(params)
+		end
+	end
 	
 	def inst_limit(args, limit)
 		case limit
@@ -407,13 +417,18 @@
 	end
 	
 	def inst(obj, params = {}, type_obj = nil)
+		result, args = inst_ex(obj, params, type_obj)
+		result
+	end
+	
+	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
 		map = {}
 		inst_args = InstArgs.new(map, {}, params)
 		
 		@limits.concat(obj.ctype.limits.map { |l| inst_limit(inst_args, l) })
 		
-		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type)
+		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
 	end
 	
 	def unify(a, b, loc = proc { "" })
@@ -505,6 +520,8 @@
 						when Types::Complex
 							field = type.complex.scope.names[c.name]
 							
+							c.ast.gen = [:field, type]
+							
 							raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 							
 							if field.is_a?(AST::Function)
@@ -549,11 +566,6 @@
 		func_result = Types::Function.new(func.source, func_args, @result || AST::Unit.ctype.type.source_dup(func.source))
 		
 		finalize(func_result, true)
-		
-		unless @func_instances.empty?
-			puts "func instances of #{func.name}"
-			puts *@func_instances.map{|i| " - #{i}"}
-		end
 	end
 	
 	def finalize(type, value)
@@ -598,9 +610,9 @@
 	def process_instance
 		typeclass = @obj.typeclass.obj
 		analyze_args = AnalyzeArgs.new
-		raise TypeError, "Expected #{typeclass.params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.params.size
-		@typeclass = Types::Complex.new(@obj.source, typeclass, Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.params[i], analyze_type(arg, analyze_args)] }])
-		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
+		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
+		@typeclass = Types::Complex.new(@obj.source, typeclass, Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, analyze_args)] }])
+		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
 		
 		TypeContext.infer_scope(@obj.scope)
 		
@@ -635,7 +647,7 @@
 				else
 					parent = []
 				end
-				finalize(Types::Complex.new(value.source, value, Hash[value.params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
+				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
 				TypeContext.infer_scope(value.scope)
 			when AST::Variable
 				process_fixed(value)

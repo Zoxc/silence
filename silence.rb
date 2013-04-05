@@ -32,11 +32,11 @@ def process(file, parent)
 		exit
 	end
 	
+	output = File.open("output.c", "w") { |f| f.write Codegen.new.codegen(ast) }
+	`gcc output.c -Wall -o output`
+	`output.exe`
+	
 	ast
 end
 
 process(ARGV.first, AST::Builtin)
-exit
-output = File.open("output.c", "w") { |f| f.write codegen(ast) }
-`gcc output.c -Wall -o output`
-`output.exe`
