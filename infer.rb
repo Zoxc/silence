@@ -96,6 +96,17 @@
 		var
 	end
 	
+	def shared?
+		@obj.respond_to?(:props) ? @obj.props[:shared] : true
+	end
+	
+	def ensure_shared(obj, source)
+		case obj
+			when AST::Function, AST::Variable
+				raise TypeError.new("Can't access member '#{obj.name}' without an instance\n#{source.format}") unless obj.props[:shared]
+		end
+	end
+	
 	def unit_default(type)
 	end
 	
@@ -159,7 +170,7 @@
 			result = inst(inst_obj, parent_args, type).source_dup(source)
 		end
 		
-		[result, false]
+		[result, inst_obj.ctype.value]
 	end
 	
 	def analyze_value(ast, args)
@@ -287,6 +298,8 @@
 							map_type_params(ast.source, parent_args, ast.obj.type_params, get_index_args(args), ast.obj.name)
 						end
 						
+						ensure_shared(ast.obj, ast.source) if shared?
+						
 						[inst(ast.obj, parent_args), true]
 					else
 						analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index, type)
@@ -302,6 +315,9 @@
 				else
 					if type.kind_of? Types::Complex
 						ref = type.complex.scope.require(ast.source, ast.name, proc { "Can't find '#{ast.name}' in scope '#{type.text}'" })
+						
+						ensure_shared(ref, ast.source)
+						
 						analyze_ref(ast.source, ref, !args.scoped, type.args, args.index, infer(ref))
 					else
 						raise TypeError.new("Type #{type.text} doesn't have a scope\n#{ast.source.format}")

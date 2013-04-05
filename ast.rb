@@ -89,13 +89,14 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type, :declared, :ctype
+		attr_accessor :name, :type, :declared, :ctype, :props
 		
-		def initialize(source, name, declared, type)
+		def initialize(source, name, declared, type, props)
 			super(source)
 			@name = name
 			@declared = declared
 			@type = type
+			@props = props
 		end
 		
 		def visit
@@ -347,7 +348,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :instances, :type_params
+		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :instances, :type_params, :props
 		
 		class Param < Node
 			attr_accessor :name, :type, :var
@@ -423,16 +424,17 @@ module AST
 	class VariableDecl < ExpressionNode
 		attr_accessor :name, :value, :type
 		
-		def initialize(source, right_source, name, type, value)
+		def initialize(source, right_source, name, type, value, props)
 			@source = source
 			@right_source = right_source
 			@name = name
 			@value = value
 			@type = type
+			@props = props
 		end
 		
 		def declare_pass(scope)
-			@var = Variable.new(@source, @name, scope, @type)
+			@var = Variable.new(@source, @name, scope, @type, @props)
 			@declared = scope.declare(@name, @var)
 		end
 		

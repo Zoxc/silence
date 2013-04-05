@@ -217,7 +217,7 @@ class Parser
 		r
 	end
 	
-	def function(s, baseline, name)
+	def function(s, baseline, name, props)
 		if matches(:sym, '[')
 			skip :line
 			tp = type_params
@@ -247,31 +247,56 @@ class Parser
 		func.result = result
 		func.attributes = []
 		func.scope = group
+		func.props = props
 		func
+	end
+	
+	def properties
+		props = {}
+		case
+			when matches(:id, :shared) 
+				props[:shared] = true
+			when matches(:id, :import) 
+				props[:import] = true
+			when matches(:id, :export) 
+				props[:export] = true
+			else
+				return props
+		end while true
 	end
 	
 	def field_or_func
 		source do |s|
+			props = properties
 			baseline = @l.indent
 			name = match :id
 			if eq(:sym, '[') ||  eq(:sym, '(')
-				function s, baseline, name
+				function s, baseline, name, props
 			else
-				variable_decl s, name
+				variable_decl s, name, props
 			end
 		end
 	end
 	
 	def type
 		source do |s|
-			arg = type_chain
-			if matches(:sym, '->') || matches(:sym, '->')
+			arg = type_unary
+			if matches(:sym, '->')
 				skip :line
 				AST::FunctionType.new(s, arg, type)
 			else
 				arg
 			end
 			
+		end
+	end
+	
+	def type_unary
+		if matches(:sym, '*')
+				skip :line
+				AST::UnaryOp.new(s, :'*', type_chain)
+		else
+			type_chain
 		end
 	end
 	
@@ -294,9 +319,6 @@ class Parser
 		source do |s|
 			if eq(:sym, '(')
 				tuple(s) { type }
-			elsif matches(:sym, '*')
-				skip :line
-				AST::UnaryOp.new(s, :'*', type)
 			else
 				var = source { |s| AST::NameRef.new(s, match(:id)) }
 				
@@ -406,7 +428,7 @@ class Parser
 		tok == :sym && Operators[tok_val]
 	end
 	
-	def pred_operator(left = unary, min = 0)
+	def pred_operator(left = function_operator, min = 0)
 		loop do
 			break unless is_pred_op
 			op = tok_val
@@ -418,7 +440,7 @@ class Parser
 			skip :line
 			
 			source do |s|
-				right = unary
+				right = function_operator
 				
 				loop do
 					break unless is_pred_op
@@ -436,7 +458,7 @@ class Parser
 		left
 	end
 	
-	def variable_decl(s, name)
+	def variable_decl(s, name, props)
 		source do |ts|
 			if matches(:sym, ':=')
 				value = expression
@@ -449,7 +471,20 @@ class Parser
 				end
 			end
 			
-			AST::VariableDecl.new(s, ts, name, type, value)
+			AST::VariableDecl.new(s, ts, name, type, value, props)
+		end
+	end
+	
+	def function_operator
+		source do |s|
+			arg = unary
+			if matches(:sym, '->') || matches(:sym, '->')
+				skip :line
+				AST::FunctionType.new(s, arg, function_operator)
+			else
+				arg
+			end
+			
 		end
 	end
 	
@@ -577,7 +612,7 @@ class Parser
 							name = match(:id)
 							
 							if tok == :sym && [':=', ':'].include?(tok_val)
-								variable_decl(s, name)
+								variable_decl(s, name, {})
 							else
 								AST::NameRef.new(s, name)
 							end

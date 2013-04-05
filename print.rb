@@ -39,7 +39,7 @@ def print_ast(ast)
 		when AST::Ref
 			format.(ast, [[:name, :value, ast.obj.name], [:id, :value, ast.obj.__id__]])
 		when AST::Variable
-			format.(ast, [[:name]])
+			format.(ast, [[:name], [:props]])
 		when AST::NameRef
 			format.(ast, [[:name]])
 		when AST::Call
@@ -71,7 +71,7 @@ def print_ast(ast)
 		when AST::TypeFunction
 			format.(ast, [[:name], [:id, :value, ast.__id__]])
 		when AST::Function
-			format.(ast, [[:name], [:id, :value, ast.__id__], [:attributes], [:result, :single], [:params, ast.params], [:scope, :single]])
+			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:attributes], [:result, :single], [:params, ast.params], [:scope, :single]])
 		when AST::Function::Param
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		else
