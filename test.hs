@@ -8,7 +8,7 @@ struct A T
 		return t
 	
 	hi()
-		return t
+		return k
 	
 h: A[int]
 
@@ -17,6 +17,13 @@ b(y: A)
 
 a()
 	return b(h)
+	
+import printf(str: *char)
 
 export t()
+	h.hi()
 	return a()
+	
+export main()
+	printf("hello")
+	return 0

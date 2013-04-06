@@ -3,6 +3,7 @@ end
 
 require_relative 'ast'
 require_relative 'gen'
+require_relative 'gen-func'
 require_relative 'print'
 require_relative 'types'
 require_relative 'infer'
@@ -22,7 +23,7 @@ def process(file, parent)
 	ast.run_pass :sema, true
 	ast.run_pass :ref_pass
 
-	puts print_ast(ast)
+	#puts print_ast(ast)
 
 	begin
 		TypeContext.infer_scope(ast.scope)
@@ -32,8 +33,8 @@ def process(file, parent)
 		exit
 	end
 	
-	output = File.open("output.c", "w") { |f| f.write Codegen.new.codegen(ast) }
-	`gcc output.c -Wall -o output`
+	output = File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
+	`g++ -std=gnu++0x -Wall -Wno-unused-value -Wno-unused-variable output.cpp -o output`
 	`output.exe`
 	
 	ast

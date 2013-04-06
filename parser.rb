@@ -292,11 +292,13 @@ class Parser
 	end
 	
 	def type_unary
-		if matches(:sym, '*')
-				skip :line
-				AST::UnaryOp.new(s, :'*', type_chain)
-		else
-			type_chain
+		source do |s|
+			if matches(:sym, '*')
+					skip :line
+					AST::UnaryOp.new(s, :'*', type_chain)
+			else
+				type_chain
+			end
 		end
 	end
 	
@@ -499,7 +501,7 @@ class Parser
 					when '('
 						true
 				end
-			when :id, :int
+			when :id, :int, :str
 				true
 		end
 	end
@@ -600,6 +602,8 @@ class Parser
 					end
 				when :int
 					AST::Literal.new(s, :int, match(:int))
+				when :str
+					AST::Literal.new(s, :string, match(:str))
 				when :id
 					case tok_val
 						when :true

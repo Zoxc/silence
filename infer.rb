@@ -1,5 +1,5 @@
 ﻿class TypeContext
-	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value
+	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars
 	
 	class TypeError < CompileError
 	end
@@ -149,7 +149,8 @@
 			
 			map_type_params(source, parent_args, type.complex.type_params, args, type.text)
 			
-			result = inst(inst_obj, parent_args, type).source_dup(source)
+			result, inst_args = inst_ex(inst_obj, parent_args, type)
+			result = result.source_dup(source)
 			
 			if type.type_class?
 				@limits << TypeClassLimit.new(self, source, result)
@@ -161,22 +162,29 @@
 		elsif args
 			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{source.format}")
 		else
-			result = inst(inst_obj, parent_args, type).source_dup(source)
+			result, inst_args = inst(inst_obj, parent_args, type)
+			result = result.source_dup(source)
 		end
 		
-		[result, inst_obj.ctype.value]
+		[[result, inst_obj.ctype.value], inst_args]
 	end
 	
 	def analyze_value(ast, args)
-		type, value = analyze(ast, args)
+		ast.gtype = analyze(ast, args)
+		type, value = ast.gtype
 		raise TypeError.new("Expected value, but got type '#{type.text}'\n#{type.source.format}") unless value
 		type
 	end
 	
 	def analyze_type(ast, args)
-		type, value = analyze(ast, args)
+		ast.gtype = analyze(ast, args)
+		type, value = ast.gtype
 		raise TypeError.new("Expected type, but got value of type '#{type.text}'\n#{type.source.format}") if value
 		type
+	end
+	
+	def analyze(ast, args)
+		ast.gtype = analyze_impl(ast, args)
 	end
 	
 	def get_index_args(args)
@@ -188,7 +196,7 @@
 		end
 	end
 	
-	def analyze(ast, args)
+	def analyze_impl(ast, args)
 		case ast
 			# Types only
 			
@@ -200,7 +208,7 @@
 				end
 			when AST::UnaryOp
 				raise TypeError.new("Only pointer (*) unary operator allowed on types\n#{ast.source.format}") if ast.op != :'*'
-				[Types::Ptr.new(ast.source, analyze_type(ast.node, args.next)), false]
+				[Types::Complex.new(ast.source, AST::Ptr::Node, {AST::Ptr::Type => analyze_type(ast.node, args.next)}), false]
 			when AST::Tuple
 				[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
 			when AST::FunctionType
@@ -216,7 +224,7 @@
 						#raise TypeError.new("Only tuple types allowed as arguments to function type constructor (->)\n#{ast.arg.source.format}")
 				end				
 				
-				[Types::Function.new(ast.source, func_args, analyze_type(ast.result, args.next)), false]
+				[Types::Complex.new(ast.source, AST::Func::Node, {AST::Func::Args => func_args, AST::Func::Result => analyze_type(ast.result, args.next)}), false]
 			when AST::Grouped
 				analyze(ast.node, args.next)
 			
@@ -263,7 +271,7 @@
 					when :bool
 						AST::Bool.ctype.type
 					when :string
-						AST::String.ctype.type
+						Types::Complex.new(ast.source, AST::Ptr::Node, {AST::Ptr::Type => AST::Char.ctype.type})
 					else
 						raise "Unknown literal type #{ast.type}"
 				end.source_dup(ast.source), true]
@@ -282,6 +290,7 @@
 			when AST::Ref
 				result = @vars[ast.obj]
 				if result
+					ast.gen = [result, nil]
 					[result, true]
 				else
 					type = infer(ast.obj)
@@ -298,7 +307,9 @@
 						
 						[ast.gen.first, true]
 					else
-						analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index, type)
+						result, inst_args = analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index, type)
+						ast.gen = [result.first, inst_args]
+						result
 					end
 				end
 			when AST::Field
@@ -316,9 +327,9 @@
 						
 						ensure_shared(ref, ast.source)
 						
-						result = analyze_ref(ast.source, ref, !args.scoped, type.args, args.index, infer(ref))
+						result, inst_args = analyze_ref(ast.source, ref, !args.scoped, type.args, args.index, infer(ref))
 						
-						ast.gen = [:single, ref, result]
+						ast.gen = {type: :single, ref: ref, args: inst_args}
 						
 						result
 					else
@@ -373,11 +384,15 @@
 	
 	InstArgs = Struct.new(:map, :lmap, :params) do
 		def to_s
-			"{#{map.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}}, [#{params.each.map { |p| "#{p.first.name}: #{p.last.text}" }.join(", ")}]"
+			"Map({#{map.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}}, [#{params.each.map { |p| "#{p.first.name}: #{p.last.text}" }.join(", ")}])"
 		end
 		
-		def merged
-			map.merge(params)
+		def merge(other)
+			self.class.new(map.merge(other.map), lmap.merge(other.lmap), params.merge(other.params))
+		end
+		
+		def copy
+			self.class.new(map.dup, lmap.dup, params.dup)
 		end
 	end
 	
@@ -405,10 +420,6 @@
 				result = new_var(type.source)
 				@limits << TypeFunctionLimit.new(self, type.func.source, result, type.func, limit)
 				result
-			when Types::Ptr
-				Types::Ptr.new(type.source, inst_type(args, type.type))
-			when Types::Function
-				Types::Function.new(type.source, inst_type(args, type.args), inst_type(args, type.result))
 			when Types::Complex
 				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
 			else
@@ -520,8 +531,6 @@
 						when Types::Complex
 							field = type.complex.scope.names[c.name]
 							
-							c.ast.gen = [:field, type]
-							
 							raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 							
 							if field.is_a?(AST::Function)
@@ -531,7 +540,9 @@
 								parent_args = type.args
 							end
 							
-							field_type = inst(field, parent_args)
+							field_type, inst_args = inst_ex(field, parent_args)
+							
+							c.ast.gen = {type: :field, ref: field, args: inst_args}
 							
 							unify(field_type, var)
 							
@@ -563,8 +574,8 @@
 		analyze(func.scope, AnalyzeArgs.new)
 		
 		# TODO: make @result default to Unit, so the function can reference itself
-		func_result = Types::Function.new(func.source, func_args, @result || AST::Unit.ctype.type.source_dup(func.source))
-		
+		func_result = Types::Complex.new(func.source, AST::Func::Node, {AST::Func::Args => func_args, AST::Func::Result => (@result || AST::Unit.ctype.type.source_dup(func.source))})
+
 		finalize(func_result, true)
 	end
 	

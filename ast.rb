@@ -38,7 +38,7 @@ module AST
 	end
 	
 	class Node
-		attr_accessor :source, :declared
+		attr_accessor :source, :declared, :gtype
 		
 		def run_pass(name, replace = false, args = nil, apply = :apply_pass)
 			result = if respond_to? name
@@ -89,7 +89,7 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type, :declared, :ctype, :props
+		attr_accessor :name, :type, :ctype, :props
 		
 		def initialize(source, name, declared, type, props)
 			super(source)
@@ -275,7 +275,7 @@ module AST
 	end
 	
 	class Complex < Node
-		attr_accessor :name, :scope, :ctype, :type_params
+		attr_accessor :name, :scope, :ctype, :type_params, :c_prefix
 		
 		def parent
 			ast = @scope.parent.owner
@@ -287,6 +287,7 @@ module AST
 			@name = name
 			@scope = scope
 			@type_params = type_params
+			@c_prefix = true
 		end
 		
 		def declare_pass(scope)
@@ -383,7 +384,7 @@ module AST
 	
 		def declare_pass(scope)
 			@declared = scope.declare(@name, self)
-			
+			@scope.owner = self
 			@scope.parent = scope if @scope
 		end
 		
@@ -430,7 +431,7 @@ module AST
 	end
 	
 	class VariableDecl < ExpressionNode
-		attr_accessor :name, :value, :type
+		attr_accessor :name, :value, :type, :declared
 		
 		def initialize(source, right_source, name, type, value, props)
 			@source = source
@@ -574,6 +575,17 @@ module AST
 		Val = TypeParam.new(Src, :Val, nil)
 		Next = TypeParam.new(Src, :Next, nil)
 		Node = AST.complex_type(:Cell, [Val, Next])
+	end
+	
+	module Func
+		Args = TypeParam.new(Src, :Args, nil)
+		Result = TypeParam.new(Src, :Result, nil)
+		Node = AST.complex_type(:Func, [Args, Result])
+	end
+	
+	module Ptr
+		Type = TypeParam.new(Src, :Type, nil)
+		Node = AST.complex_type(:Ptr, [Type])
 	end
 	
 	Int = complex_type(:int)

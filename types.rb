@@ -113,41 +113,6 @@ module Types
 		end
 	end
 
-	class Ptr < Type
-		attr_accessor :type
-		
-		def initialize(source, type)
-			@source = source
-			@type = type
-		end
-		
-		def type_args
-			[@type]
-		end
-		
-		def text
-			"*#{@type.text}"
-		end
-	end
-	
-	class Function < Type
-		attr_accessor :args, :result
-		
-		def initialize(source, args, result)
-			@source = source
-			@args = args
-			@result = result
-		end
-		
-		def type_args
-			[@args, @result]
-		end
-		
-		def text
-			"{#{@args.text} -> #{@result.text}}"
-		end
-	end
-	
 	class Complex < Type
 		attr_accessor :complex, :args
 		
@@ -189,6 +154,10 @@ module Types
 		
 		def text
 			case complex
+				when AST::Func::Node
+					"{#{@args[AST::Func::Args].text} -> #{@args[AST::Func::Result].text}}"
+				when AST::Ptr::Node
+					"*#{@args[AST::Ptr::Type].text}"
 				when AST::Unit, AST::Cell::Node
 					"(#{tuple_map.map(&:text).join(', ')})"
 				else

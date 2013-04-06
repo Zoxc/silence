@@ -144,6 +144,13 @@ class Lexer
 				find_token
 			when v = s.scan(/\r\n|\n|\r/)
 				[v, :line, true]
+			when v = s.scan(/"/)
+				c = ''
+				while s.scan(/"/) != '"'
+					raise "Unterminated string" unless v
+					c << s.getch()
+				end
+				[v + c + '"', :str, c]
 			when v = s.scan(/[0-9]+/)
 				[v, :int, v.to_i]
 			when v = s.scan(/[A-Za-z_]+\w*/)
