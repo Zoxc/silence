@@ -98,7 +98,7 @@ class Codegen
 		unless ast.type_params.empty?
 			r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_l")}_d"
 		end
-		puts "mangling #{ast.name} #{ast.ctype.type_vars.map { |p| p.text }.join(",")} #{map}"
+		#puts "mangling #{ast.name} #{ast.ctype.type_vars.map { |p| p.text }.join(",")} #{map}"
 		unless ast.ctype.type_vars.empty?
 			r << "_V#{ast.ctype.type_vars.map { |p| mangle_type(map.map[p], map) }.join("_l")}_d"
 		end
@@ -151,8 +151,9 @@ class Codegen
 		list = (@gen[ast] ||= [])
 		return if list.find { |i| map == i }
 		list << map
-		
+		puts "Generating #{ast.name}"
 		case ast
+			when AST::TypeClass
 			when AST::Ptr::Node
 			when AST::Func::Node
 				args = map.params[AST::Func::Args].tuple_map
@@ -200,7 +201,7 @@ class Codegen
 				o << "\n{\n"
 				ast.scope.names.values.each do |value|
 					next if !value.is_a?(AST::Variable) || value.props[:shared]
-					o << "  #{c_type(value.ctype.type, map)} f_#{value.name};\n"
+					o << "    #{c_type(value.ctype.type, map)} f_#{value.name};\n"
 				end
 				o << "};\n\n"
 				@out[:struct] << o

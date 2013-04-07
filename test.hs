@@ -1,29 +1,13 @@
-struct A T
-	shared t: T
-	
-	k: bool
-	
-	tmpl[A](t)
-		a: A
-		return t
-	
-	hi()
-		return k
-	
-h: A[int]
+struct Pair A, B
+	r: B
 
-b(y: A)
-	return y.tmpl[bool](1)
+class Cool T, A
+	shared hi[Y]() -> Pair[A, Y]
 
-a()
-	return b(h)
-	
-import printf(str: *char)
+instance[T] Cool T, bool
+	shared hi[Y]()
+		v: Pair[bool, Y]
+		return v
 
-export t()
-	h.hi()
-	return a()
-	
 export main()
-	printf("hello")
-	return 0
+	return Cool[int, bool].hi[int]().r

@@ -51,10 +51,10 @@ module Types
 	class Variable < Type
 		attr_accessor :instance
 		
-		def initialize(source, system, instance)
+		def initialize(source, system, name)
 			@source = source
 			@system = system
-			@instance = instance
+			@name = name
 		end
 		
 		def ==(other)
@@ -91,13 +91,13 @@ module Types
 			if @instance
 				@instance.text
 			else
-				@name ||= @system.new_var_name
+				(@name_num ||= @system.new_var_name) + (@name ? "_" + @name : '')
 			end
 		end
 		
 		def real_text
 			text
-			#"#{@name ||= @system.new_var_name} {#{text}}"
+			#"#{@name_num ||= @system.new_var_name} {#{text}}"
 		end
 		
 		def source

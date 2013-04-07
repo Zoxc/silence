@@ -81,8 +81,8 @@
 		"l#{result}"
 	end
 	
-	def new_var(source = nil)
-		var = Types::Variable.new(source, self, nil)
+	def new_var(source = nil, name = nil)
+		var = Types::Variable.new(source, self, name.to_s)
 		#puts "new var #{var.text}\n#{source.format}"
 		#puts "\n#{caller.join("\n")}"
 		@type_vars << var
@@ -131,13 +131,14 @@
 		end
 		
 		params.each do |param|
-			parent_args[param] ||= new_var(source)
+			parent_args[param] ||= new_var(source, param.name)
 		end
 	end
 	
-	def analyze_ref(source, inst_obj, direct, parent_args, args, type)
+	def analyze_ref(source, obj, direct, parent_args, args)
 		args[:used] = true
 		args = args[:args]
+		type = infer(obj)
 		
 		if type.kind_of?(Types::Complex)
 			args ||= []
@@ -147,26 +148,26 @@
 				args.unshift(type_class_result)
 			end
 			
-			map_type_params(source, parent_args, type.complex.type_params, args, type.text)
+			map_type_params(source, parent_args, obj.type_params, args, type.text)
 			
-			result, inst_args = inst_ex(inst_obj, parent_args, type)
+			result, inst_args = inst_ex(obj, parent_args, type)
 			result = result.source_dup(source)
 			
 			if type.type_class?
 				@limits << TypeClassLimit.new(self, source, result)
 				if direct
-					@views[type_class_result] = result 
+					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
 					result = type_class_result
 				end
 			end
 		elsif args
 			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{source.format}")
 		else
-			result, inst_args = inst(inst_obj, parent_args, type)
+			result, inst_args = inst(obj, parent_args, type)
 			result = result.source_dup(source)
 		end
 		
-		[[result, inst_obj.ctype.value], inst_args]
+		[[result, obj.ctype.value], inst_args]
 	end
 	
 	def analyze_value(ast, args)
@@ -307,7 +308,7 @@
 						
 						[ast.gen.first, true]
 					else
-						result, inst_args = analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index, type)
+						result, inst_args = analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index)
 						ast.gen = [result.first, inst_args]
 						result
 					end
@@ -327,7 +328,7 @@
 						
 						ensure_shared(ref, ast.source)
 						
-						result, inst_args = analyze_ref(ast.source, ref, !args.scoped, type.args, args.index, infer(ref))
+						result, inst_args = analyze_ref(ast.source, ref, !args.scoped, type.args.dup, args.index)
 						
 						ast.gen = {type: :single, ref: ref, args: inst_args}
 						
@@ -411,7 +412,7 @@
 		type = type.prune
 		case type
 			when Types::Variable
-				args.map[type] ||= new_var(type.source)
+				args.map[type] ||= new_var(type.source, type.name)
 			when Types::Param
 				args.params[type.param] || type
 			when Types::TypeFunc
