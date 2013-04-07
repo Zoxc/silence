@@ -161,7 +161,7 @@ module Types
 				when AST::Unit, AST::Cell::Node
 					"(#{tuple_map.map(&:text).join(', ')})"
 				else
-					"#{@complex.name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
+					"#{@complex.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end
 		end
 	end
@@ -183,7 +183,7 @@ module Types
 		end
 
 		def text
-			"param #{@param.name}"
+			"param #{@param.scoped_name}"
 		end
 	end
 	

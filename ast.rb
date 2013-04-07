@@ -40,6 +40,12 @@ module AST
 	class Node
 		attr_accessor :source, :declared, :gtype
 		
+		def scoped_name
+			puts "scoped_name #{self.class.name}"
+			owner = declared.owner
+			"#{"#{owner.scoped_name}." unless owner.is_a?(Program)}#{name}"
+		end
+		
 		def run_pass(name, replace = false, args = nil, apply = :apply_pass)
 			result = if respond_to? name
 					send name, args
@@ -330,6 +336,10 @@ module AST
 		
 		def ref_pass(scope)
 			@typeclass.obj.instances << self
+		end
+		
+		def scoped_name
+			name
 		end
 		
 		def name
