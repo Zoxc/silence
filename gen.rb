@@ -1,7 +1,7 @@
 class Codegen
-	def initialize
+	def initialize(infer_args)
 		@out = {prelude: '', struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
-		@ctx = TypeContext.new(TypeContext::InferArgs.new({}), AST::Variable.new(AST::Src, :ERROR, nil, nil, {}))
+		@ctx = TypeContext.new(infer_args, AST::Variable.new(AST::Src, :ERROR, nil, nil, {}))
 		@gen = {}
 		@named = {}
 		@names = 0

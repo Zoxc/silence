@@ -1,5 +1,5 @@
 ﻿class TypeContext
-	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars
+	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars, :infer_args
 	
 	class TypeError < CompileError
 	end
@@ -626,7 +626,7 @@
 		@typeclass = Types::Complex.new(@obj.source, typeclass, Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, analyze_args)] }])
 		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
 		
-		TypeContext.infer_scope(@obj.scope)
+		TypeContext.infer_scope(@obj.scope, @infer_args)
 		
 		infer(typeclass)
 		
@@ -660,7 +660,7 @@
 					parent = []
 				end
 				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
-				TypeContext.infer_scope(value.scope)
+				TypeContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
 				process_fixed(value)
 			when AST::Function
@@ -680,7 +680,7 @@
 		TypeContext.infer(value, @infer_args)
 	end
 
-	def self.infer(value, infer_args = InferArgs.new({}))
+	def self.infer(value, infer_args)
 		return value.ctype.type if value.ctype
 		raise "Recursive #{value.name}" if infer_args.visited[value]
 		infer_args.visited[value] = true
@@ -692,9 +692,9 @@
 
 	InferArgs = Struct.new :visited
 
-	def self.infer_scope(scope)
+	def self.infer_scope(scope, infer_args)
 		scope.names.each_pair do |name, value|
-			infer(value)
+			infer(value, infer_args)
 		end
 	end
 end

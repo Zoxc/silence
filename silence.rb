@@ -10,7 +10,8 @@ require_relative 'infer'
 require_relative 'typeclass'
 require_relative 'parser'
 
-TypeContext.infer_scope(AST::Builtin.scope)
+InferArgs = TypeContext::InferArgs.new({})
+TypeContext.infer_scope(AST::Builtin.scope, InferArgs)
 
 def process(file, parent)
 	puts "Processing #{file}"
@@ -24,16 +25,15 @@ def process(file, parent)
 	ast.run_pass :ref_pass
 
 	#puts print_ast(ast)
-
 	begin
-		TypeContext.infer_scope(ast.scope)
+		TypeContext.infer_scope(ast.scope, InferArgs)
 	rescue CompileError => error
 		$stderr.puts "Fatal errors:", error.message
 		$stderr.puts error.backtrace.join("\n")
 		exit
 	end
 	
-	output = File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
+	output = File.open("output.cpp", "w") { |f| f.write Codegen.new(InferArgs).codegen(ast) }
 	`g++ -std=gnu++0x -Wall -Wno-unused-value -Wno-unused-variable output.cpp -o output`
 	`output.exe`
 	
