@@ -163,7 +163,7 @@
 		elsif args
 			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{source.format}")
 		else
-			result, inst_args = inst(obj, parent_args, type)
+			result, inst_args = type, InstArgs.new({}, {})# inst(obj, parent_args, type) TODO: Check if this is required anymore?
 			result = result.source_dup(source)
 		end
 		
@@ -400,7 +400,7 @@
 	def inst_limit(lmap, args, limit)
 		case limit
 			when TypeClassLimit
-				args.lmap[limit] ||= TypeClassLimit.new(self, limit.source, inst_type(args, limit.var))
+				lmap[limit] ||= TypeClassLimit.new(self, limit.source, inst_type(args, limit.var))
 			when TypeFunctionLimit
 				TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(lmap, args, limit.typeclass_limit))
 			else
@@ -588,16 +588,21 @@
 		@type_vars.reject! { |var| var.instance }
 		
 		unresolved_vars = @type_vars
-		@type_vars = @type_vars.select { |var| occurs_in?(var, type) }
 		
-		@limits.each do |c|
-			@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
-		end
+		if @obj.is_a? AST::Function
 		
-		unresolved_vars -= @type_vars
-		
-		@limits.each do |c|
-			unresolved_vars.delete(c.var.prune) if c.is_a? TypeFunctionLimit
+			@type_vars = @type_vars.select { |var| occurs_in?(var, type) }
+			
+			@limits.each do |c|
+				@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
+			end
+			
+			unresolved_vars -= @type_vars
+			
+			@limits.each do |c|
+				unresolved_vars.delete(c.var.prune) if c.is_a? TypeFunctionLimit
+			end
+			
 		end
 		
 		puts "Type of #{@obj.name} is #{type.text}"

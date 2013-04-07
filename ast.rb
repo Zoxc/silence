@@ -41,7 +41,6 @@ module AST
 		attr_accessor :source, :declared, :gtype
 		
 		def scoped_name
-			puts "scoped_name #{self.class.name}"
 			owner = declared.owner
 			"#{"#{owner.scoped_name}." unless owner.is_a?(Program)}#{name}"
 		end
