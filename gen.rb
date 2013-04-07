@@ -141,17 +141,16 @@ class Codegen
 	end
 
 	def mangle_impl(ast, map)
-		puts "mangle_impl #{ast.name} #{map}"
 		case ast
 			when AST::TypeClassInstance
 				id = @named[ast] ||= (@names += 1)
-				"_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}_d"
+				"_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}_l"
 			when AST::Ptr::Node
-				"_P#{mangle_type(map.params[AST::Ptr::Type], map)}_d"
+				"_P#{mangle_type(map.params[AST::Ptr::Type], map)}_l"
 			when AST::Func::Node
 				args = map.params[AST::Func::Args].tuple_map
 				result = map.params[AST::Func::Result]
-				"_F#{args.map {|a| mangle_type(a, map) }.join("_l")}_R#{mangle_type(result, map)}_d"
+				"_F#{args.map {|a| mangle_type(a, map) }.join("_n")}_R#{mangle_type(result, map)}_l"
 			else
 				owner = ast.declared.owner
 				if owner.is_a?(AST::Program)
@@ -208,7 +207,20 @@ class Codegen
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
 				o << "\n{\n"
-				(o << "    auto self = (#{c_type(ast.declared.owner.ctype.type, map)} *)data;\n") if ast.declared.owner.is_a?(AST::Complex) && !ast.props[:shared]
+				
+				owner = ast.declared.owner
+				
+				if owner.is_a?(AST::Complex) && !ast.props[:shared]
+					if owner.is_a?(AST::TypeClassInstance)
+						puts "typeclass first: #{owner.typeclass.obj.type_params.first.name}"
+						puts "inst_args: #{owner.ctype.typeclass.text}"
+						self_type = @ctx.inst_type(map.dup, owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first])
+						puts "Self type of instance #{ast.name} is #{self_type.text}"
+					else
+						self_type = owner.ctype.type
+					end
+					o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
+				end
 				ast.scope.names.values.each do |value|
 					next if !value.is_a?(AST::Variable)
 					next if ast.params.map(&:var).include?(value)

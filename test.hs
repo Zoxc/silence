@@ -1,13 +1,20 @@
-struct Pair A, B
-	r: B
-
 class Cool T, A
-	shared hi[Y]() -> Pair[A, Y]
+	shared hi() -> bool
+	hello() -> int
 
-instance[Ti] Cool Ti, bool
-	shared hi[Yi]()
-		v: Pair[bool, Yi]
-		return v
+instance[T] Cool T, bool
+	shared hi() { return false }
+	hello() { return 2 }
+
+a(v: Cool[bool])
+	a: int
+	r := v.hello()
+	return r
+
+import printf(str: *char)
 
 export main()
-	return Cool[int, bool].hi[int]().r
+	a(true)
+	Cool[int, bool].hi()
+	printf("hello")
+	return 0
