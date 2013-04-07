@@ -82,7 +82,7 @@
 	end
 	
 	def new_var(source = nil, name = nil)
-		var = Types::Variable.new(source, self, name.to_s)
+		var = Types::Variable.new(source, self, name ? name.to_s : nil)
 		#puts "new var #{var.text}\n#{source.format}"
 		#puts "\n#{caller.join("\n")}"
 		@type_vars << var
@@ -383,26 +383,26 @@
 		end
 	end
 	
-	InstArgs = Struct.new(:map, :lmap, :params) do
+	InstArgs = Struct.new(:map, :params) do
 		def to_s
 			"Map({#{map.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}}, [#{params.each.map { |p| "#{p.first.name}: #{p.last.text}" }.join(", ")}])"
 		end
 		
 		def merge(other)
-			self.class.new(map.merge(other.map), lmap.merge(other.lmap), params.merge(other.params))
+			self.class.new(map.merge(other.map), params.merge(other.params))
 		end
 		
 		def copy
-			self.class.new(map.dup, lmap.dup, params.dup)
+			self.class.new(map.dup, params.dup)
 		end
 	end
 	
-	def inst_limit(args, limit)
+	def inst_limit(lmap, args, limit)
 		case limit
 			when TypeClassLimit
 				args.lmap[limit] ||= TypeClassLimit.new(self, limit.source, inst_type(args, limit.var))
 			when TypeFunctionLimit
-				TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(args, limit.typeclass_limit))
+				TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(lmap, args, limit.typeclass_limit))
 			else
 				raise "Unknown limit #{limit.class}"
 		end
@@ -435,10 +435,10 @@
 	
 	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
-		map = {}
-		inst_args = InstArgs.new(map, {}, params)
+		lmap = {}
+		inst_args = InstArgs.new({}, params)
 		
-		@limits.concat(obj.ctype.limits.map { |l| inst_limit(inst_args, l) })
+		@limits.concat(obj.ctype.limits.map { |l| inst_limit(lmap, inst_args, l) })
 		
 		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
 	end

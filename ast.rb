@@ -333,7 +333,7 @@ module AST
 		end
 		
 		def name
-			"##{@typeclass.obj.name}"
+			"##{@typeclass.obj.name}_#{__id__}"
 		end
 		
 		def visit

@@ -4,9 +4,9 @@ struct Pair A, B
 class Cool T, A
 	shared hi[Y]() -> Pair[A, Y]
 
-instance[T] Cool T, bool
-	shared hi[Y]()
-		v: Pair[bool, Y]
+instance[Ti] Cool Ti, bool
+	shared hi[Yi]()
+		v: Pair[bool, Yi]
 		return v
 
 export main()

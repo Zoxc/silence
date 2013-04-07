@@ -3,9 +3,11 @@ class Codegen
 		@out = {prelude: '', struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
 		@ctx = TypeContext.new(TypeContext::InferArgs.new({}), AST::Variable.new(AST::Src, :ERROR, nil, nil, {}))
 		@gen = {}
-		@instances = {}
+		@named = {}
+		@names = 0
+		
 		{AST::Int => 'int', AST::Bool => 'bool', AST::Char => 'char'}.each do |type, name|
-			@gen[type] = [TypeContext::InstArgs.new({}, {}, {})]
+			@gen[type] = [TypeContext::InstArgs.new({}, {})]
 			type.c_prefix = false
 			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
 		end
@@ -23,6 +25,9 @@ class Codegen
 		return [[], []] if ast.is_a?(AST::Program)
 		params, vars = ast_keys(ast.declared.owner)
 		[ast.type_params + params, ast.ctype.type_vars + vars]
+	end
+	
+	def verify_map(ast, map)
 	end
 	
 	def do_ref(ast, old_map, map)
@@ -48,13 +53,42 @@ class Codegen
 		end
 		vars.each { |p| raise "missing var #{p.text}" unless map.map.key?(p) }
 		
+		owner = ast.declared.owner
+		
 		puts "ref #{ast.name} old_map:#{old_map} new_map:#{map}"
-		gen(ast, map)
-		map
+			
+		if owner.is_a?(AST::TypeClass)	
+			typeclass = @ctx.inst_type(map.dup, owner.ctype.type)
+			inst, inst_map = @ctx.find_instance(typeclass)
+			raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
+			puts "found typeclass inst #{inst.ctype.type.text}"
+			
+			ref = inst.scope.names[ast.name]
+			raise "Didn't find name '#{ast.name.class}' in typeclass instance" unless ref
+			new_map = TypeContext::InstArgs.new({}, inst_map)
+			
+			ref.type_params.each_with_index do |p, i|
+				param = ast.type_params[i]
+				raise "Didn't find matching param for '#{p.name}'" unless param
+				param_mapped = map.params[param]
+				raise "Param '#{p.name}' type not provided" unless param_mapped
+				inst_map[p] = param_mapped
+			end
+			
+			puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
+			
+			map = new_map
+		else
+			ref = ast
+		end
+		
+		gen(ref, map)
+		[ref, map]
 	end
 	
 	def ref(ast, old_map, map)
-		mangle(ast, do_ref(ast, old_map, map))
+		ast, map = do_ref(ast, old_map, map)
+		mangle(ast, map)
 	end
 	
 	def fixed_type(type, map, &block)
@@ -69,8 +103,8 @@ class Codegen
 				raise "Unable to find instance of #{type.text} #{map}" unless r
 				fixed_type(r, map, &block)
 			when Types::Complex
-				new_map = do_ref(type.complex, map, TypeContext::InstArgs.new({}, {}, type.args))
-				block.(type.complex, new_map)
+				complex, new_map = do_ref(type.complex, map, TypeContext::InstArgs.new({}, type.args))
+				block.(complex, new_map)
 			else
 				raise "(fixed_type unknown #{type.class.inspect} )"
 		end
@@ -95,6 +129,7 @@ class Codegen
 
 	def mangle_name(ast, map)
 		r = ast.name.to_s.gsub('_', '_u')
+		return r if ast.is_a? AST::TypeClass
 		unless ast.type_params.empty?
 			r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_l")}_d"
 		end
@@ -106,13 +141,17 @@ class Codegen
 	end
 
 	def mangle_impl(ast, map)
+		puts "mangle_impl #{ast.name} #{map}"
 		case ast
+			when AST::TypeClassInstance
+				id = @named[ast] ||= (@names += 1)
+				"_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}_d"
 			when AST::Ptr::Node
-				"_P#{mangle_type(map.params[AST::Ptr::Type], map)}"
+				"_P#{mangle_type(map.params[AST::Ptr::Type], map)}_d"
 			when AST::Func::Node
 				args = map.params[AST::Func::Args].tuple_map
 				result = map.params[AST::Func::Result]
-				"_F#{args.map {|a| mangle_type(a, map) }.join("_l")}_R#{mangle_type(result, map)}"
+				"_F#{args.map {|a| mangle_type(a, map) }.join("_l")}_R#{mangle_type(result, map)}_d"
 			else
 				owner = ast.declared.owner
 				if owner.is_a?(AST::Program)
@@ -124,9 +163,7 @@ class Codegen
 	end
 	
 	def mangle(ast, map, prefix = true)
-		r = "_" + mangle_impl(ast, map)
-		#puts "mangling #{ast.name} #{print_map map} => #{r}"
-		r
+		"_" + mangle_impl(ast, map)
 	end
 	
 	def function_proto(ast, map, bare = false)
@@ -226,7 +263,7 @@ class Codegen
 				apply.(ast.nodes)
 			when AST::Function
 				return if !ast.type_params.empty? || !ast.ctype.type.fixed_type? || !ast.props[:export]
-				gen(ast, TypeContext::InstArgs.new({}, {}, {}))
+				gen(ast, TypeContext::InstArgs.new({}, {}))
 		end
 	end
 	

@@ -49,7 +49,7 @@ module Types
 	end
 
 	class Variable < Type
-		attr_accessor :instance
+		attr_accessor :instance, :name
 		
 		def initialize(source, system, name)
 			@source = source
@@ -155,7 +155,7 @@ module Types
 		def text
 			case complex
 				when AST::Func::Node
-					"{#{@args[AST::Func::Args].text} -> #{@args[AST::Func::Result].text}}"
+					"#{@args[AST::Func::Args].text} -> #{@args[AST::Func::Result].text}"
 				when AST::Ptr::Node
 					"*#{@args[AST::Ptr::Type].text}"
 				when AST::Unit, AST::Cell::Node
