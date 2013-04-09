@@ -22,8 +22,12 @@ class Codegen
 	end
 	
 	def ast_keys(ast)
-		return [] if ast.is_a?(AST::Program)
-		ast.type_params + ast_keys(ast.declared.owner)
+		case ast
+			when AST::Program, AST::TypeClassInstance
+				[]
+			else
+				ast.type_params + ast_keys(ast.declared.owner)
+		end
 	end
 	
 	def do_ref(ast, old_map, map)

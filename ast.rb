@@ -165,6 +165,8 @@ module AST
 		end
 		
 		def declare(name, obj)
+			existing = @names[name]
+			raise CompileError, "Unable to declare name '#{name}'\n#{obj.source.format}\nName was already taked by:\n#{existing.source.format}" if existing
 			#puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
 			@names[name] = obj
 			self

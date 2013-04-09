@@ -161,8 +161,11 @@
 			end
 		elsif args
 			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{source.format}")
+		elsif obj.kind_of?(AST::TypeFunction)
+			result, inst_args = inst_ex(obj, parent_args, type)
+			result = result.source_dup(source)
 		else
-			result, inst_args = type, InstArgs.new({})# inst(obj, parent_args, type) TODO: Check if this is required anymore?
+			result, inst_args = type, InstArgs.new({})
 			result = result.source_dup(source)
 		end
 		

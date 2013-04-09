@@ -20,12 +20,12 @@ def process(file, parent)
 
 	ast = Parser.new(input).program
 	
-	ast.run_pass :declare_pass, false, (parent.scope if parent)
-	ast.run_pass :sema, true
-	ast.run_pass :ref_pass
-
 	#puts print_ast(ast)
 	begin
+		ast.run_pass :declare_pass, false, (parent.scope if parent)
+		ast.run_pass :sema, true
+		ast.run_pass :ref_pass
+
 		TypeContext.infer_scope(ast.scope, InferArgs)
 	rescue CompileError => error
 		$stderr.puts "Fatal errors:", error.message
