@@ -63,7 +63,7 @@ def print_ast(ast)
 		when AST::Scope
 			format.(ast, [[:nodes, ast.nodes]])
 		when AST::TypeClassInstance
-			format.(ast, [[:params, ast.params], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
+			format.(ast, [[:type_params, ast.type_params], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
 		when AST::Complex
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:type_params, ast.type_params]])
 		when AST::TypeParam
