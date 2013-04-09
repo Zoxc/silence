@@ -59,7 +59,6 @@
 	def initialize(infer_args, obj)
 		@infer_args = infer_args
 		@obj = obj
-		obj.ctype = self
 		@vars = {}
 		@var_allocs = {}
 		@type_vars = []
@@ -199,47 +198,20 @@
 	
 	def analyze_impl(ast, args)
 		case ast
-			# Types only
-			
-			when AST::Function::Param, AST::Variable
-				if ast.type
-					[analyze_type(ast.type, args.next), true]
-				else
-					[new_var(ast.source), true]
-				end
-			when AST::UnaryOp
-				raise TypeError.new("Only pointer (*) unary operator allowed on types\n#{ast.source.format}") if ast.op != :'*'
-				[Types::Complex.new(ast.source, AST::Ptr::Node, {AST::Ptr::Type => analyze_type(ast.node, args.next)}), false]
-			when AST::Tuple
-				[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
-			when AST::FunctionType
-				func_args = case ast.arg
-					when AST::Grouped
-						arg = analyze_type(ast.arg.node, args.next)
-						make_tuple(ast.arg.source, [arg])
-					when AST::Tuple
-						analyze_type(ast.arg, args.next)
-					else
-						analyze_type(ast.arg, args.next)
-						# TODO: Constraint to tuple type instances only!
-						#raise TypeError.new("Only tuple types allowed as arguments to function type constructor (->)\n#{ast.arg.source.format}")
-				end				
-				
-				[Types::Complex.new(ast.source, AST::Func::Node, {AST::Func::Args => func_args, AST::Func::Result => analyze_type(ast.result, args.next)}), false]
-			when AST::Grouped
-				analyze(ast.node, args.next)
-			
 			# Values only
 			
 			when AST::Return
 				result = analyze_value(ast.value, args.next)
 				prev = @result
 				
-				[if prev
+				if prev
 					unify(result, prev)
+					result
 				else
 					@result = result
-				end, true]
+				end
+				
+				[AST::Unit.ctype.type.source_dup(ast.source), true]
 			when AST::If
 				cond = analyze_value(ast.condition, args.next)
 				unify(cond, Types::BoolType)
@@ -248,11 +220,6 @@
 				analyze_value(ast.else_node, args.next) if ast.else_node
 				
 				[@unit_type, true]
-			when AST::BinOp
-				lhs = analyze_value(ast.lhs, args.next)
-				rhs = analyze_value(ast.rhs, args.next)
-				unify(lhs, rhs)
-				[lhs, true]
 			when AST::Call
 				type = analyze_value(ast.obj, args.next)
 				result = new_var(ast.source)
@@ -278,7 +245,7 @@
 				end.source_dup(ast.source), true]
 			when AST::Scope
 				[if ast.nodes.empty?
-					@unit_type
+					AST::Unit.ctype.type.source_dup(ast.source)
 				else
 					ast.nodes[0...-1].each do |node|
 						unit_default analyze_value(node, args.next)
@@ -286,8 +253,41 @@
 					analyze_value(ast.nodes.last, args.next)
 				end, true]
 				
-			# The tricky mix
+			# The tricky mix of values and types
 			
+			when AST::Grouped
+				analyze(ast.node, args.next)
+			when AST::UnaryOp
+				raise TypeError.new("Only pointer (*) unary operator allowed on types\n#{ast.source.format}") if ast.op != '*'
+				[Types::Complex.new(ast.source, AST::Ptr::Node, {AST::Ptr::Type => analyze_type(ast.node, args.next)}), false]
+			when AST::Tuple
+				[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
+			when AST::BinOp
+				lhs, lvalue = analyze(ast.lhs, args.next)
+				rhs, rvalue = analyze(ast.rhs, args.next)
+				
+				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
+				
+				if lvalue
+					unify(lhs, rhs)
+					[lhs, true]
+				else
+					raise TypeError.new("Unknown type operator '#{ast.op}'\n#{ast.source.format}") if ast.op != '->'
+					
+					func_args = case ast.lhs
+						when AST::Grouped
+							arg = analyze_type(ast.lhs.node, args.next)
+							make_tuple(ast.lhs.source, [arg])
+						when AST::Tuple
+							lhs
+						else
+							lhs
+							# TODO: Constraint to tuple type instances only!
+							#raise TypeError.new("Only tuple types allowed as arguments to function type constructor (->)\n#{ast.arg.source.format}")
+					end				
+					
+					[Types::Complex.new(ast.source, AST::Func::Node, {AST::Func::Args => func_args, AST::Func::Result => rhs}), false]
+				end
 			when AST::Ref
 				result = @vars[ast.obj]
 				if result
@@ -565,7 +565,12 @@
 		
 		func.scope.names.each_value do |var|
 			next if var.is_a? AST::TypeParam
-			@vars[var] = analyze_value(var, analyze_args)
+			
+			@vars[var] = if var.type
+					analyze_type(var.type, analyze_args)
+				else
+					new_var(var.source)
+				end
 		end
 		
 		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
@@ -632,6 +637,7 @@
 		end
 		
 		@type = type
+		@obj.ctype = self
 	end
 	
 	def process_instance
@@ -677,7 +683,7 @@
 				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
 				TypeContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
-				process_fixed(value)
+				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source), true)
 			when AST::Function
 				if value.scope
 					process_function
@@ -695,7 +701,7 @@
 		TypeContext.infer(value, @infer_args)
 	end
 
-	def self.infer(value, infer_args)
+	def self.infer(value, infer_args) # TODO: Should have a source argument for better recursive error messages
 		return value.ctype.type if value.ctype
 		raise "Recursive #{value.name}" if infer_args.visited[value]
 		infer_args.visited[value] = true

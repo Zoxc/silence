@@ -28,8 +28,6 @@ def print_ast(ast)
 	case ast
 		when nil
 			"(nil)"
-		when AST::FunctionType
-			format.(ast, [[:arg, :single], [:result, :single]])
 		when AST::Literal
 			format.(ast, [[:value]])
 		when AST::VariableDecl

@@ -128,21 +128,6 @@ module AST
 		end
 	end
 
-	class FunctionType < Node
-		attr_accessor :arg, :result
-		
-		def initialize(source, arg, result)
-			super(source)
-			@arg = arg
-			@result = result
-		end
-		
-		def visit
-			@arg = yield @arg
-			@result = yield @result
-		end
-	end
-
 	class TypeCheck < Node
 		attr_accessor :node, :type
 		
@@ -613,7 +598,7 @@ module AST
 	proc do
 		args = TypeParam.new(Src, :Args, nil)
 		result = TypeParam.new(Src, :Result, nil)
-		BuiltinNodes << TypeClassInstance.new(Src, Ref.new(Src, Callable::Node), [FunctionType.new(Src, Ref.new(Src, args), Ref.new(Src, result))], GlobalScope.new([]), [args, result])
+		BuiltinNodes << TypeClassInstance.new(Src, Ref.new(Src, Callable::Node), [BinOp.new(Src, Ref.new(Src, args), '->', Ref.new(Src, result))], GlobalScope.new([]), [args, result])
 	end.()
 
 	Builtin.run_pass(:declare_pass, false)

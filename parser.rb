@@ -233,7 +233,7 @@ class Parser
 		
 		if matches :sym, '->'
 			skip :line
-			result = type
+			result = expression
 		end
 		
 		func.source = AST::Source.new(s.input, s.range)
@@ -278,67 +278,12 @@ class Parser
 		end
 	end
 	
-	def type
-		source do |s|
-			arg = type_unary
-			if matches(:sym, '->')
-				skip :line
-				AST::FunctionType.new(s, arg, type)
-			else
-				arg
-			end
-			
-		end
-	end
-	
-	def type_unary
-		source do |s|
-			if matches(:sym, '*')
-					skip :line
-					AST::UnaryOp.new(s, :'*', type_chain)
-			else
-				type_chain
-			end
-		end
-	end
-	
-	def type_chain
-		result = type_factor
-		
-		while eq(:sym, '.')
-			source do |s|
-				step
-				name = match(:id)
-				skip :line
-				result = AST::Field.new(s, result, name)
-			end
-		end
-		
-		result
-	end
-	
-	def type_factor
-		source do |s|
-			if eq(:sym, '(')
-				tuple(s) { type }
-			else
-				var = source { |s| AST::NameRef.new(s, match(:id)) }
-				
-				if matches(:sym, '[')
-					AST::Index.new(s, var, type_parameters)
-				else
-					var
-				end
-			end
-		end
-	end
-	
-	def type_parameters(terminate = true, expr = proc { type })
+	def type_parameters(terminate = true)
 		r = []
 		skip :line
 		
 		loop do
-			r << expr.()
+			r << expression
 			if matches(:sym, ',')
 				skip :line
 			else
@@ -357,7 +302,7 @@ class Parser
 	def type_specifier
 		match :sym, ':'
 		skip :line
-		type
+		expression
 	end
 	
 	def group(baseline)
@@ -423,6 +368,7 @@ class Parser
 	pred = proc { |p, *args| args.each { |a| Operators[a] = p }}
 	pred_num = 0
 	pred.(pred_num += 1, '+=', '-=', '*=', '/=', '%=', '=')
+	pred.(pred_num += 1, '->')
 	pred.(pred_num += 1, '+', '-')
 	pred.(pred_num += 1, '*', '/', '%')
 	
@@ -430,10 +376,11 @@ class Parser
 		tok == :sym && Operators[tok_val]
 	end
 	
-	def pred_operator(left = function_operator, min = 0)
+	def pred_operator(left = unary, min = 0)
 		loop do
 			break unless is_pred_op
 			op = tok_val
+			op_src = @l.source
 			pred = Operators[tok_val]
 			
 			break if pred < min
@@ -441,20 +388,18 @@ class Parser
 			step
 			skip :line
 			
-			source do |s|
-				right = function_operator
+			right = unary
+			
+			loop do
+				break unless is_pred_op
+				next_pred = Operators[tok_val]
 				
-				loop do
-					break unless is_pred_op
-					next_pred = Operators[tok_val]
-					
-					break if next_pred <= pred
-					
-					right = pred_operator(right, next_pred)
-				end
+				break if next_pred <= pred
 				
-				left = AST::BinOp.new(s, left, op.to_sym, right)
+				right = pred_operator(right, next_pred)
 			end
+			
+			left = AST::BinOp.new(op_src, left, op, right)
 		end
 		
 		left
@@ -463,6 +408,7 @@ class Parser
 	def variable_decl(s, name, props)
 		source do |ts|
 			if matches(:sym, ':=')
+				skip :line
 				value = expression
 			else
 				type = type_specifier
@@ -477,21 +423,15 @@ class Parser
 		end
 	end
 	
-	def function_operator
-		source do |s|
-			arg = unary
-			if matches(:sym, '->') || matches(:sym, '->')
-				skip :line
-				AST::FunctionType.new(s, arg, function_operator)
-			else
-				arg
-			end
-			
-		end
-	end
-	
 	def unary
-		apply
+		source do |s|
+			if matches(:sym, '*')
+					skip :line
+					AST::UnaryOp.new(s, '*', apply)
+			else
+				apply
+			end
+		end
 	end
 	
 	def is_expression
@@ -546,7 +486,7 @@ class Parser
 						step
 						skip :line
 						
-						result = AST::Index.new(s, result, type_parameters(true, proc { expression }))
+						result = AST::Index.new(s, result, type_parameters(true))
 					when '('
 						step
 						skip :line
@@ -576,8 +516,12 @@ class Parser
 		r = []
 		if !eq(:sym, ')')
 			loop do
-				r << yield
-				break unless matches :sym, ','
+				r << expression
+				if matches :sym, ','
+					skip :line
+				else
+					break
+				end
 			end
 		end
 		
@@ -596,7 +540,7 @@ class Parser
 				when :sym
 					case tok_val
 						when '('
-							tuple(s) { expression }
+							tuple(s)
 						else
 							expected 'expression'
 					end
