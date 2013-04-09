@@ -366,7 +366,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :instances, :type_params, :props
+		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :instances, :type_params, :props, :type_param_count
 		
 		class Param < Node
 			attr_accessor :name, :type, :var
@@ -395,6 +395,7 @@ module AST
 			@declared = scope.declare(@name, self)
 			@scope.owner = self
 			@scope.parent = scope if @scope
+			@type_param_count = @type_params.size
 		end
 		
 		def apply_pass(scope)

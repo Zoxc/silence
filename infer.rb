@@ -123,8 +123,8 @@
 		end
 	end
 	
-	def map_type_params(source, parent_args, params, args, desc)
-		raise TypeError.new("Too many type parameter(s) for #{desc}, got #{args.size} but maximum is #{params.size}\n#{source.format}") if params.size < args.size
+	def map_type_params(source, parent_args, params, args, desc, limit = params.size)
+		raise TypeError.new("Too many type parameter(s) for #{desc}, got #{args.size} but maximum is #{limit}\n#{source.format}") if limit < args.size
 		
 		args.each_with_index do |arg, i|
 			parent_args[params[i]] = arg
@@ -163,7 +163,7 @@
 		elsif args
 			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{source.format}")
 		else
-			result, inst_args = type, InstArgs.new({}, {})# inst(obj, parent_args, type) TODO: Check if this is required anymore?
+			result, inst_args = type, InstArgs.new({})# inst(obj, parent_args, type) TODO: Check if this is required anymore?
 			result = result.source_dup(source)
 		end
 		
@@ -299,7 +299,7 @@
 						parent_args = {}
 						
 						if ast.obj.is_a?(AST::Function)
-							map_type_params(ast.source, parent_args, ast.obj.type_params, get_index_args(args), ast.obj.name)
+							map_type_params(ast.source, parent_args, ast.obj.type_params, get_index_args(args), ast.obj.name, ast.obj.type_param_count)
 						end
 						
 						ensure_shared(ast.obj, ast.source) if shared?
@@ -383,17 +383,17 @@
 		end
 	end
 	
-	InstArgs = Struct.new(:map, :params) do
+	InstArgs = Struct.new(:params) do
 		def to_s
-			"Map({#{map.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}}, [#{params.each.map { |p| "#{p.first.name}: #{p.last.text}" }.join(", ")}])"
+			"Inst{#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}}"
 		end
 		
 		def merge(other)
-			self.class.new(map.merge(other.map), params.merge(other.params))
+			self.class.new(params.merge(other.params))
 		end
 		
 		def copy
-			self.class.new(map.dup, params.dup)
+			self.class.new(params.dup)
 		end
 	end
 	
@@ -411,8 +411,6 @@
 	def inst_type(args, type)
 		type = type.prune
 		case type
-			when Types::Variable
-				args.map[type] ||= new_var(type.source, type.name)
 			when Types::Param
 				args.params[type.param] || type
 			when Types::TypeFunc
@@ -436,7 +434,7 @@
 	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
 		lmap = {}
-		inst_args = InstArgs.new({}, params)
+		inst_args = InstArgs.new(params)
 		
 		@limits.concat(obj.ctype.limits.map { |l| inst_limit(lmap, inst_args, l) })
 		
@@ -536,7 +534,7 @@
 							
 							if field.is_a?(AST::Function)
 								parent_args = type.args.dup
-								map_type_params(c.source, parent_args, field.type_params, c.args, field.name)
+								map_type_params(c.source, parent_args, field.type_params, c.args, field.name, field.type_param_count)
 							else
 								parent_args = type.args
 							end
@@ -580,6 +578,16 @@
 		finalize(func_result, true)
 	end
 	
+	def parameterize(tvs)
+		t = tvs.map do |tv|
+			p = AST::TypeParam.new(tv.source, "%#{tv.text}", nil)
+			p.declare_pass(@obj.scope)
+			unify(tv, Types::Param.new(tv.source, p))
+			p
+		end
+		@obj.type_params.concat t
+	end
+	
 	def finalize(type, value)
 		type = type.prune
 		@value = value
@@ -593,16 +601,18 @@
 		
 			@type_vars = @type_vars.select { |var| occurs_in?(var, type) }
 			
-			@limits.each do |c|
-				@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
-			end
+			parameterize(@type_vars)
+			
+			#@limits.each do |c|
+			#	@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
+			#end
 			
 			unresolved_vars -= @type_vars
 			
-			@limits.each do |c|
-				unresolved_vars.delete(c.var.prune) if c.is_a? TypeFunctionLimit
-			end
-			
+			# TODO: How to handle this case in code generation?
+			#@limits.each do |c|
+			#	unresolved_vars.delete(c.var.prune) if c.is_a? TypeFunctionLimit
+			#end
 		end
 		
 		puts "Type of #{@obj.name} is #{type.text}"

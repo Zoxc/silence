@@ -41,6 +41,14 @@ module Types
 			return args == other_args
 		end
 		
+		def to_s
+			text
+		end
+		
+		def inspect
+			text
+		end
+		
 		def source_dup(source)
 			result = dup
 			result.source = source
@@ -183,7 +191,7 @@ module Types
 		end
 
 		def text
-			"param #{@param.scoped_name}"
+			"#{@param.scoped_name}"
 		end
 	end
 	

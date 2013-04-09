@@ -7,7 +7,7 @@ class Codegen
 		@names = 0
 		
 		{AST::Int => 'int', AST::Bool => 'bool', AST::Char => 'char'}.each do |type, name|
-			@gen[type] = [TypeContext::InstArgs.new({}, {})]
+			@gen[type] = [TypeContext::InstArgs.new({})]
 			type.c_prefix = false
 			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
 		end
@@ -22,18 +22,14 @@ class Codegen
 	end
 	
 	def ast_keys(ast)
-		return [[], []] if ast.is_a?(AST::Program)
-		params, vars = ast_keys(ast.declared.owner)
-		[ast.type_params + params, ast.ctype.type_vars + vars]
-	end
-	
-	def verify_map(ast, map)
+		return [] if ast.is_a?(AST::Program)
+		ast.type_params + ast_keys(ast.declared.owner)
 	end
 	
 	def do_ref(ast, old_map, map)
 		map = map.dup
 		inst_args = old_map.dup
-		params, vars = ast_keys(ast)
+		params = ast_keys(ast)
 		
 		map.params.each do |k, v|
 			if params.include? k
@@ -43,15 +39,6 @@ class Codegen
 			end
 		end
 		params.each { |p| raise "missing key #{p.name}" unless map.params.key?(p) }
-		
-		map.map.each do |k, v|
-			if vars.include? k
-				map.map[k] = @ctx.inst_type(inst_args, v)
-			else
-				map.map.delete(k)
-			end
-		end
-		vars.each { |p| raise "missing var #{p.text}" unless map.map.key?(p) }
 		
 		owner = ast.declared.owner
 		
@@ -65,7 +52,7 @@ class Codegen
 			
 			ref = inst.scope.names[ast.name]
 			raise "Didn't find name '#{ast.name.class}' in typeclass instance" unless ref
-			new_map = TypeContext::InstArgs.new({}, inst_map)
+			new_map = TypeContext::InstArgs.new(inst_map)
 			
 			ref.type_params.each_with_index do |p, i|
 				param = ast.type_params[i]
@@ -94,16 +81,12 @@ class Codegen
 	def fixed_type(type, map, &block)
 		type = type.prune
 		case type
-			when Types::Variable
-				r = map.map[type]
-				raise "Unable to find instance of #{type.text} #{map}" unless r
-				fixed_type(r, map, &block)
 			when Types::Param
 				r = map.params[type.param]
 				raise "Unable to find instance of #{type.text} #{map}" unless r
 				fixed_type(r, map, &block)
 			when Types::Complex
-				complex, new_map = do_ref(type.complex, map, TypeContext::InstArgs.new({}, type.args))
+				complex, new_map = do_ref(type.complex, map, TypeContext::InstArgs.new(type.args))
 				block.(complex, new_map)
 			else
 				raise "(fixed_type unknown #{type.class.inspect} )"
@@ -134,9 +117,6 @@ class Codegen
 			r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_l")}_d"
 		end
 		#puts "mangling #{ast.name} #{ast.ctype.type_vars.map { |p| p.text }.join(",")} #{map}"
-		unless ast.ctype.type_vars.empty?
-			r << "_V#{ast.ctype.type_vars.map { |p| mangle_type(map.map[p], map) }.join("_l")}_d"
-		end
 		r
 	end
 
@@ -275,7 +255,7 @@ class Codegen
 				apply.(ast.nodes)
 			when AST::Function
 				return if !ast.type_params.empty? || !ast.ctype.type.fixed_type? || !ast.props[:export]
-				gen(ast, TypeContext::InstArgs.new({}, {}))
+				gen(ast, TypeContext::InstArgs.new({}))
 		end
 	end
 	
