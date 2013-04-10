@@ -157,6 +157,8 @@ module Types
 					[]
 				when AST::Cell::Node
 					[@args[AST::Cell::Val], *@args[AST::Cell::Next].tuple_map]
+				else
+					raise "Expected tuple type"
 			end
 		end
 		

@@ -8,6 +8,10 @@ class FuncCodegen
 		@map = map
 		@var_name = 0
 		@vars = []
+		@var_map = Hash[@func.ctype.type_func_vars.map do |limit|
+			ref, new_map = gen.find_instance(limit.typeclass_limit.var, map, limit.type_ast)
+			[limit.var, gen.inst_type(ref.ctype.type, new_map)]
+		end]
 	end
 	
 	Var = Struct.new(:name, :type) do
@@ -26,8 +30,8 @@ class FuncCodegen
 		var
 	end
 	
-	def assign_var(var, type, str)
-		var.type = gen.c_type(type.first, @map)
+	def assign_var(var, type, str)	
+		var.type = gen.c_type(type.first, @map, @var_map)
 		(o var.ref + " = " + str + ";") if str
 	end
 	
@@ -62,6 +66,10 @@ class FuncCodegen
 	
 	def lvalue(ast)
 		case ast
+			when AST::UnaryOp
+				ptr = new_var
+				convert(ast.node, ptr)
+				return "*#{ptr.ref}"
 			when AST::Field
 				case ast.gen[:type]
 					when :single
@@ -102,6 +110,13 @@ class FuncCodegen
 					else
 						raise "Unknown literal type #{ast.type}"
 				end)
+			when AST::UnaryOp
+				case ast.op
+					when '*'
+						assign_var(var, ast.gtype, lvalue(ast))
+					when '&'
+						assign_var(var, ast.gtype, '&' + lvalue(ast.node))
+				end
 			when AST::Field
 				case ast.gen[:type]
 					when :single
@@ -136,7 +151,7 @@ class FuncCodegen
 			when AST::BinOp
 				rhs = new_var
 				convert(ast.rhs, rhs)
-				if ast.op == :'='
+				if ast.op == '='
 					assign_var(var, ast.gtype, lvalue(ast.lhs) + " = " + rhs.ref)
 				else
 					lhs = new_var

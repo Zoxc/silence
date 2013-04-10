@@ -424,25 +424,26 @@ class Parser
 	end
 	
 	def unary
-		source do |s|
-			if matches(:sym, '*')
-					skip :line
-					AST::UnaryOp.new(s, '*', apply)
-			else
-				apply
+		if tok == :sym and ['&', '*'].include?(tok_val)
+			source do |s|
+				op = tok_val
+				step
+				skip :line
+				AST::UnaryOp.new(s, op, apply)
 			end
+		else
+			apply
 		end
 	end
 	
 	def is_expression
+		return true if is_chain
 		case tok
 			when :sym
 				case tok_val
-					when '('
+					when '*', '&'
 						true
 				end
-			when :id, :int, :str
-				true
 		end
 	end
 	
@@ -465,7 +466,7 @@ class Parser
 		s = @l.source
 		result = chain
 		
-		while is_expression
+		while is_chain
 			new_s = @l.source
 			args = [source { |s| new_src = s; chain }]
 			s.extend(@l.last_ended)
@@ -474,6 +475,18 @@ class Parser
 		end
 		
 		result
+	end
+	
+	def is_chain
+		case tok
+			when :sym
+				case tok_val
+					when '('
+						true
+				end
+			when :id, :int, :str
+				true
+		end
 	end
 	
 	def chain

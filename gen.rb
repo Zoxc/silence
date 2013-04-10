@@ -30,14 +30,46 @@ class Codegen
 		end
 	end
 	
+	def find_instance(tc, map, ast)
+		typeclass = inst_type(tc, map)
+		inst, inst_map = @ctx.find_instance(typeclass)
+		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
+		puts "found typeclass inst #{inst.ctype.type.text}"
+		
+		ref = inst.scope.names[ast.name]
+		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
+		new_map = TypeContext::InstArgs.new(inst_map)	
+		
+		puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
+		
+		return ref, new_map
+	end
+	
+	def inst_type(type, map, vmap = nil)
+		type = type.prune
+		case type
+			when Types::Variable
+				r = vmap[type]
+				raise "Unable to find type for #{type.text}" unless r
+				r
+			when Types::Param
+				r = map.params[type.param]
+				raise "Unable to find instance of #{type.text} #{map}" unless r
+				r
+			when Types::Complex
+				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(v, map, vmap)] }])
+			else
+				raise "(inst_type unknown #{type.class.inspect})"
+		end
+	end
+
 	def do_ref(ast, old_map, map)
 		map = map.dup
-		inst_args = old_map.dup
 		params = ast_keys(ast)
 		
 		map.params.each do |k, v|
 			if params.include? k
-				map.params[k] = @ctx.inst_type(inst_args, v)
+				map.params[k] = inst_type(v, old_map)
 			else
 				map.params.delete(k)
 			end
@@ -49,24 +81,15 @@ class Codegen
 		puts "ref #{ast.name} old_map:#{old_map} new_map:#{map}"
 			
 		if owner.is_a?(AST::TypeClass)	
-			typeclass = @ctx.inst_type(map.dup, owner.ctype.type)
-			inst, inst_map = @ctx.find_instance(typeclass)
-			raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
-			puts "found typeclass inst #{inst.ctype.type.text}"
-			
-			ref = inst.scope.names[ast.name]
-			raise "Didn't find name '#{ast.name.class}' in typeclass instance" unless ref
-			new_map = TypeContext::InstArgs.new(inst_map)
+			ref, new_map = find_instance(owner.ctype.type, map, ast)
 			
 			ref.type_params.each_with_index do |p, i|
 				param = ast.type_params[i]
 				raise "Didn't find matching param for '#{p.name}'" unless param
 				param_mapped = map.params[param]
 				raise "Param '#{p.name}' type not provided" unless param_mapped
-				inst_map[p] = param_mapped
+				new_map.params[p] = param_mapped
 			end
-			
-			puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
 			
 			map = new_map
 		else
@@ -82,29 +105,19 @@ class Codegen
 		mangle(ast, map)
 	end
 	
-	def fixed_type(type, map, &block)
-		type = type.prune
-		case type
-			when Types::Param
-				r = map.params[type.param]
-				raise "Unable to find instance of #{type.text} #{map}" unless r
-				fixed_type(r, map, &block)
-			when Types::Complex
-				complex, new_map = do_ref(type.complex, map, TypeContext::InstArgs.new(type.args))
-				block.(complex, new_map)
-			else
-				raise "(fixed_type unknown #{type.class.inspect} )"
-		end
+	def fixed_type(type, map, vmap)
+		type = inst_type(type, map, vmap)
+		yield do_ref(type.complex, map, TypeContext::InstArgs.new(type.args))
 	end
 
 	def mangle_type(type, map)
-		fixed_type(type, map) do |complex, map|
+		fixed_type(type, map, nil) do |complex, map|
 			mangle_impl(complex, map)
 		end
 	end
 
-	def c_type(type, map)
-		fixed_type(type, map) do |complex, map|
+	def c_type(type, map, vmap = nil)
+		fixed_type(type, map, vmap) do |complex, map|
 			case complex
 				when AST::Ptr::Node
 					"#{c_type(map.params[AST::Ptr::Type], map)}*"
@@ -222,7 +235,7 @@ class Codegen
 				if ast.props[:export]
 					o << function_proto(ast, map, true)
 					o << "\n{\n    #{c_type(ast.ctype.type.args[AST::Func::Result], map)} result;\n"
-					o << "    #{mangle(ast, map)}(#{(["0", "&result"] + ast.params.map(&:name)).join(", ")});"
+					o << "    #{mangle(ast, map)}(#{(["0", "&result"] + ast.params.map { |p| "v_#{p.name}"}).join(", ")});"
 					(o << "\n    return result;") if ast.ctype.type.args[AST::Func::Result] != AST::Unit.ctype.type
 					o << "\n}\n\n"
 				end

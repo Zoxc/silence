@@ -1,5 +1,5 @@
 ﻿class TypeContext
-	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars, :infer_args
+	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars, :infer_args, :type_func_vars
 	
 	class TypeError < CompileError
 	end
@@ -41,18 +41,19 @@
 	end
 	
 	class FieldLimit < Limit
-		attr_accessor :type, :name, :args, :ast
+		attr_accessor :type, :name, :args, :ast, :lvalue
 		
-		def initialize(system, source, var, type, name, args, ast)
+		def initialize(system, source, var, type, name, args, ast, lvalue)
 			super(system, source, var)
 			@type = type
 			@name = name
 			@args = args
 			@ast = ast
+			@lvalue = lvalue
 		end
 		
 		def to_s
-			"#{@var.real_text} = #{@type.text}.#{@name} [#{args.map{ |t|t .text }.join(", ")}]"
+			"#{"lvalue" if @lvalue} #{@var.real_text} = #{@type.text}.#{@name} [#{args.map{ |t|t .text }.join(", ")}]"
 		end
 	end
 	
@@ -107,16 +108,22 @@
 		args.reverse.inject(AST::Unit.ctype.type.source_dup(source)) { |m, p| Types::Complex.new(source, AST::Cell::Node, {AST::Cell::Val => p, AST::Cell::Next => m}) }
 	end
 	
+	def make_ptr(source, type)
+		Types::Complex.new(source, AST::Ptr::Node, {AST::Ptr::Type => type})
+	end
+	
 	class AnalyzeArgs
-		attr_accessor :scoped, :index
+		attr_accessor :scoped, :index, :lvalue
 		def initialize
 			@scoped = false
+			@lvalue = false
 			@index = {}
 		end
 		
 		def next(opts = {})
 			new = dup
 			new.scoped = opts[:scoped] || @scoped
+			new.lvalue = opts[:lvalue] || false
 			new.index = opts[:index] || {}
 			new
 		end
@@ -134,7 +141,13 @@
 		end
 	end
 	
-	def analyze_ref(source, obj, direct, parent_args, args)
+	def lvalue_check(source, obj, lvalue)
+		return unless lvalue && obj.is_a?(AST::Function)
+		raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
+	end
+	
+	def analyze_ref(source, obj, analyze_args, parent_args)
+		args = analyze_args.index
 		args[:used] = true
 		args = args[:args]
 		type = infer(obj)
@@ -142,7 +155,7 @@
 		if type.kind_of?(Types::Complex)
 			args ||= []
 			
-			if direct && type.type_class?
+			if !analyze_args.scoped && type.type_class?
 				type_class_result = new_var(source)
 				args.unshift(type_class_result)
 			end
@@ -154,7 +167,7 @@
 			
 			if type.type_class?
 				@limits << TypeClassLimit.new(self, source, result)
-				if direct
+				if !analyze_args.scoped
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
 					result = type_class_result
 				end
@@ -168,6 +181,8 @@
 			result, inst_args = type, InstArgs.new({})
 			result = result.source_dup(source)
 		end
+		
+		lvalue_check(source, obj, analyze_args.lvalue)
 		
 		[[result, obj.ctype.value], inst_args]
 	end
@@ -200,6 +215,12 @@
 	end
 	
 	def analyze_impl(ast, args)
+		case ast
+			when AST::Ref, AST::Field, AST::UnaryOp
+			else
+				raise TypeError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
+		end if args.lvalue
+		
 		case ast
 			# Values only
 			
@@ -261,12 +282,30 @@
 			when AST::Grouped
 				analyze(ast.node, args.next)
 			when AST::UnaryOp
-				raise TypeError.new("Only pointer (*) unary operator allowed on types\n#{ast.source.format}") if ast.op != '*'
-				[Types::Complex.new(ast.source, AST::Ptr::Node, {AST::Ptr::Type => analyze_type(ast.node, args.next)}), false]
+				raise TypeError.new("Invalid l-value\n#{ast.source.format}") if (ast.op != '*') && args.lvalue
+				
+				type, value = analyze(ast.node, args.next(lvalue: ast.op == '&'))
+				
+				case ast.op
+					when '*'
+						if value
+							result = new_var(ast.source)
+							ptr = make_ptr(ast.source, result)
+							unify(ptr, type)
+							[result, true]
+						else
+							[make_ptr(ast.source, analyze_type(ast.node, args.next)), false]
+						end
+					when '&'
+						raise TypeError.new("Can't get the address of types\n#{ast.source.format}") unless value
+						[make_ptr(ast.source, type), true]
+					else
+						raise TypeError.new("Invalid unary operator '#{ast.op}' allowed\n#{ast.source.format}")
+				end
 			when AST::Tuple
 				[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
 			when AST::BinOp
-				lhs, lvalue = analyze(ast.lhs, args.next)
+				lhs, lvalue = analyze(ast.lhs, args.next(lvalue: ast.op == '='))
 				rhs, rvalue = analyze(ast.rhs, args.next)
 				
 				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
@@ -305,13 +344,16 @@
 							map_type_params(ast.source, parent_args, ast.obj.type_params, get_index_args(args), ast.obj.name, ast.obj.type_param_count)
 						end
 						
+						lvalue_check(ast.source, ast.obj, args.lvalue)
+						
 						ensure_shared(ast.obj, ast.source) if shared?
 						
 						ast.gen = inst_ex(ast.obj, parent_args)
 						
 						[ast.gen.first, true]
 					else
-						result, inst_args = analyze_ref(ast.source, ast.obj, !args.scoped, {}, args.index)
+						result, inst_args = analyze_ref(ast.source, ast.obj, args, {})
+						raise TypeError.new("Type '#{result.first.text}' is not a valid l-value\n#{ast.source.format}") if args.lvalue
 						ast.gen = [result.first, inst_args]
 						result
 					end
@@ -321,7 +363,7 @@
 				
 				if value
 					result = new_var(ast.source)
-					@limits << FieldLimit.new(self, ast.source, result, type, ast.name, get_index_args(args), ast)
+					@limits << FieldLimit.new(self, ast.source, result, type, ast.name, get_index_args(args), ast, args.lvalue)
 					[result, true]
 				else
 					if type.kind_of? Types::Complex
@@ -331,7 +373,7 @@
 						
 						ensure_shared(ref, ast.source)
 						
-						result, inst_args = analyze_ref(ast.source, ref, !args.scoped, type.args.dup, args.index)
+						result, inst_args = analyze_ref(ast.source, ref, args, type.args.dup)
 						
 						ast.gen = {type: :single, ref: ref, args: inst_args}
 						
@@ -405,7 +447,9 @@
 			when TypeClassLimit
 				lmap[limit] ||= TypeClassLimit.new(self, limit.source, inst_type(args, limit.var))
 			when TypeFunctionLimit
-				TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(lmap, args, limit.typeclass_limit))
+				unless limit.var.is_a? Types::Variable
+					TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(lmap, args, limit.typeclass_limit))
+				end
 			else
 				raise "Unknown limit #{limit.class}"
 		end
@@ -439,7 +483,7 @@
 		lmap = {}
 		inst_args = InstArgs.new(params)
 		
-		@limits.concat(obj.ctype.limits.map { |l| inst_limit(lmap, inst_args, l) })
+		@limits.concat(obj.ctype.limits.map { |l| inst_limit(lmap, inst_args, l) }.compact)
 		
 		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
 	end
@@ -465,7 +509,7 @@
 		new_loc = proc do
 			source = a.source || b.source
 		
-			msg = if a.source && b.source
+			msg = "\n" + if a.source && b.source
 				"When unifying types '#{a.text}',\n#{a.source.format}\nand type '#{b.text}',\n#{b.source.format}" 
 			elsif source
 				"When unifying types '#{a.text}' and type '#{b.text}''\n#{source.format}" 
@@ -473,7 +517,7 @@
 				"When unifying types '#{a.text}' and type '#{b.text}'" 
 			end
 			
-			msg << ("\n" + loc.())
+			msg << loc.()
 		end
 		
 		a_args.each_with_index do |a_arg, i|
@@ -516,7 +560,7 @@
 				when TypeFunctionLimit
 					inst = c.typeclass_limit.instance
 					if inst
-						ast = inst.complex.scope.require(c.source, c.type_ast.name)
+						ast = inst.complex.scope.names[c.type_ast.name]
 						
 						result = inst(ast, inst.args)
 						
@@ -535,6 +579,8 @@
 							
 							raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 							
+							lvalue_check(c.ast.source, field, c.lvalue)
+						
 							if field.is_a?(AST::Function)
 								parent_args = type.args.dup
 								map_type_params(c.source, parent_args, field.type_params, c.args, field.name, field.type_param_count)
@@ -617,10 +663,13 @@
 			
 			unresolved_vars -= @type_vars
 			
-			# TODO: How to handle this case in code generation?
-			#@limits.each do |c|
-			#	unresolved_vars.delete(c.var.prune) if c.is_a? TypeFunctionLimit
-			#end
+			@type_func_vars = @limits.select do |c|
+				next unless c.is_a? TypeFunctionLimit
+				var = c.var.prune
+				next unless unresolved_vars.include?(var)
+				unresolved_vars.delete(var)
+				true
+			end
 		end
 		
 		puts "Type of #{@obj.name} is #{type.text}"

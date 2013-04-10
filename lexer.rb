@@ -165,9 +165,9 @@ class Lexer
 					p = pop_brace_level(BraceIndex[v])
 					return ['', :deindent, p] if p > 0
 				end
-				s.scan(/[)\]}]/)
+				s.getch
 				[v, :sym, v]
-			when v = s.scan(/[\.*+=\-,:]/)
+			when v = s.scan(/[\.*+=\-,:&]/)
 				[v, :sym, v]
 			when s.eos?
 				@pos = @src.size - 1
