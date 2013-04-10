@@ -67,6 +67,7 @@
 		@limit_name = 1
 		@limits = []
 		@views = {}
+		@type_func_vars = []
 	end
 	
 	def new_var_name
@@ -447,9 +448,7 @@
 			when TypeClassLimit
 				lmap[limit] ||= TypeClassLimit.new(self, limit.source, inst_type(args, limit.var))
 			when TypeFunctionLimit
-				unless limit.var.is_a? Types::Variable
-					TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(lmap, args, limit.typeclass_limit))
-				end
+				TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(lmap, args, limit.typeclass_limit))
 			else
 				raise "Unknown limit #{limit.class}"
 		end
@@ -483,7 +482,10 @@
 		lmap = {}
 		inst_args = InstArgs.new(params)
 		
-		@limits.concat(obj.ctype.limits.map { |l| inst_limit(lmap, inst_args, l) }.compact)
+		@limits.concat(obj.ctype.limits.map do |l|
+			next if obj.ctype.type_func_vars.include?(l)
+			inst_limit(lmap, inst_args, l)
+		end.compact)
 		
 		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
 	end
