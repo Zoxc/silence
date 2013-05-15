@@ -270,10 +270,11 @@ class Parser
 			props = properties
 			baseline = @l.indent
 			name = match :id
-			if eq(:sym, '[') ||  eq(:sym, '(')
+			
+			if (eq(:sym, '[') || eq(:sym, '(')) && !@l.whitespace
 				function s, baseline, name, props
 			else
-				variable_decl s, name, props
+				AST::VariableDecl.new(s, nil, name, expression, nil, props)
 			end
 		end
 	end
@@ -296,13 +297,7 @@ class Parser
 	end
 	
 	def opt_type_specifier
-		type_specifier if eq :sym, ':'
-	end
-	
-	def type_specifier
-		match :sym, ':'
-		skip :line
-		expression
+		expression if is_expression
 	end
 	
 	def group(baseline)
@@ -328,6 +323,22 @@ class Parser
 		AST::LocalScope.new(r)
 	end
 	
+	def is_expression
+		return true if is_factor
+		case tok
+			when :id
+				case tok_val
+					when :return, :if
+						true
+				end
+			when :sym
+				case tok_val
+					when '*', '&', '.'
+						true
+				end
+		end
+	end
+	
 	def expression
 		if tok == :id
 			case tok_val
@@ -336,9 +347,33 @@ class Parser
 				when :if
 					return _if
 			end
+		elsif eq(:sym, '.')
+			return variable_decl
 		end
 		
 		pred_operator
+	end
+	
+	def variable_decl
+		source do |s|
+			step
+			skip :line
+			
+			name = match :id
+			type = opt_type_specifier
+			ts = nil
+			value = nil
+			
+			source do |sts|
+				ts = sts
+				if matches(:sym, '=')
+					skip :line
+					value = expression
+				end
+			end
+			
+			AST::VariableDecl.new(s, ts, name, type, value, [])
+		end
 	end
 	
 	def _return
@@ -405,45 +440,16 @@ class Parser
 		left
 	end
 	
-	def variable_decl(s, name, props)
-		source do |ts|
-			if matches(:sym, ':=')
-				skip :line
-				value = expression
-			else
-				type = type_specifier
-				
-				if matches(:sym, '=')
-					skip :line
-					value = expression
-				end
-			end
-			
-			AST::VariableDecl.new(s, ts, name, type, value, props)
-		end
-	end
-	
 	def unary
 		if tok == :sym and ['&', '*'].include?(tok_val)
 			source do |s|
 				op = tok_val
 				step
 				skip :line
-				AST::UnaryOp.new(s, op, apply)
+				AST::UnaryOp.new(s, op, unary)
 			end
 		else
 			apply
-		end
-	end
-	
-	def is_expression
-		return true if is_chain
-		case tok
-			when :sym
-				case tok_val
-					when '*', '&'
-						true
-				end
 		end
 	end
 	
@@ -466,7 +472,7 @@ class Parser
 		s = @l.source
 		result = chain
 		
-		while is_chain
+		while is_factor
 			new_s = @l.source
 			args = [source { |s| new_src = s; chain }]
 			s.extend(@l.last_ended)
@@ -475,18 +481,6 @@ class Parser
 		end
 		
 		result
-	end
-	
-	def is_chain
-		case tok
-			when :sym
-				case tok_val
-					when '('
-						true
-				end
-			when :id, :int, :str
-				true
-		end
 	end
 	
 	def chain
@@ -547,11 +541,46 @@ class Parser
 		end
 	end
 	
+	def array(s)
+		step
+		skip :line
+		
+		r = []
+		if !eq(:sym, ']')
+			loop do
+				r << expression
+				if matches :sym, ','
+					skip :line
+				else
+					break
+				end
+			end
+		end
+		
+		match :sym, ']'
+		
+		AST::Array.new(s, r)
+	end
+	
+	def is_factor
+		case tok
+			when :sym
+				case tok_val
+					when '[', '('
+						true
+				end
+			when :id, :int, :str
+				true
+		end
+	end
+	
 	def factor
 		source do |s|
 			case tok
 				when :sym
 					case tok_val
+						when '['
+							array(s)
 						when '('
 							tuple(s)
 						else
@@ -570,13 +599,7 @@ class Parser
 							step
 							AST::Literal.new(s, :bool, false)
 						else
-							name = match(:id)
-							
-							if tok == :sym && [':=', ':'].include?(tok_val)
-								variable_decl(s, name, {})
-							else
-								AST::NameRef.new(s, name)
-							end
+							AST::NameRef.new(s, match(:id))
 					end
 				else
 					expected 'expression'

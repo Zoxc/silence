@@ -20,7 +20,7 @@ class Lexer
 		end
 	end
 	
-	attr_reader :pos, :tok, :tok_str, :tok_val, :last_ended
+	attr_reader :pos, :tok, :tok_str, :tok_val, :last_ended, :whitespace
 	
 	def initialize(str)
 		@src = str
@@ -141,6 +141,7 @@ class Lexer
 		@pos = @scanner.pos
 		case
 			when v = s.scan(/[ \t]+/)
+				@whitespace = true
 				find_token
 			when v = s.scan(/\r\n|\n|\r/)
 				[v, :line, true]
@@ -184,8 +185,17 @@ class Lexer
 		end
 	end
 	
+	def debug(str)
+		puts "#{str} | token: #{@tok}, #{@tok_val}\n#{source.format}"
+	end
+	
 	def produce_token
-		#puts "token: #{@tok}, #{@tok_val}\n#{source.format}"
+		#debug "produced"
+	end
+	
+	def prestep
+		@last_ended = @pos + @tok_str.size
+		@whitespace = false
 	end
 
 	def step_deindent
@@ -202,6 +212,7 @@ class Lexer
 	def step_line
 		raise 'Requires line' if tok != :line
 		@tok = nil
+		prestep
 		get_line_indent
 		handle_line
 	end
@@ -209,7 +220,7 @@ class Lexer
 	def step
 		raise 'Stepping over line' if tok == :line
 		raise 'Stepping over deindent' if tok == :deindent
-		@last_ended = @pos + @tok_str.size
+		prestep
 		raise if @token == :eos
 		@tok_str, @tok, @tok_val = find_token
 		produce_token

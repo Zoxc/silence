@@ -6,12 +6,12 @@ instance[T] Cool T, bool
 	shared hi() { return false }
 	hello() { return 2 }
 
-a(v: Cool[bool])
-	a: int
-	r := v.hello()
+a(v Cool[bool])
+	.a int
+	.r = v.hello()
 	return r
 
-import printf(str: *char)
+import printf(str *char)
 
 export main()
 	a(true)

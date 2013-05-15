@@ -222,6 +222,19 @@ module AST
 		end
 	end
 
+	class Array < Node
+		attr_accessor :nodes
+	
+		def initialize(source, nodes)
+			super(source)
+			@nodes = nodes
+		end
+		
+		def visit
+			@nodes.map! { |n| yield n }
+		end
+	end
+	
 	class Tuple < Node
 		attr_accessor :nodes
 	
@@ -520,6 +533,21 @@ module AST
 		
 		def visit
 			@obj = yield @obj
+		end
+	end
+	
+	class Apply < ExpressionNode
+		attr_accessor :obj, :arg, :func
+		
+		def initialize(source, obj, arg)
+			@source = source
+			@obj = obj
+			@arg = arg
+		end
+		
+		def visit
+			@obj = yield @obj
+			@arg = yield @arg
 		end
 	end
 	

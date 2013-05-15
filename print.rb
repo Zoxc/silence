@@ -40,6 +40,8 @@ def print_ast(ast)
 			format.(ast, [[:name], [:props]])
 		when AST::NameRef
 			format.(ast, [[:name]])
+		when AST::Apply
+			format.(ast, [[:obj, :single], [:arg, :single]])
 		when AST::Call
 			format.(ast, [[:obj, :single], [:args, ast.args]])
 		when AST::Field
@@ -50,7 +52,7 @@ def print_ast(ast)
 			format.(ast, [[:node, :single], [:op]])
 		when AST::Index
 			format.(ast, [[:obj, :single], [:args, ast.args]])
-		when AST::Tuple
+		when AST::Tuple, AST::Array
 			format.(ast, [[:nodes, ast.nodes]])
 		when AST::Grouped
 			format.(ast, [[:node, :single]])
