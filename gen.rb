@@ -119,8 +119,8 @@ class Codegen
 	def c_type(type, map, vmap = nil)
 		fixed_type(type, map, vmap) do |complex, map|
 			case complex
-				when AST::Ptr::Node
-					"#{c_type(map.params[AST::Ptr::Type], map)}*"
+				when Core::Ptr::Node
+					"#{c_type(map.params[Core::Ptr::Type], map)}*"
 				else
 					mangle(complex, map)
 			end
@@ -163,12 +163,12 @@ class Codegen
 	end
 	
 	def function_proto(ast, map, bare = false)
-		result = ast.ctype.type.args[AST::Func::Result]
+		result = ast.ctype.type.args[Core::Func::Result]
 		result_type = "void"
-		result_type = c_type(result, map) if bare && result != AST::Unit.ctype.type
+		result_type = c_type(result, map) if bare && result != Core::Unit.ctype.type
 		o = "#{bare ? 'extern "C" ' : "static "}#{result_type} #{bare ? ast.name : mangle(ast, map)}("
 		
-		param_types = ast.ctype.type.args[AST::Func::Args].tuple_map
+		param_types = ast.ctype.type.args[Core::Func::Args].tuple_map
 		
 		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} v_#{p.name}" }
 		
@@ -187,10 +187,10 @@ class Codegen
 		puts "Generating #{ast.name}"
 		case ast
 			when AST::TypeClass
-			when AST::Ptr::Node
-			when AST::Func::Node
-				args = map.params[AST::Func::Args].tuple_map
-				result = map.params[AST::Func::Result]
+			when Core::Ptr::Node
+			when Core::Func::Node
+				args = map.params[Core::Func::Args].tuple_map
+				result = map.params[Core::Func::Result]
 				name = mangle(ast, map)
 				o = "struct #{name}"
 				@out[:struct_forward] << o << ";\n"
@@ -225,7 +225,7 @@ class Codegen
 				end
 				
 				if ast.props[:import]
-					o << "    #{"*result = " if ast.ctype.type.args[AST::Func::Result] != AST::Unit.ctype.type}#{ast.name}(#{ast.params.map { |p| "v_#{p.name}"}.join(", ")});"
+					o << "    #{"*result = " if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type}#{ast.name}(#{ast.params.map { |p| "v_#{p.name}"}.join(", ")});"
 					@out[:func_forward] << function_proto(ast, map, true) << ";\n"
 				else
 					o << FuncCodegen.new(self, ast, map).process
@@ -234,9 +234,9 @@ class Codegen
 				o << "\n}\n\n"
 				if ast.props[:export]
 					o << function_proto(ast, map, true)
-					o << "\n{\n    #{c_type(ast.ctype.type.args[AST::Func::Result], map)} result;\n"
+					o << "\n{\n    #{c_type(ast.ctype.type.args[Core::Func::Result], map)} result;\n"
 					o << "    #{mangle(ast, map)}(#{(["0", "&result"] + ast.params.map { |p| "v_#{p.name}"}).join(", ")});"
-					(o << "\n    return result;") if ast.ctype.type.args[AST::Func::Result] != AST::Unit.ctype.type
+					(o << "\n    return result;") if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type
 					o << "\n}\n\n"
 				end
 				@out[:func] << o

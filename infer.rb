@@ -170,6 +170,9 @@
 				@limits << TypeClassLimit.new(self, source, result)
 				if !analyze_args.scoped
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
+													   #       Generate an error when the view's type variable is unified with anything other than another type variable
+													   #       When unifing with another type variable, pick the one with a view. If both have a view, create a type error
+													   #       Have the view bind to the variable name instead?
 					result = type_class_result
 				end
 			end
@@ -270,7 +273,7 @@
 				end.source_dup(ast.source), true]
 			when AST::Scope
 				[if ast.nodes.empty?
-					AST::Unit.ctype.type.source_dup(ast.source)
+					Core::Unit.ctype.type.source_dup(ast.source)
 				else
 					ast.nodes[0...-1].each do |node|
 						unit_default analyze_value(node, args.next)
@@ -538,6 +541,8 @@
 	def find_instance(input)
 		map = nil
 		[input.complex.instances.find do |inst|
+			next if inst == @obj # Instances can't find themselves
+			
 			infer(inst)
 			result, map = TypeClass.is_instance?(@infer_args, input, inst.ctype.typeclass)
 			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}"
@@ -608,10 +613,24 @@
 		end
 	end
 	
+	def process_type_params
+		analyze_args = AnalyzeArgs.new
+		
+		@obj.type_params.map do |p|
+			if p.type
+				type = analyze_type(p.type, analyze_args)
+				raise(TypeError.new("'#{type.text}' is not a type class\n#{p.type.source.format}")) if type.fixed_type?
+				unify(type, Types::Param.new(p.source, p))
+			end
+		end
+	end
+	
 	def process_function
 		func = @obj
 		
 		analyze_args = AnalyzeArgs.new
+		
+		process_type_params
 		
 		@result = (analyze_type(func.result, analyze_args) if func.result)
 		
@@ -696,6 +715,8 @@
 	end
 	
 	def process_instance
+		process_type_params
+		
 		typeclass = @obj.typeclass.obj
 		analyze_args = AnalyzeArgs.new
 		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
@@ -735,6 +756,7 @@
 				else
 					parent = []
 				end
+				process_type_params
 				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
 				TypeContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable

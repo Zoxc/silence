@@ -147,7 +147,7 @@ class FuncCodegen
 				convert(ast.value, result)
 				o "*result = #{result.ref};"
 				o "return;"
-				assign_var(var, [AST::Unit.ctype.type, true], nil)
+				assign_var(var, [Core::Unit.ctype.type, true], nil)
 			when AST::BinOp
 				rhs = new_var
 				convert(ast.rhs, rhs)

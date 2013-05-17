@@ -124,19 +124,12 @@ class Parser
 		end
 	end
 	
-	def type_param
-		source do |s|
-			name = match :id
-			AST::TypeParam.new(s, name, nil)
-		end
-	end
-	
 	def type_params
 		r = []
 		return r unless tok == :id
 		
 		loop do
-			r << type_param
+			r << source { |s| AST::TypeParam.new(s, match(:id), opt_type_specifier) }
 			if matches(:sym, ',')
 				skip :line
 			else
