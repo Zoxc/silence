@@ -577,7 +577,9 @@ module AST
 			@value = yield @value
 		end
 	end
-	
+end
+
+class Core
 	Src = Object.new
 	class << Src
 		def format
@@ -585,52 +587,77 @@ module AST
 		end
 	end
 	
-	Builtin = Program.new(Scope.new([]))
-	BuiltinNodes = Builtin.scope.nodes
+	Program = AST::Program.new(AST::Scope.new([]))
+	Nodes = Program.scope.nodes
 	
-	def self.complex_type(name, args = [], klass = Struct, scope = [])
-		r = klass.new(Src, name, GlobalScope.new(scope), args)
-		BuiltinNodes << r
-		r
+	class << self
+		def complex(name, args = [], klass = AST::Struct, scope = [])
+			r = klass.new(Src, name, AST::GlobalScope.new(scope), args)
+			Nodes << r
+			r
+		end
+		
+		def ref(node)
+			AST::Ref.new(Src, node)
+		end
+		
+		def param(name)
+			AST::TypeParam.new(Src, name, nil)
+		end
 	end
 	
-	Unit = complex_type(:Unit)
+	Unit = complex :Unit
 	
-	module Cell
-		Val = TypeParam.new(Src, :Val, nil)
-		Next = TypeParam.new(Src, :Next, nil)
-		Node = AST.complex_type(:Cell, [Val, Next])
+	class Cell < Core
+		Val = param :Val
+		Next = param :Next
+		Node = complex(:Cell, [Val, Next])
 	end
 	
-	module Func
-		Args = TypeParam.new(Src, :Args, nil)
-		Result = TypeParam.new(Src, :Result, nil)
-		Node = AST.complex_type(:Func, [Args, Result])
+	class Tuple < Core
+		T = param :T
+		Node = complex(:Tuple, [T], AST::TypeClass)
 	end
 	
-	module Ptr
-		Type = TypeParam.new(Src, :Type, nil)
-		Node = AST.complex_type(:Ptr, [Type])
+	proc do
+		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [ref(Unit)], AST::GlobalScope.new([]), [])
+	end.()
+
+	proc do
+		val = param :Val
+		_next = param :Next
+		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [AST::Index.new(Src, ref(Cell::Node), [ref(val), ref(_next)])], AST::GlobalScope.new([]), [val, _next])
+	end.()
+
+	class Func < Core
+		Args = param :Args
+		Result = param :Result
+		Node = complex(:Func, [Args, Result])
 	end
 	
-	Int = complex_type(:int)
-	Bool = complex_type(:bool)
-	String = complex_type(:string)
-	Char = complex_type(:char)
+	class Ptr < Core
+		Type = param :Type
+		Node = complex(:Ptr, [Type])
+	end
 	
-	module Callable
-		Args = TypeFunction.new(Src, :Args)
-		Result = TypeFunction.new(Src, :Result)
-		T = TypeParam.new(Src, :T, nil)
-		Node = AST.complex_type(:Callable, [T], TypeClass, [Args, Result])
+	Int = complex :int
+	Bool = complex :bool
+	String = complex :string
+	Char = complex :char
+	
+	class Callable < Core
+		Args = AST::TypeFunction.new(Src, :Args)
+		Result = AST::TypeFunction.new(Src, :Result)
+		T = param :T
+		Node = complex(:Callable, [T], AST::TypeClass, [Args, Result])
 	end
 
 	proc do
-		args = TypeParam.new(Src, :Args, nil)
-		result = TypeParam.new(Src, :Result, nil)
-		BuiltinNodes << TypeClassInstance.new(Src, Ref.new(Src, Callable::Node), [BinOp.new(Src, Ref.new(Src, args), '->', Ref.new(Src, result))], GlobalScope.new([]), [args, result])
+		args = param :Args
+		result = param :Result
+		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([]), [args, result])
 	end.()
 
-	Builtin.run_pass(:declare_pass, false)
-	Builtin.run_pass(:ref_pass)
+	Program.run_pass(:declare_pass, false)
+	Program.run_pass(:ref_pass)
 end

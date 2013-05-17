@@ -1,12 +1,12 @@
 class Codegen
 	def initialize(infer_args)
 		@out = {prelude: '', struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
-		@ctx = TypeContext.new(infer_args, AST::Variable.new(AST::Src, :ERROR, nil, nil, {}))
+		@ctx = TypeContext.new(infer_args, AST::Variable.new(Core::Src, :ERROR, nil, nil, {}))
 		@gen = {}
 		@named = {}
 		@names = 0
 		
-		{AST::Int => 'int', AST::Bool => 'bool', AST::Char => 'char'}.each do |type, name|
+		{Core::Int => 'int', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
 			@gen[type] = [TypeContext::InstArgs.new({})]
 			type.c_prefix = false
 			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
@@ -142,11 +142,11 @@ class Codegen
 			when AST::TypeClassInstance
 				id = @named[ast] ||= (@names += 1)
 				"_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}_l"
-			when AST::Ptr::Node
-				"_P#{mangle_type(map.params[AST::Ptr::Type], map)}_l"
-			when AST::Func::Node
-				args = map.params[AST::Func::Args].tuple_map
-				result = map.params[AST::Func::Result]
+			when Core::Ptr::Node
+				"_P#{mangle_type(map.params[Core::Ptr::Type], map)}_l"
+			when Core::Func::Node
+				args = map.params[Core::Func::Args].tuple_map
+				result = map.params[Core::Func::Result]
 				"_F#{args.map {|a| mangle_type(a, map) }.join("_n")}_R#{mangle_type(result, map)}_l"
 			else
 				owner = ast.declared.owner

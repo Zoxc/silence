@@ -1,5 +1,35 @@
 ﻿
 module Types
+	def self.cmp_types(a, b, &cmp)
+		a = a.prune
+		b = b.prune
+		
+		done, result = cmp.(a, b)
+		return result if done
+		
+		return false unless a.class == b.class
+		
+		return false unless case a
+			when Types::Variable
+				a.equal?(b)
+			when Types::Complex
+				a.complex == b.complex
+			when Types::Param
+				a.param == b.param
+			when Types::TypeFunc
+				a.func == b.func
+		end
+		
+		a_args = a.type_args
+		b_args = b.type_args
+		
+		return false if a_args.size != b_args.size
+		
+		return a_args.zip(b_args).all? do |arg|
+			cmp_types(arg.first, arg.last, &cmp)
+		end
+	end
+	
 	class Type
 		attr_accessor :source
 		
@@ -28,17 +58,7 @@ module Types
 		end
 
 		def ==(other)
-			other = other.prune
-			
-			return if other.class != self.class
-			equal?(other) || rest_eql(other)
-		end
-		
-		def rest_eql(other)
-			args = type_args
-			other_args = other.type_args
-			
-			return args == other_args
+			Types.cmp_types(self, other) { [false, nil] }
 		end
 		
 		def to_s
@@ -63,18 +83,6 @@ module Types
 			@source = source
 			@system = system
 			@name = name
-		end
-		
-		def ==(other)
-			if @instance
-				return @instance == other
-			else
-				super
-			end
-		end
-		
-		def rest_eql(other)
-			false
 		end
 		
 		def prune
@@ -134,11 +142,6 @@ module Types
 			raise "Expected type" unless @args.values.all? { |v| v.is_a? Type }
 		end
 		
-		def rest_eql(other)
-			return false if @complex != other.complex
-			super
-		end
-		
 		def type_args
 			@args.values
 		end
@@ -153,10 +156,10 @@ module Types
 
 		def tuple_map
 			case complex
-				when AST::Unit
+				when Core::Unit
 					[]
-				when AST::Cell::Node
-					[@args[AST::Cell::Val], *@args[AST::Cell::Next].tuple_map]
+				when Core::Cell::Node
+					[@args[Core::Cell::Val], *@args[Core::Cell::Next].tuple_map]
 				else
 					raise "Expected tuple type"
 			end
@@ -164,11 +167,11 @@ module Types
 		
 		def text
 			case complex
-				when AST::Func::Node
-					"#{@args[AST::Func::Args].text} -> #{@args[AST::Func::Result].text}"
-				when AST::Ptr::Node
-					"*#{@args[AST::Ptr::Type].text}"
-				when AST::Unit, AST::Cell::Node
+				when Core::Func::Node
+					"#{@args[Core::Func::Args].text} -> #{@args[Core::Func::Result].text}"
+				when Core::Ptr::Node
+					"*#{@args[Core::Ptr::Type].text}"
+				when Core::Unit, Core::Cell::Node
 					"(#{tuple_map.map(&:text).join(', ')})"
 				else
 					"#{@complex.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"

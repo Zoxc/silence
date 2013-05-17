@@ -11,7 +11,7 @@ require_relative 'typeclass'
 require_relative 'parser'
 
 InferArgs = TypeContext::InferArgs.new({})
-TypeContext.infer_scope(AST::Builtin.scope, InferArgs)
+TypeContext.infer_scope(Core::Program.scope, InferArgs)
 
 def process(file, parent)
 	puts "Processing #{file}"
@@ -40,4 +40,4 @@ def process(file, parent)
 	ast
 end
 
-process(ARGV.first, AST::Builtin)
+process(ARGV.first, Core::Program)

@@ -106,11 +106,11 @@
 	end
 	
 	def make_tuple(source, args)
-		args.reverse.inject(AST::Unit.ctype.type.source_dup(source)) { |m, p| Types::Complex.new(source, AST::Cell::Node, {AST::Cell::Val => p, AST::Cell::Next => m}) }
+		args.reverse.inject(Core::Unit.ctype.type.source_dup(source)) { |m, p| Types::Complex.new(source, Core::Cell::Node, {Core::Cell::Val => p, Core::Cell::Next => m}) }
 	end
 	
 	def make_ptr(source, type)
-		Types::Complex.new(source, AST::Ptr::Node, {AST::Ptr::Type => type})
+		Types::Complex.new(source, Core::Ptr::Node, {Core::Ptr::Type => type})
 	end
 	
 	class AnalyzeArgs
@@ -236,7 +236,7 @@
 					@result = result
 				end
 				
-				[AST::Unit.ctype.type.source_dup(ast.source), true]
+				[Core::Unit.ctype.type.source_dup(ast.source), true]
 			when AST::If
 				cond = analyze_value(ast.condition, args.next)
 				unify(cond, Types::BoolType)
@@ -251,20 +251,20 @@
 				
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
-				type_class = Types::Complex.new(ast.source, AST::Callable::Node, {AST::Callable::T => type})
+				type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
 				limit = TypeClassLimit.new(self, ast.source, type_class)
 				@limits << limit
-				@limits << TypeFunctionLimit.new(self, ast.source, callable_args, AST::Callable::Args, limit)
-				@limits << TypeFunctionLimit.new(self, ast.source, result, AST::Callable::Result, limit)
+				@limits << TypeFunctionLimit.new(self, ast.source, callable_args, Core::Callable::Args, limit)
+				@limits << TypeFunctionLimit.new(self, ast.source, result, Core::Callable::Result, limit)
 				[result, true]
 			when AST::Literal
 				[case ast.type
 					when :int
-						AST::Int.ctype.type
+						Core::Int.ctype.type
 					when :bool
-						AST::Bool.ctype.type
+						Core::Bool.ctype.type
 					when :string
-						Types::Complex.new(ast.source, AST::Ptr::Node, {AST::Ptr::Type => AST::Char.ctype.type})
+						make_ptr(ast.source, Core::Char.ctype.type)
 					else
 						raise "Unknown literal type #{ast.type}"
 				end.source_dup(ast.source), true]
@@ -324,12 +324,13 @@
 						when AST::Tuple
 							lhs
 						else
+							type_class = Types::Complex.new(ast.source, Core::Tuple::Node, {Core::Tuple::T => lhs})
+							@limits << TypeClassLimit.new(self, ast.source, type_class)
 							lhs
-							# TODO: Constraint to tuple type instances only!
-							#raise TypeError.new("Only tuple types allowed as arguments to function type constructor (->)\n#{ast.arg.source.format}")
+							# DONE: Constraint to tuple type instances only! - TODO: Do this is a general way for all typeclass references?
 					end				
 					
-					[Types::Complex.new(ast.source, AST::Func::Node, {AST::Func::Args => func_args, AST::Func::Result => rhs}), false]
+					[Types::Complex.new(ast.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => rhs}), false]
 				end
 			when AST::Ref
 				result = @vars[ast.obj]
@@ -629,7 +630,7 @@
 		analyze(func.scope, AnalyzeArgs.new)
 		
 		# TODO: make @result default to Unit, so the function can reference itself
-		func_result = Types::Complex.new(func.source, AST::Func::Node, {AST::Func::Args => func_args, AST::Func::Result => (@result || AST::Unit.ctype.type.source_dup(func.source))})
+		func_result = Types::Complex.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result || Core::Unit.ctype.type.source_dup(func.source))})
 
 		finalize(func_result, true)
 	end
