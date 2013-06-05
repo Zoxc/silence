@@ -7,9 +7,23 @@ class Codegen
 		@names = 0
 		
 		{Core::Int => 'int', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
-			@gen[type] = [TypeContext::InstArgs.new({})]
+			@gen[type] = [Map.new({}, {})]
 			type.c_prefix = false
 			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
+		end
+	end
+	
+	Map = Struct.new(:params, :vars) do
+		def to_s
+			"Map(#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")} | #{vars.each.map { |p| "#{p.first.text}: #{p.last.text}" }.join(", ")})"
+		end
+		
+		def merge(other)
+			self.class.new(params.merge(other.params), vars.merge(other.vars))
+		end
+		
+		def copy
+			self.class.new(params.dup, vars.dup)
 		end
 	end
 	
@@ -38,18 +52,18 @@ class Codegen
 		
 		ref = inst.scope.names[ast.name]
 		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
-		new_map = TypeContext::InstArgs.new(inst_map)	
+		new_map = Map.new(inst_map, {})	
 		
 		puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
 		
 		return ref, new_map
 	end
 	
-	def inst_type(type, map, vmap = nil)
+	def inst_type(type, map)
 		type = type.prune
 		case type
 			when Types::Variable
-				r = vmap[type]
+				r = map.vars[type]
 				raise "Unable to find type for #{type.text}" unless r
 				r
 			when Types::Param
@@ -57,29 +71,30 @@ class Codegen
 				raise "Unable to find instance of #{type.text} #{map}" unless r
 				r
 			when Types::Complex
-				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(v, map, vmap)] }])
+				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
 			else
 				raise "(inst_type unknown #{type.class.inspect})"
 		end
 	end
+	
+	def map_vars(ref, map)
+		map.vars = Hash[ref.ctype.type_func_vars.map do |limit|
+			iref, new_map = find_instance(limit.typeclass_limit.var, map, limit.type_ast)
+			[limit.var, inst_type(iref.ctype.type, new_map)]
+		end]
+	end
 
-	def do_ref(ast, old_map, map)
-		map = map.dup
-		params = ast_keys(ast)
+	def do_ref(ast, old_map, new_params)
+		map = Map.new({}, {})
 		
-		map.params.each do |k, v|
-			if params.include? k
-				map.params[k] = inst_type(v, old_map)
-			else
-				map.params.delete(k)
-			end
+		ast_keys(ast).each do |p|
+			type = new_params[p]
+			raise "missing key #{p.name}" unless type
+			map.params[p] = inst_type(type, old_map)
 		end
-		params.each { |p| raise "missing key #{p.name}" unless map.params.key?(p) }
 		
 		owner = ast.declared.owner
 		
-		puts "ref #{ast.name} old_map:#{old_map} new_map:#{map}"
-			
 		if owner.is_a?(AST::TypeClass)	
 			ref, new_map = find_instance(owner.ctype.type, map, ast)
 			
@@ -96,28 +111,32 @@ class Codegen
 			ref = ast
 		end
 		
+		map_vars(ref, map)
+		
+		puts "ref #{ast.name} old:#{old_map} new:#{map}"
+			
 		gen(ref, map)
 		[ref, map]
 	end
 	
-	def ref(ast, old_map, map)
-		ast, map = do_ref(ast, old_map, map)
+	def ref(ast, old_map, new_params)
+		ast, map = do_ref(ast, old_map, new_params)
 		mangle(ast, map)
 	end
 	
-	def fixed_type(type, map, vmap)
-		type = inst_type(type, map, vmap)
-		yield do_ref(type.complex, map, TypeContext::InstArgs.new(type.args))
+	def fixed_type(type, map)
+		type = inst_type(type, map)
+		yield do_ref(type.complex, map, type.args)
 	end
 
 	def mangle_type(type, map)
-		fixed_type(type, map, nil) do |complex, map|
+		fixed_type(type, map) do |complex, map|
 			mangle_impl(complex, map)
 		end
 	end
 
-	def c_type(type, map, vmap = nil)
-		fixed_type(type, map, vmap) do |complex, map|
+	def c_type(type, map)
+		fixed_type(type, map) do |complex, map|
 			case complex
 				when Core::Ptr::Node
 					"#{c_type(map.params[Core::Ptr::Type], map)}*"
@@ -247,7 +266,9 @@ class Codegen
 				o << "\n{\n"
 				ast.scope.names.values.each do |value|
 					next if !value.is_a?(AST::Variable) || value.props[:shared]
-					o << "    #{c_type(value.ctype.type, map)} f_#{value.name};\n"
+					field_map = map.copy
+					map_vars(value, field_map)
+					o << "    #{c_type(value.ctype.type, field_map)} f_#{value.name};\n"
 				end
 				o << "};\n\n"
 				@out[:struct] << o
@@ -272,7 +293,7 @@ class Codegen
 				apply.(ast.nodes)
 			when AST::Function
 				return if !ast.type_params.empty? || !ast.ctype.type.fixed_type? || !ast.props[:export]
-				gen(ast, TypeContext::InstArgs.new({}))
+				gen(ast, Map.new({}, {}))
 		end
 	end
 	

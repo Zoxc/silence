@@ -8,10 +8,6 @@ class FuncCodegen
 		@map = map
 		@var_name = 0
 		@vars = []
-		@var_map = Hash[@func.ctype.type_func_vars.map do |limit|
-			ref, new_map = gen.find_instance(limit.typeclass_limit.var, map, limit.type_ast)
-			[limit.var, gen.inst_type(ref.ctype.type, new_map)]
-		end]
 	end
 	
 	Var = Struct.new(:name, :type) do
@@ -31,7 +27,7 @@ class FuncCodegen
 	end
 	
 	def assign_var(var, type, str)	
-		var.type = gen.c_type(type.first, @map, @var_map)
+		var.type = gen.c_type(type.first, @map)
 		(o var.ref + " = " + str + ";") if str
 	end
 	
@@ -40,8 +36,8 @@ class FuncCodegen
 		@vars.map(&:decl).join + "\n" + @out.join("\n")
 	end
 	
-	def ref(obj, map)
-		@gen.ref(obj, @map, map)
+	def ref(obj, params)
+		@gen.ref(obj, @map, params)
 	end
 	
 	def o(str)
@@ -53,8 +49,8 @@ class FuncCodegen
 		(o var.ref + ".data = &" + data + ";") if data
 	end
 	
-	def assign_f(var, ast, obj, map)
-		ref = ref(obj, map)
+	def assign_f(var, ast, obj, params)
+		ref = ref(obj, params)
 		
 		if obj.is_a?(AST::Function)
 			assign_var(var, ast.gtype, nil)
@@ -73,7 +69,7 @@ class FuncCodegen
 			when AST::Field
 				case ast.gen[:type]
 					when :single
-						return ref(ast.gen[:ref], ast.gen[:args])
+						return ref(ast.gen[:ref], ast.gen[:args].last.params)
 					when :field
 						obj = new_var
 						convert(ast.obj, obj)
@@ -85,7 +81,7 @@ class FuncCodegen
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					return "self->f_#{ast.obj.name}"
 				else
-					return ref(ast.obj, ast.gen.last.merge(@map))
+					return ref(ast.obj, ast.gen.last.params.dup.merge(@map.params))
 				end
 		end
 	end
@@ -120,14 +116,14 @@ class FuncCodegen
 			when AST::Field
 				case ast.gen[:type]
 					when :single
-						assign_f(var, ast, ast.gen[:ref], ast.gen[:args])
+						assign_f(var, ast, ast.gen[:ref], ast.gen[:args].params)
 					when :field
 						obj = new_var
 						convert(ast.obj, obj)
 						
 						if ast.gen[:ref].is_a?(AST::Function)
 							assign_var(var, ast.gtype, nil)
-							assign_func(var, obj.ref, ref(ast.gen[:ref], ast.gen[:args]))
+							assign_func(var, obj.ref, ref(ast.gen[:ref], ast.gen[:args].params))
 						else
 							assign_var(var, ast.gtype, "#{obj.ref}.f_#{ast.gen[:ref].name}")
 						end
@@ -140,7 +136,7 @@ class FuncCodegen
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					assign_var(var, ast.gtype, "self->f_#{ast.obj.name}") # TODO: Check for the case when accesing a field in a parent struct
 				else
-					assign_f(var, ast, ast.obj, ast.gen.last.merge(@map))
+					assign_f(var, ast, ast.obj, ast.gen.last.params.dup.merge(@map.params))
 				end
 			when AST::Return
 				result = new_var
@@ -161,6 +157,8 @@ class FuncCodegen
 			when AST::If
 				result = "if(#{gen_body(ast.condition)})\n#{ind.()}{\n" + gen_body.(ast.group) + "\n#{ind.()}}"
 				result << "\nelse\n#{ind.()}{\n" + gen_body.(ast.else_node) + "\n#{ind.()}}" if ast.else_node
+			when AST::Grouped
+				convert(ast.node, var)
 			when AST::Call
 				obj = new_var
 				convert(ast.obj, obj)

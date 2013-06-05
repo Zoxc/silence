@@ -463,7 +463,7 @@
 		case type
 			when Types::Param
 				args.params[type.param] || type
-			when Types::TypeFunc
+			when Types::TypeFunc # TODO: Move this to when type functions are referenced?
 				limit = @limits.find { |l| l.is_a?(TypeClassLimit) && l.var.complex == type.func.declared.owner && l.var.args == args.params }
 				raise "Unable to find limit for #{type.text}" unless limit
 				result = new_var(type.source)
@@ -538,15 +538,47 @@
 		r ? r.last : var
 	end
 	
+	def is_instance?(input, inst)
+		map = {}
+		
+		result = Types.cmp_types(input, inst) do |input, inst|
+			if inst.is_a? Types::Param
+				if map.key? inst.param
+					[true, map[inst.param] == input]
+				else
+					map[inst.param] = input
+					[true, true]
+				end
+			else
+				[input.is_a?(Types::Variable), false]
+			end
+		end
+		
+		[result, map]
+	end
+	
 	def find_instance(input)
 		map = nil
 		[input.complex.instances.find do |inst|
 			next if inst == @obj # Instances can't find themselves
 			
 			infer(inst)
-			result, map = TypeClass.is_instance?(@infer_args, input, inst.ctype.typeclass)
-			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}"
-			result
+			result, map = is_instance?(input, inst.ctype.typeclass)
+			
+			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}\n#{input.source.format}"
+			
+			next unless result
+			
+			next unless inst.ctype.limits.all? { |c|
+				case c
+					when TypeClassLimit
+						find_instance(inst_type(InstArgs.new(map), c.var)).first
+					else
+						true
+				end
+			}
+			
+			true
 		end, map]
 	end
 	
@@ -664,6 +696,15 @@
 		@obj.type_params.concat t
 	end
 	
+	def limit_defines(limit, var, rem)
+		return false if occurs_in?(var, limit.var.prune)
+		return rem.select { |c| occurs_in?(c.var, limit.var.prune) }.all? { |c| limit_defines(c.typeclass_limit, c.var, rem - [c]) }
+	end
+	
+	def resolved_limit(c)
+		return limit_defines(c.typeclass_limit, c.var, @limits.select { |c| c.is_a?(TypeFunctionLimit) } - [c])
+	end
+	
 	def finalize(type, value)
 		type = type.prune
 		@value = value
@@ -673,25 +714,24 @@
 		
 		unresolved_vars = @type_vars
 		
-		if @obj.is_a? AST::Function
+		@type_vars = @type_vars.select { |var| occurs_in?(var, type) }
 		
-			@type_vars = @type_vars.select { |var| occurs_in?(var, type) }
-			
-			parameterize(@type_vars)
-			
-			#@limits.each do |c|
-			#	@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
-			#end
-			
-			unresolved_vars -= @type_vars
-			
-			@type_func_vars = @limits.select do |c|
-				next unless c.is_a? TypeFunctionLimit
-				var = c.var.prune
-				next unless unresolved_vars.include?(var)
-				unresolved_vars.delete(var)
-				true
-			end
+		parameterize(@type_vars) if @obj.is_a? AST::Function
+		
+		# TODO: Find a proper way to find type variables which doesn't have definition. Done for TypeFunctionLimits, same needed for FieldLimits?
+		#@limits.each do |c|
+		#	@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
+		#end
+		
+		unresolved_vars -= @type_vars unless @obj.is_a?(AST::Variable)
+		
+		@type_func_vars = @limits.select do |c|
+			next unless c.is_a? TypeFunctionLimit
+			var = c.var.prune
+			next unless unresolved_vars.include?(var)
+			next unless resolved_limit(c)
+			unresolved_vars.delete(var)
+			true
 		end
 		
 		puts "Type of #{@obj.name} is #{type.text}"
@@ -773,7 +813,7 @@
 				raise "Unknown value #{value.class}"
 		end
 	end
-		
+	
 	def infer(value)
 		TypeContext.infer(value, @infer_args)
 	end
