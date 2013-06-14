@@ -10,7 +10,7 @@ require_relative 'infer'
 require_relative 'typeclass'
 require_relative 'parser'
 
-InferArgs = TypeContext::InferArgs.new({})
+InferArgs = TypeContext::InferArgs.new({}, [])
 TypeContext.infer_scope(Core::Program.scope, InferArgs)
 
 def process(file, parent)

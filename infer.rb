@@ -179,8 +179,16 @@
 		elsif args
 			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{source.format}")
 		elsif obj.kind_of?(AST::TypeFunction)
-			result, inst_args = inst_ex(obj, parent_args, type)
-			result = result.source_dup(source)
+			typeclass = obj.declared.owner
+			raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
+			
+			typeclass_type, inst_args = inst_ex(typeclass, parent_args)
+			
+			class_limit = TypeClassLimit.new(self, source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
+			result = new_var(source)
+			@limits << class_limit
+			@limits << TypeFunctionLimit.new(self, source, result, obj, class_limit)
+			inst_args = InstArgs.new({})
 		else
 			result, inst_args = type, InstArgs.new({})
 			result = result.source_dup(source)
@@ -463,17 +471,20 @@
 		case type
 			when Types::Param
 				args.params[type.param] || type
-			when Types::TypeFunc # TODO: Move this to when type functions are referenced?
-				limit = @limits.find { |l| l.is_a?(TypeClassLimit) && l.var.complex == type.func.declared.owner && l.var.args == args.params }
-				raise "Unable to find limit for #{type.text}" unless limit
-				result = new_var(type.source)
-				@limits << TypeFunctionLimit.new(self, type.func.source, result, type.func, limit)
-				result
 			when Types::Complex
 				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
 			else
 				raise "Unknown type #{type.class}"
 		end
+	end
+	
+	def inst_limits(obj, inst_args)
+		lmap = {}
+		
+		obj.ctype.limits.map do |l|
+				next if obj.ctype.type_func_vars.include?(l)
+				inst_limit(lmap, inst_args, l)
+		end.compact
 	end
 	
 	def inst(obj, params = {}, type_obj = nil)
@@ -483,13 +494,9 @@
 	
 	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
-		lmap = {}
 		inst_args = InstArgs.new(params)
 		
-		@limits.concat(obj.ctype.limits.map do |l|
-			next if obj.ctype.type_func_vars.include?(l)
-			inst_limit(lmap, inst_args, l)
-		end.compact)
+		@limits.concat(inst_limits(obj, inst_args))
 		
 		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
 	end
@@ -558,6 +565,11 @@
 	end
 	
 	def find_instance(input)
+		#TODO: Find all matching instances and error if multiple are appliable
+		#      If one instance is more specific than the other (or an instance of), use the most specific one.
+		#      If we can't tell if we want the specific one, keep the constraint around until it has a fixed type.
+		#      Implement this by ensuring all the more specific instances can't be used before picking.
+		
 		map = nil
 		[input.complex.instances.find do |inst|
 			next if inst == @obj # Instances can't find themselves
@@ -569,15 +581,6 @@
 			
 			next unless result
 			
-			next unless inst.ctype.limits.all? { |c|
-				case c
-					when TypeClassLimit
-						find_instance(inst_type(InstArgs.new(map), c.var)).first
-					else
-						true
-				end
-			}
-			
 			true
 		end, map]
 	end
@@ -586,16 +589,17 @@
 		nil while @limits.reject! do |c|
 			case c
 				when TypeClassLimit
-					unless c.instance
-						#puts "Searching instance for #{c}"
-						inst, map = find_instance(c.var)
-						if inst
-							c.instance = inst(inst, map)
-							#puts "Found instance for #{c}"
-							true
-						elsif c.var.fixed_type?
-							raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.source.format}")
-						end
+					next if c.instance # We already found an instance
+					next if (@obj.declared && @obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
+					
+					#puts "Searching instance for #{c}"
+					inst, map = find_instance(c.var)
+					if inst
+						c.instance = inst(inst, map) # Adds the limits of the instance to the @limits array
+						#puts "Found instance for #{c}"
+						true
+					elsif c.var.fixed_type?
+						raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.source.format}")
 					end
 				when TypeFunctionLimit
 					inst = c.typeclass_limit.instance
@@ -710,6 +714,12 @@
 		@value = value
 		solve
 		
+		@limits.each do |c|
+			if c.is_a? FieldLimit
+				raise TypeError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
+			end
+		end
+		
 		@type_vars.reject! { |var| var.instance }
 		
 		unresolved_vars = @type_vars
@@ -772,8 +782,9 @@
 			member, = @obj.scope.require_with_scope(@obj.source, name, proc { "Expected '#{name}' in instance of typeclass #{typeclass.name}" })
 			next if value.is_a? AST::TypeFunction
 			m = infer(member)
-			b = inst(value, @typeclass.args)
-			raise TypeError, "Expected type '#{b.text}' for #{name}, but '#{m.text}' found\n#{member.source.format}" unless m == b
+			#TODO: How to ensure members are a proper instance of the typeclass?
+			#b = inst(value, @typeclass.args)
+			#raise TypeError, "Expected type '#{b.text}' for #{name}, but '#{m.text}' found\n#{member.source.format}" unless m == b
 		end
 	end
 	
@@ -820,15 +831,19 @@
 
 	def self.infer(value, infer_args) # TODO: Should have a source argument for better recursive error messages
 		return value.ctype.type if value.ctype
-		raise "Recursive #{value.name}" if infer_args.visited[value]
+		raise "Recursive #{value.scoped_name} - #{value.class}\nStack:\n#{infer_args.stack.reverse.join("")}" if infer_args.visited[value]
 		infer_args.visited[value] = true
 		
+		infer_args.stack.push(" #{value.scoped_name} - #{value.class}\n#{value.source.format}")
+		
 		TypeContext.new(infer_args, value).process
+		
+		infer_args.stack.pop
 		
 		value.ctype.type
 	end
 
-	InferArgs = Struct.new :visited
+	InferArgs = Struct.new :visited, :stack
 
 	def self.infer_scope(scope, infer_args)
 		scope.names.each_pair do |name, value|

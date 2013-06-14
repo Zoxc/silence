@@ -646,16 +646,38 @@ class Core
 	Char = complex :char
 	
 	class Callable < Core
-		Args = AST::TypeFunction.new(Src, :Args)
+		Args = AST::TypeFunction.new(Src, :Args) # Constrain this to Tuple
 		Result = AST::TypeFunction.new(Src, :Result)
+		
+		Apply = AST::Function.new
+		Apply.source = Src
+		Apply.name = :apply
+		Apply.params = [AST::Function::Param.new(Src, Apply, :args, ref(Args))]
+		Apply.type_params = []
+		Apply.result = ref(Result)
+		Apply.attributes = []
+		Apply.scope = AST::LocalScope.new([])
+		Apply.props = []
+		
 		T = param :T
-		Node = complex(:Callable, [T], AST::TypeClass, [Args, Result])
+		Node = complex(:Callable, [T], AST::TypeClass, [Args, Result, Apply])
 	end
 
 	proc do
 		args = param :Args
 		result = param :Result
-		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([]), [args, result])
+		
+		apply = AST::Function.new
+		apply.source = Src
+		apply.name = :apply
+		apply.params = [AST::Function::Param.new(Src, apply, :args, ref(args))]
+		apply.type_params = []
+		apply.result = ref(result)
+		apply.attributes = []
+		apply.scope = AST::LocalScope.new([])
+		apply.props = []
+		
+		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result])
 	end.()
 
 	Program.run_pass(:declare_pass, false)
