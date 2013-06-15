@@ -873,7 +873,7 @@
 		TypeContext.infer(value, @infer_args)
 	end
 
-	def self.infer(value, infer_args) # TODO: Should have a source argument for better recursive error messages
+	def self.infer(value, infer_args)
 		return value.ctype.type if value.ctype
 		raise "Recursive #{value.scoped_name} - #{value.class}\nStack:\n#{infer_args.stack.reverse.join("")}" if infer_args.visited[value]
 		infer_args.visited[value] = true
