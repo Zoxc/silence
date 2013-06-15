@@ -462,6 +462,14 @@
 		
 		solve_fields
 		
+		@ctx.reduce_limits
+		
+		# If we are a complex, we can allow to give a less strict constraints in case @ctx.reduce refers back to it
+		if @obj.is_a? AST::Complex
+			@type = type
+			@obj.ctype = self
+		end
+		
 		@ctx.reduce(@obj)
 		
 		@fields.each do |c|

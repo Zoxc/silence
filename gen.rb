@@ -169,6 +169,9 @@ class Codegen
 				args = map.params[Core::Func::Args].tuple_map
 				result = map.params[Core::Func::Result]
 				"_F#{args.map {|a| mangle_type(a, map) }.join("_n")}_R#{mangle_type(result, map)}_l"
+			when Core::Cell::Node
+				fields = [map.params[Core::Cell::Val]] + map.params[Core::Cell::Next].tuple_map
+				"_Q#{fields.map {|f| mangle_type(f, map) }.join("_n")}_l"
 			else
 				owner = ast.declared.owner
 				if owner.is_a?(AST::Program)
@@ -218,6 +221,15 @@ class Codegen
 				o << "\n{\n"
 				o << "   void *data;\n"
 				o << "   void (*func)(#{(["void *", c_type(result, map) + " *"] + args.map{|a| c_type(a, map)}).join(", ")});\n"
+				o << "};\n\n"
+				@out[:struct] << o
+			when Core::Cell::Node
+				fields = [map.params[Core::Cell::Val]] + map.params[Core::Cell::Next].tuple_map
+				name = mangle(ast, map)
+				o = "struct #{name}"
+				@out[:struct_forward] << o << ";\n"
+				o << "\n{\n"
+				o << fields.each_with_index.map { |f, i| "   #{c_type(f, map)} f_#{i};\n" }.join
 				o << "};\n\n"
 				@out[:struct] << o
 			when AST::Function

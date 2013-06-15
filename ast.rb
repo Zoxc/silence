@@ -601,22 +601,22 @@ class Core
 			AST::Ref.new(Src, node)
 		end
 		
-		def param(name)
-			AST::TypeParam.new(Src, name, nil)
+		def param(name, tp = nil)
+			AST::TypeParam.new(Src, name, tp)
 		end
 	end
 	
 	Unit = complex :Unit
 	
-	class Cell < Core
-		Val = param :Val
-		Next = param :Next
-		Node = complex(:Cell, [Val, Next])
-	end
-	
 	class Tuple < Core
 		T = param :T
 		Node = complex(:Tuple, [T], AST::TypeClass)
+	end
+	
+	class Cell < Core
+		Val = param :Val
+		Next = param(:Next, ref(Tuple::Node))
+		Node = complex(:Cell, [Val, Next])
 	end
 	
 	proc do
@@ -646,7 +646,7 @@ class Core
 	Char = complex :char
 	
 	class Callable < Core
-		Args = AST::TypeFunction.new(Src, :Args) # Constrain this to Tuple
+		Args = AST::TypeFunction.new(Src, :Args) # TODO: Constrain this to Tuple
 		Result = AST::TypeFunction.new(Src, :Result)
 		
 		Apply = AST::Function.new

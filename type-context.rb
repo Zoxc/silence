@@ -263,8 +263,7 @@
 	
 	def reduce(obj)
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
-		reduce_limits
-		
+
 		nil while @limits.reject! do |c|
 			next if (obj.declared && obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
