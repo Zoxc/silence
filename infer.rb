@@ -52,8 +52,8 @@
 	end
 	
 	def typeclass_limit(source, typeclass)
-		tcl = TypeLimits::TypeClassLimit.new(source, typeclass)
-		@ctx.limits.limits << tcl
+		tcl = TypeContext::TypeClassLimit.new(source, typeclass)
+		@ctx.limits << tcl
 		tcl
 	end
 	
@@ -462,7 +462,7 @@
 		
 		solve_fields
 		
-		@ctx.limits.reduce(@obj)
+		@ctx.reduce(@obj)
 		
 		@fields.each do |c|
 			raise TypeError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
@@ -488,18 +488,18 @@
 		#end
 		
 		# Remove dependent type variables
-		@dependent_vars = @ctx.limits.find_dependent_vars(unresolved_vars)
+		@dependent_vars = @ctx.find_dependent_vars(unresolved_vars)
 		unresolved_vars -= @dependent_vars
 		
 		# Find unresolved type variables used in type class constraints
-		unresolved_vars = @ctx.limits.vars_in_typeclass_args(unresolved_vars)
+		unresolved_vars = @ctx.vars_in_typeclass_args(unresolved_vars)
 		
 		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
 		
 		puts "  #{@obj.scoped_name}  \t::  #{type.text}"
 		
-		unless @ctx.limits.limits.empty?
-			@ctx.limits.limits.each{|i| puts "    - #{i}"}
+		unless @ctx.limits.empty?
+			@ctx.limits.each{|i| puts "    - #{i}"}
 		end
 		
 		unless @views.empty?

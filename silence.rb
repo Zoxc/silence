@@ -8,7 +8,6 @@ require_relative 'print'
 require_relative 'types'
 require_relative 'infer'
 require_relative 'type-context'
-require_relative 'type-limits'
 require_relative 'parser'
 
 InferArgs = InferContext::InferArgs.new({}, [])
