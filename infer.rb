@@ -579,7 +579,7 @@
 
 	def self.infer(value, infer_args)
 		return value.ctype.type if value.ctype
-		raise "Recursive #{value.scoped_name} - #{value.class}\nStack:\n#{infer_args.stack.reverse.join("")}" if infer_args.visited[value]
+		raise "Recursive #{value.scoped_name} - #{value.class}\nStack:\n#{infer_args.stack.reverse.join("\n")}" if infer_args.visited[value]
 		infer_args.visited[value] = true
 		
 		infer_args.stack.push(" #{value.scoped_name} - #{value.class}\n#{value.source.format}")

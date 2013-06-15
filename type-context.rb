@@ -85,17 +85,17 @@
 		end
 	end
 	
-	InstArgs = Struct.new(:params) do
+	InstArgs = Struct.new(:map, :params) do
 		def to_s
-			"Inst{#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}}"
+			"Inst({#{map.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}}, [#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}])"
 		end
 		
 		def merge(other)
-			self.class.new(params.merge(other.params))
+			self.class.new(map.merge(other.map), params.merge(other.params))
 		end
 		
 		def copy
-			self.class.new(params.dup)
+			self.class.new(map.dup, params.dup)
 		end
 	end
 	
@@ -113,6 +113,8 @@
 	def inst_type(args, type)
 		type = type.prune
 		case type
+			when Types::Variable
+				args.map[type] ||= new_var(type.source, type.name)
 			when Types::Param
 				args.params[type.param] || type
 			when Types::Complex
@@ -129,7 +131,7 @@
 	
 	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
-		inst_args = InstArgs.new(params)
+		inst_args = InstArgs.new({}, params)
 		
 		inst_limits(obj, inst_args)
 		
@@ -199,7 +201,7 @@
 		[result, map]
 	end
 	
-	def find_instance(input)
+	def find_instance(obj, input)
 		#TODO: Find all matching instances and error if multiple are appliable
 		#      If one instance is more specific than the other (or an instance of), use the most specific one.
 		#      If we can't tell if we want the specific one, keep the constraint around until it has a fixed type.
@@ -207,7 +209,7 @@
 		
 		map = nil
 		[input.complex.instances.find do |inst|
-			next if inst == @obj # Instances can't find themselves
+			next if inst == obj # Instances can't find themselves
 			
 			infer(inst)
 			result, map = is_instance?(input, inst.ctype.typeclass)
@@ -260,7 +262,7 @@
 			next if (obj.declared && obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
 			#puts "Searching instance for #{c}"
-			inst, map = find_instance(c.var)
+			inst, map = find_instance(obj, c.var)
 			if inst
 				instance = inst(inst, map) # Adds the limits of the instance to the @limits array
 				
