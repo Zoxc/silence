@@ -1,50 +1,54 @@
 ﻿class TypeContext
-	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars, :infer_args, :type_func_vars
+	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars, :infer_args, :dependent_vars
 	
 	class TypeError < CompileError
 	end
 	
+	# TODO: Move limits and variable names into it's own type TypeContext and rename this back to InferContext
+	#         How to deal with type specifiers which have limits inside expressions?
+	#            Return a list of limits in analyze_impl and use that to check types?
+	#            Run them after resolving all constraints?
+	
 	class Limit
 		attr_accessor :source, :var
 		
-		def initialize(system, source, var)
-			@system = system
+		def initialize(source, var)
 			@source = source
 			@var = var
-		end
-		
-		def name
-			@name ||= @system.new_limit_name
 		end
 	end
 	
 	class TypeClassLimit < Limit
-		attr_accessor :instance
+		attr_accessor :eqs
+		
+		def initialize(*args)
+			super
+			@eqs = []
+		end
 		
 		def to_s
-			"#{name} := #{@var.text}#{" #{instance.text}" if instance}"
+			"#{@var.text}#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}"
 		end
 	end
 	
-	class TypeFunctionLimit < Limit
-		attr_accessor :type_ast, :typeclass_limit
+	class EqLimit < Limit
+		attr_accessor :type_ast
 		
-		def initialize(system, source, var, type_ast, typeclass_limit)
-			super(system, source, var)
+		def initialize(source, var, type_ast)
+			super(source, var)
 			@type_ast = type_ast
-			@typeclass_limit = typeclass_limit
 		end
 		
 		def to_s
-			"#{@var.real_text} = #{@typeclass_limit.name}.#{@type_ast.name}"
+			".#{@type_ast.name} = #{@var.real_text}"
 		end
 	end
 	
 	class FieldLimit < Limit
 		attr_accessor :type, :name, :args, :ast, :lvalue
 		
-		def initialize(system, source, var, type, name, args, ast, lvalue)
-			super(system, source, var)
+		def initialize(source, var, type, name, args, ast, lvalue)
+			super(source, var)
 			@type = type
 			@name = name
 			@args = args
@@ -64,22 +68,14 @@
 		@var_allocs = {}
 		@type_vars = []
 		@var_name = 1
-		@limit_name = 1
 		@limits = []
 		@views = {}
-		@type_func_vars = []
 	end
 	
 	def new_var_name
 		result = @var_name
 		@var_name += 1
 		"p#{result}"
-	end
-	
-	def new_limit_name
-		result = @limit_name
-		@limit_name += 1
-		"l#{result}"
 	end
 	
 	def new_var(source = nil, name = nil)
@@ -167,7 +163,7 @@
 			result = result.source_dup(source)
 			
 			if type.type_class?
-				@limits << TypeClassLimit.new(self, source, result)
+				@limits << TypeClassLimit.new(source, result)
 				if !analyze_args.scoped
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
 													   #       Generate an error when the view's type variable is unified with anything other than another type variable
@@ -184,10 +180,10 @@
 			
 			typeclass_type, inst_args = inst_ex(typeclass, parent_args)
 			
-			class_limit = TypeClassLimit.new(self, source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
+			class_limit = TypeClassLimit.new(source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
 			result = new_var(source)
 			@limits << class_limit
-			@limits << TypeFunctionLimit.new(self, source, result, obj, class_limit)
+			class_limit.eqs << EqLimit.new(source, result, obj)
 			inst_args = InstArgs.new({})
 		else
 			result, inst_args = type, InstArgs.new({})
@@ -263,10 +259,10 @@
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
 				type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
-				limit = TypeClassLimit.new(self, ast.source, type_class)
+				limit = TypeClassLimit.new(ast.source, type_class)
+				limit.eqs << EqLimit.new(ast.source, callable_args, Core::Callable::Args)
+				limit.eqs << EqLimit.new(ast.source, result, Core::Callable::Result)
 				@limits << limit
-				@limits << TypeFunctionLimit.new(self, ast.source, callable_args, Core::Callable::Args, limit)
-				@limits << TypeFunctionLimit.new(self, ast.source, result, Core::Callable::Result, limit)
 				[result, true]
 			when AST::Literal
 				[case ast.type
@@ -336,7 +332,7 @@
 							lhs
 						else
 							type_class = Types::Complex.new(ast.source, Core::Tuple::Node, {Core::Tuple::T => lhs})
-							@limits << TypeClassLimit.new(self, ast.source, type_class)
+							@limits << TypeClassLimit.new(ast.source, type_class)
 							lhs
 							# DONE: Constraint to tuple type instances only! - TODO: Do this is a general way for all typeclass references?
 					end				
@@ -376,7 +372,7 @@
 				
 				if value
 					result = new_var(ast.source)
-					@limits << FieldLimit.new(self, ast.source, result, type, ast.name, get_index_args(args), ast, args.lvalue)
+					@limits << FieldLimit.new(ast.source, result, type, ast.name, get_index_args(args), ast, args.lvalue)
 					[result, true]
 				else
 					if type.kind_of? Types::Complex
@@ -409,6 +405,9 @@
 	end
 	
 	def occurs_in?(a, b)
+		a.require_pruned
+		b.require_pruned
+		
 		return true if a == b
 		return false if b.is_a? Types::Variable
 		
@@ -455,17 +454,6 @@
 		end
 	end
 	
-	def inst_limit(lmap, args, limit)
-		case limit
-			when TypeClassLimit
-				lmap[limit] ||= TypeClassLimit.new(self, limit.source, inst_type(args, limit.var))
-			when TypeFunctionLimit
-				TypeFunctionLimit.new(self, limit.source, inst_type(args, limit.var), limit.type_ast, inst_limit(lmap, args, limit.typeclass_limit))
-			else
-				raise "Unknown limit #{limit.class}"
-		end
-	end
-	
 	def inst_type(args, type)
 		type = type.prune
 		case type
@@ -479,11 +467,14 @@
 	end
 	
 	def inst_limits(obj, inst_args)
-		lmap = {}
-		
-		obj.ctype.limits.map do |l|
-				next if obj.ctype.type_func_vars.include?(l)
-				inst_limit(lmap, inst_args, l)
+		obj.ctype.limits.map do |limit|
+			raise "Unknown limit #{limit.class}" unless limit.is_a?(TypeClassLimit)
+			
+			class_limit = TypeClassLimit.new(limit.source, inst_type(inst_args, limit.var))
+			class_limit.eqs = limit.eqs.map do |eq|
+				EqLimit.new(eq.source, inst_type(inst_args, eq.var), eq.type_ast)
+			end
+			class_limit
 		end.compact
 	end
 	
@@ -506,6 +497,9 @@
 		b = b.prune
 		
 		if a.is_a? Types::Variable
+			# Don't unify type variables with themselves TODO: Can this happen?
+			return if a == b 
+			
 			raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
 			a.instance = b
 			a.source = a.source || b.source
@@ -585,33 +579,66 @@
 		end, map]
 	end
 	
+	def reduce_eqs(eqs)
+		eqs.reject! do |eq|
+			dup = eqs.find do |oeq|
+				next if eq == oeq
+				eq.type_ast == oeq.type_ast
+			end
+			if dup
+				unify(eq.var, dup.var)
+				true
+			end
+		end
+	end
+	
+	def reduce_limits
+		@limits.reject! do |c|
+			next unless c.is_a?(TypeClassLimit)
+			
+			dup = @limits.find do |oc|
+				next unless oc.is_a?(TypeClassLimit)
+				next if c == oc
+				
+				c.var == oc.var				
+			end
+			
+			if dup
+				dup.eqs.concat c.eqs
+				true
+			end
+		end
+		
+		@limits.each do |c|
+			next unless c.is_a?(TypeClassLimit)
+			reduce_eqs(c.eqs)
+		end
+	end
+	
 	def solve
 		nil while @limits.reject! do |c|
 			case c
 				when TypeClassLimit
-					next if c.instance # We already found an instance
 					next if (@obj.declared && @obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
 					
 					#puts "Searching instance for #{c}"
 					inst, map = find_instance(c.var)
 					if inst
-						c.instance = inst(inst, map) # Adds the limits of the instance to the @limits array
-						#puts "Found instance for #{c}"
+						instance = inst(inst, map) # Adds the limits of the instance to the @limits array
+						
+						# Resolve the type functions
+						c.eqs.each do |eq| 
+							ast = instance.complex.scope.names[eq.type_ast.name]
+							result = inst(ast, instance.args)
+							unify(result, eq.var)
+						end
+						
 						true
 					elsif c.var.fixed_type?
 						raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.source.format}")
 					end
-				when TypeFunctionLimit
-					inst = c.typeclass_limit.instance
-					if inst
-						ast = inst.complex.scope.names[c.type_ast.name]
-						
-						result = inst(ast, inst.args)
-						
-						unify(result, c.var)
-						
-						true
-					end
+					
+				# Move FieldLimit into a separate list which we process before the one containing TypeClassLimit?
 				when FieldLimit
 					var = c.var.prune
 					type = c.type.prune
@@ -647,6 +674,13 @@
 					raise "Unknown limit #{c.class}"
 			end
 		end
+	end
+	
+	def context_reduction
+		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
+		reduce_limits
+		solve
+		reduce_limits
 	end
 	
 	def process_type_params
@@ -700,19 +734,36 @@
 		@obj.type_params.concat t
 	end
 	
-	def limit_defines(limit, var, rem)
-		return false if occurs_in?(var, limit.var.prune)
-		return rem.select { |c| occurs_in?(c.var, limit.var.prune) }.all? { |c| limit_defines(c.typeclass_limit, c.var, rem - [c]) }
+	def dependent_var(map, var, vars)
+		return map[var] if map.has_key?(var)
+		map[var] = false # It's not dependent if recursive
+		
+		@limits.each do |c|
+			next unless c.is_a?(TypeClassLimit)
+			
+			if c.eqs.any? { |eq| occurs_in?(var, eq.var.prune) }
+				# All type variables in the arguments to the type class must be dependent for the type function result to be so too
+				type_vars = vars.select { |var| occurs_in?(var, c.var) }
+				dependent = type_vars.all? { |var| dependent_var(map, var, vars) }
+				(return map[var] = true) if dependent
+			end
+		end
+		false
 	end
 	
-	def resolved_limit(c)
-		return limit_defines(c.typeclass_limit, c.var, @limits.select { |c| c.is_a?(TypeFunctionLimit) } - [c])
+	def find_dependent_vars(vars)
+		map = {}
+		vars.select { |var| dependent_var(map, var, vars) }
+	end
+	
+	def unresolved_vars(vars)
+		raise TypeError, "Unresolved vars of #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
 	end
 	
 	def finalize(type, value)
 		type = type.prune
 		@value = value
-		solve
+		context_reduction
 		
 		@limits.each do |c|
 			if c.is_a? FieldLimit
@@ -726,34 +777,39 @@
 		
 		@type_vars = @type_vars.select { |var| occurs_in?(var, type) }
 		
+		# Variables aren't allowed to have non-dependent type variables in their type
+		unresolved_vars -= @type_vars unless @obj.is_a?(AST::Variable)
+		
 		parameterize(@type_vars) if @obj.is_a? AST::Function
 		
 		# TODO: Find a proper way to find type variables which doesn't have definition. Done for TypeFunctionLimits, same needed for FieldLimits?
+		#         Probably not if we can resolve all FieldLimit before this point (added errors for any remaining field limits)
 		#@limits.each do |c|
 		#	@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
 		#end
 		
-		unresolved_vars -= @type_vars unless @obj.is_a?(AST::Variable)
+		# Remove dependent type variables
+		@dependent_vars = find_dependent_vars(unresolved_vars)
+		unresolved_vars -= @dependent_vars
 		
-		@type_func_vars = @limits.select do |c|
-			next unless c.is_a? TypeFunctionLimit
-			var = c.var.prune
-			next unless unresolved_vars.include?(var)
-			next unless resolved_limit(c)
-			unresolved_vars.delete(var)
-			true
+		# Find unresolved type variables used in type class constraints
+		unresolved_vars = unresolved_vars.select do |var|
+			@limits.any? do |c|
+				next unless c.is_a?(TypeClassLimit)
+				occurs_in?(var, c.var)
+			end
 		end
 		
-		puts "Type of #{@obj.name} is #{type.text}"
+		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
+		
+		puts "  #{@obj.scoped_name}  \t::  #{type.text}"
 		
 		unless @limits.empty?
-			puts "  limits:"
 			@limits.each{|i| puts "    - #{i}"}
 		end
 		
 		unless @views.empty?
-			puts "  views:"
-			@views.each_pair{|k,v| puts "    - #{k.text} <= #{v.text}"}
+			@views.each_pair{|k,v| puts "    * #{k.text} <= #{v.text}"}
 		end
 		
 		unless unresolved_vars.empty?

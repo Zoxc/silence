@@ -78,7 +78,9 @@ class Codegen
 	end
 	
 	def map_vars(ref, map)
-		map.vars = Hash[ref.ctype.type_func_vars.map do |limit|
+		# TODO: Create a new type context and find the dependent_vars from there
+		
+		map.vars = Hash[ref.ctype.dependent_vars.map do |limit|
 			iref, new_map = find_instance(limit.typeclass_limit.var, map, limit.type_ast)
 			[limit.var, inst_type(iref.ctype.type, new_map)]
 		end]

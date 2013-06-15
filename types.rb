@@ -69,6 +69,9 @@ module Types
 			text
 		end
 		
+		def require_pruned
+		end
+		
 		def source_dup(source)
 			result = dup
 			result.source = source
@@ -83,6 +86,10 @@ module Types
 			@source = source
 			@system = system
 			@name = name
+		end
+		
+		def require_pruned
+			raise "Unpruned" if @instance
 		end
 		
 		def prune
