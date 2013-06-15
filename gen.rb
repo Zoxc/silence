@@ -91,7 +91,7 @@ class Codegen
 		
 		ast_keys(ast).each do |p|
 			type = new_params[p]
-			raise "missing key #{p.name}" unless type
+			raise "missing key #{p.name} in [#{new_params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}]" unless type
 			map.params[p] = inst_type(type, old_map)
 		end
 		

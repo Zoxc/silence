@@ -205,6 +205,8 @@
 				
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
+				ast.gen = callable_args
+				
 				type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
 				limit = typeclass_limit(ast.source, type_class)
 				limit.eq_limit(ast.source, callable_args, Core::Callable::Args)

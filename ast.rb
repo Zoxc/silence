@@ -552,7 +552,7 @@ module AST
 	end
 	
 	class Call < ExpressionNode
-		attr_accessor :obj, :args, :func
+		attr_accessor :obj, :args, :func, :gen
 		
 		def initialize(source, obj, args)
 			@source = source

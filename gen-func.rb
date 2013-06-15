@@ -162,13 +162,22 @@ class FuncCodegen
 			when AST::Call
 				obj = new_var
 				convert(ast.obj, obj)
-				args = ast.args.map do |a|
+				
+				args = new_var
+				ast.args.each_with_index do |a, i|
 					arg = new_var
 					convert(a, arg)
-					arg.ref
+					o "#{args.ref}.f_#{i} = #{arg.ref};"
 				end
 				assign_var(var, ast.gtype, nil)
-				o "#{obj.ref}.func(#{([obj.ref + ".data", "&" + var.ref] + args).join(", ")});"
+				assign_var(args, [ast.gen], nil)
+				
+				apply_args = Core::Callable::Apply.ctype.type.args
+				params = {Core::Callable::T => ast.obj.gtype.first,
+						apply_args[Core::Func::Args].tuple_map.first.prune.param => ast.gen,
+						apply_args[Core::Func::Result].prune.param => ast.gtype.first}
+						
+				o "#{ref(Core::Callable::Apply, params)}(&#{obj.ref}, #{var.ref}, #{args.ref});"
 			else
 				raise "(unknown #{ast.class.inspect})"
 		end
