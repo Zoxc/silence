@@ -7,11 +7,12 @@ require_relative 'gen-func'
 require_relative 'print'
 require_relative 'types'
 require_relative 'infer'
-require_relative 'typeclass'
+require_relative 'type-context'
+require_relative 'type-limits'
 require_relative 'parser'
 
-InferArgs = TypeContext::InferArgs.new({}, [])
-TypeContext.infer_scope(Core::Program.scope, InferArgs)
+InferArgs = InferContext::InferArgs.new({}, [])
+InferContext.infer_scope(Core::Program.scope, InferArgs)
 
 def process(file, parent)
 	puts "Processing #{file}"
@@ -26,7 +27,7 @@ def process(file, parent)
 		ast.run_pass :sema, true
 		ast.run_pass :ref_pass
 
-		TypeContext.infer_scope(ast.scope, InferArgs)
+		InferContext.infer_scope(ast.scope, InferArgs)
 	rescue CompileError => error
 		$stderr.puts "Fatal errors:", error.message
 		$stderr.puts error.backtrace.join("\n")

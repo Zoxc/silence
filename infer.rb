@@ -1,91 +1,28 @@
-﻿class TypeContext
-	attr_accessor :obj, :type, :type_vars, :limits, :fields, :typeclass, :value, :vars, :infer_args, :dependent_vars
-	
-	class TypeError < CompileError
-	end
+﻿class InferContext
+	attr_accessor :obj, :type, :ctx, :fields, :typeclass, :value, :vars, :infer_args, :dependent_vars
 	
 	# TODO: Move limits and variable names into it's own type TypeContext and rename this back to InferContext
 	#         How to deal with type specifiers which have limits inside expressions?
 	#            Return a list of limits in analyze_impl and use that to check types?
 	#            Run them after resolving all constraints?
-	
-	class Limit
-		attr_accessor :source, :var
 		
-		def initialize(source, var)
-			@source = source
-			@var = var
-		end
+	class TypeError < CompileError
 	end
-	
-	class TypeClassLimit < Limit
-		attr_accessor :eqs
-		
-		def initialize(*args)
-			super
-			@eqs = []
-		end
-		
+
+	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :lvalue) do
 		def to_s
-			"#{@var.text}#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}"
-		end
-	end
-	
-	class EqLimit < Limit
-		attr_accessor :type_ast
-		
-		def initialize(source, var, type_ast)
-			super(source, var)
-			@type_ast = type_ast
-		end
-		
-		def to_s
-			".#{@type_ast.name} = #{@var.real_text}"
-		end
-	end
-	
-	class FieldLimit < Limit
-		attr_accessor :type, :name, :args, :ast, :lvalue
-		
-		def initialize(source, var, type, name, args, ast, lvalue)
-			super(source, var)
-			@type = type
-			@name = name
-			@args = args
-			@ast = ast
-			@lvalue = lvalue
-		end
-		
-		def to_s
-			"#{"lvalue" if @lvalue} #{@var.real_text} = #{@type.text}.#{@name} [#{args.map{ |t|t .text }.join(", ")}]"
+			"#{"lvalue" if lvalue} #{var.real_text} = #{type.text}.#{name} [#{args.map{ |t|t .text }.join(", ")}]"
 		end
 	end
 	
 	def initialize(infer_args, obj)
 		@infer_args = infer_args
 		@obj = obj
+		@ctx = TypeContext.new(infer_args)
 		@vars = {}
 		@var_allocs = {}
-		@type_vars = []
-		@var_name = 1
-		@limits = []
 		@fields = []
 		@views = {}
-	end
-	
-	def new_var_name
-		result = @var_name
-		@var_name += 1
-		"p#{result}"
-	end
-	
-	def new_var(source = nil, name = nil)
-		var = Types::Variable.new(source, self, name ? name.to_s : nil)
-		#puts "new var #{var.text}\n#{source.format}"
-		#puts "\n#{caller.join("\n")}"
-		@type_vars << var
-		@var_allocs[var] = caller
-		var
 	end
 	
 	def shared?
@@ -99,6 +36,10 @@
 		end
 	end
 	
+	def new_var(source = nil, name = nil)
+		@ctx.new_var(source, name)
+	end
+	
 	def unit_default(type)
 	end
 	
@@ -108,6 +49,12 @@
 	
 	def make_ptr(source, type)
 		Types::Complex.new(source, Core::Ptr::Node, {Core::Ptr::Type => type})
+	end
+	
+	def typeclass_limit(source, typeclass)
+		tcl = TypeLimits::TypeClassLimit.new(source, typeclass)
+		@ctx.limits.limits << tcl
+		tcl
 	end
 	
 	class AnalyzeArgs
@@ -164,7 +111,7 @@
 			result = result.source_dup(source)
 			
 			if type.type_class?
-				@limits << TypeClassLimit.new(source, result)
+				typeclass_limit(source, result)
 				if !analyze_args.scoped
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
 													   #       Generate an error when the view's type variable is unified with anything other than another type variable
@@ -181,13 +128,12 @@
 			
 			typeclass_type, inst_args = inst_ex(typeclass, parent_args)
 			
-			class_limit = TypeClassLimit.new(source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
+			class_limit = typeclass_limit(source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
 			result = new_var(source)
-			@limits << class_limit
-			class_limit.eqs << EqLimit.new(source, result, obj)
-			inst_args = InstArgs.new({})
+			class_limit.eq_limit(source, result, obj)
+			inst_args = TypeContext::InstArgs.new({})
 		else
-			result, inst_args = type, InstArgs.new({})
+			result, inst_args = type, TypeContext::InstArgs.new({})
 			result = result.source_dup(source)
 		end
 		
@@ -260,10 +206,10 @@
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
 				type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
-				limit = TypeClassLimit.new(ast.source, type_class)
-				limit.eqs << EqLimit.new(ast.source, callable_args, Core::Callable::Args)
-				limit.eqs << EqLimit.new(ast.source, result, Core::Callable::Result)
-				@limits << limit
+				limit = typeclass_limit(ast.source, type_class)
+				limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
+				limit.eq_limit(ast.source, result, Core::Callable::Result)
+				
 				[result, true]
 			when AST::Literal
 				[case ast.type
@@ -333,7 +279,7 @@
 							lhs
 						else
 							type_class = Types::Complex.new(ast.source, Core::Tuple::Node, {Core::Tuple::T => lhs})
-							@limits << TypeClassLimit.new(ast.source, type_class)
+							typeclass_limit(ast.source, type_class)
 							lhs
 							# DONE: Constraint to tuple type instances only! - TODO: Do this is a general way for all typeclass references?
 					end				
@@ -405,130 +351,12 @@
 		end
 	end
 	
-	def occurs_in?(a, b)
-		a.require_pruned
-		b.require_pruned
-		
-		return true if a == b
-		return false if b.is_a? Types::Variable
-		
-		return b.type_args.any? do |arg|
-			occurs_in?(a, arg.prune)
-		end
-	end
-	
-	def errmsg(a, b)
-		return errmsg(b, a) if b.source && !a.source
-		
-		if a.source && b.source
-			"Expression of type '#{a.text}',\n#{a.source.format}\nconflicts with expression of type '#{b.text}',\n#{b.source.format}" 
-		elsif a.source
-			"Expected type '#{b.text}', but found type '#{a}'\n#{a.source.format}" 
-		else
-			"Expression of type '#{a.text}', conflicts with expression of type '#{b.text}'" 
-		end
-	end
-	
-	def recmsg(a, b)
-		source = a.source || b.source
-		
-		if a.source && b.source
-			"Recursive type '#{a.text}',\n#{a.source.format}\ntype '#{b.text}',\n#{b.source.format}" 
-		elsif source
-			"Recursive type '#{a.text}', occurs in type '#{b.text}'\n#{source.format}" 
-		else
-			"Recursive type '#{a.text}', occurs in type '#{b.text}'" 
-		end
-	end
-	
-	InstArgs = Struct.new(:params) do
-		def to_s
-			"Inst{#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}}"
-		end
-		
-		def merge(other)
-			self.class.new(params.merge(other.params))
-		end
-		
-		def copy
-			self.class.new(params.dup)
-		end
-	end
-	
-	def inst_type(args, type)
-		type = type.prune
-		case type
-			when Types::Param
-				args.params[type.param] || type
-			when Types::Complex
-				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
-			else
-				raise "Unknown type #{type.class}"
-		end
-	end
-	
-	def inst_limits(obj, inst_args)
-		obj.ctype.limits.map do |limit|
-			class_limit = TypeClassLimit.new(limit.source, inst_type(inst_args, limit.var))
-			class_limit.eqs = limit.eqs.map do |eq|
-				EqLimit.new(eq.source, inst_type(inst_args, eq.var), eq.type_ast)
-			end
-			class_limit
-		end
-	end
-	
-	def inst(obj, params = {}, type_obj = nil)
-		result, args = inst_ex(obj, params, type_obj)
-		result
-	end
-	
 	def inst_ex(obj, params = {}, type_obj = nil)
-		infer(obj)
-		inst_args = InstArgs.new(params)
-		
-		@limits.concat(inst_limits(obj, inst_args))
-		
-		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
+		@ctx.inst_ex(obj, params, type_obj)
 	end
 	
 	def unify(a, b, loc = proc { "" })
-		a = a.prune
-		b = b.prune
-		
-		if a.is_a? Types::Variable
-			# Don't unify type variables with themselves TODO: Can this happen?
-			return if a == b 
-			
-			raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
-			a.instance = b
-			a.source = a.source || b.source
-			return
-		end
-		
-		return unify(b, a, loc) if b.is_a? Types::Variable
-		
-		a_args = a.type_args
-		b_args = b.type_args
-		
-		raise TypeError.new(errmsg(a, b) + loc.()) if (a.class != b.class) || (a_args.size != b_args.size)
-		
-		new_loc = proc do
-			source = a.source || b.source
-		
-			msg = "\n" + if a.source && b.source
-				"When unifying types '#{a.text}',\n#{a.source.format}\nand type '#{b.text}',\n#{b.source.format}" 
-			elsif source
-				"When unifying types '#{a.text}' and type '#{b.text}''\n#{source.format}" 
-			else
-				"When unifying types '#{a.text}' and type '#{b.text}'" 
-			end
-			
-			msg << loc.()
-		end
-		
-		a_args.each_with_index do |a_arg, i|
-			unify(a_arg, b_args[i], new_loc)
-		end
+		@ctx.unify(a, b, loc)
 	end
 	
 	def view(var)
@@ -543,7 +371,7 @@
 			var = c.var.prune
 			type = c.type.prune
 			type = view(type) if type.is_a? Types::Variable
-			raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
+			raise TypeError.new(recmsg(var, type)) if @ctx.occurs_in?(var, type)
 			case type
 				when Types::Complex
 					field = type.complex.scope.names[c.name]
@@ -571,106 +399,6 @@
 					raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 			end
 		end
-	end
-	
-	def is_instance?(input, inst)
-		map = {}
-		
-		result = Types.cmp_types(input, inst) do |input, inst|
-			if inst.is_a? Types::Param
-				if map.key? inst.param
-					[true, map[inst.param] == input]
-				else
-					map[inst.param] = input
-					[true, true]
-				end
-			else
-				[input.is_a?(Types::Variable), false]
-			end
-		end
-		
-		[result, map]
-	end
-	
-	def find_instance(input)
-		#TODO: Find all matching instances and error if multiple are appliable
-		#      If one instance is more specific than the other (or an instance of), use the most specific one.
-		#      If we can't tell if we want the specific one, keep the constraint around until it has a fixed type.
-		#      Implement this by ensuring all the more specific instances can't be used before picking.
-		
-		map = nil
-		[input.complex.instances.find do |inst|
-			next if inst == @obj # Instances can't find themselves
-			
-			infer(inst)
-			result, map = is_instance?(input, inst.ctype.typeclass)
-			
-			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}\n#{input.source.format}"
-			
-			next unless result
-			
-			true
-		end, map]
-	end
-	
-	def reduce_eqs(eqs)
-		eqs.reject! do |eq|
-			dup = eqs.find do |oeq|
-				next if eq == oeq
-				eq.type_ast == oeq.type_ast
-			end
-			if dup
-				unify(eq.var, dup.var)
-				true
-			end
-		end
-	end
-	
-	def reduce_limits
-		@limits.reject! do |c|
-			dup = @limits.find do |oc|
-				next if c == oc
-				
-				c.var == oc.var				
-			end
-			
-			if dup
-				dup.eqs.concat c.eqs
-				true
-			end
-		end
-		
-		@limits.each do |c|
-			reduce_eqs(c.eqs)
-		end
-	end
-	
-	def context_reduction
-		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
-		reduce_limits
-		
-		nil while @limits.reject! do |c|
-			next if (@obj.declared && @obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
-			
-			#puts "Searching instance for #{c}"
-			inst, map = find_instance(c.var)
-			if inst
-				instance = inst(inst, map) # Adds the limits of the instance to the @limits array
-				
-				# Resolve the type functions
-				c.eqs.each do |eq| 
-					ast = instance.complex.scope.names[eq.type_ast.name]
-					result = inst(ast, instance.args)
-					unify(result, eq.var)
-				end
-				
-				true
-			elsif c.var.fixed_type?
-				raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.source.format}")
-			end
-		end
-		
-		reduce_limits
 	end
 	
 	def process_type_params
@@ -724,28 +452,8 @@
 		@obj.type_params.concat t
 	end
 	
-	def dependent_var(map, var, vars)
-		return map[var] if map.has_key?(var)
-		map[var] = false # It's not dependent if recursive
-		
-		@limits.each do |c|
-			if c.eqs.any? { |eq| occurs_in?(var, eq.var.prune) }
-				# All type variables in the arguments to the type class must be dependent for the type function result to be so too
-				type_vars = vars.select { |var| occurs_in?(var, c.var) }
-				dependent = type_vars.all? { |var| dependent_var(map, var, vars) }
-				(return map[var] = true) if dependent
-			end
-		end
-		false
-	end
-	
-	def find_dependent_vars(vars)
-		map = {}
-		vars.select { |var| dependent_var(map, var, vars) }
-	end
-	
-	def unresolved_vars(vars)
-		raise TypeError, "Unresolved vars of #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
+	def report_unresolved_vars(vars)
+		raise TypeError, "Unresolved vars of #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
 	end
 	
 	def finalize(type, value)
@@ -754,24 +462,24 @@
 		
 		solve_fields
 		
-		context_reduction
+		@ctx.limits.reduce(@obj)
 		
-		@limits.each do |c|
-			if c.is_a? FieldLimit
-				raise TypeError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
-			end
+		@fields.each do |c|
+			raise TypeError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
 		end
 		
-		@type_vars.reject! { |var| var.instance }
+		type_vars = @ctx.type_vars.dup
 		
-		unresolved_vars = @type_vars
+		type_vars.reject! { |var| var.instance }
 		
-		@type_vars = @type_vars.select { |var| occurs_in?(var, type) }
+		unresolved_vars = type_vars
+		
+		type_vars = type_vars.select { |var| @ctx.occurs_in?(var, type) }
 		
 		# Variables aren't allowed to have non-dependent type variables in their type
-		unresolved_vars -= @type_vars unless @obj.is_a?(AST::Variable)
+		unresolved_vars -= type_vars unless @obj.is_a?(AST::Variable)
 		
-		parameterize(@type_vars) if @obj.is_a? AST::Function
+		parameterize(type_vars) if @obj.is_a? AST::Function
 		
 		# TODO: Find a proper way to find type variables which doesn't have definition. Done for TypeFunctionLimits, same needed for FieldLimits?
 		#         Probably not if we can resolve all FieldLimit before this point (added errors for any remaining field limits)
@@ -780,29 +488,25 @@
 		#end
 		
 		# Remove dependent type variables
-		@dependent_vars = find_dependent_vars(unresolved_vars)
+		@dependent_vars = @ctx.limits.find_dependent_vars(unresolved_vars)
 		unresolved_vars -= @dependent_vars
 		
 		# Find unresolved type variables used in type class constraints
-		unresolved_vars = unresolved_vars.select do |var|
-			@limits.any? { |c| occurs_in?(var, c.var) }
-		end
+		unresolved_vars = @ctx.limits.vars_in_typeclass_args(unresolved_vars)
 		
 		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
 		
 		puts "  #{@obj.scoped_name}  \t::  #{type.text}"
 		
-		unless @limits.empty?
-			@limits.each{|i| puts "    - #{i}"}
+		unless @ctx.limits.limits.empty?
+			@ctx.limits.limits.each{|i| puts "    - #{i}"}
 		end
 		
 		unless @views.empty?
 			@views.each_pair{|k,v| puts "    * #{k.text} <= #{v.text}"}
 		end
 		
-		unless unresolved_vars.empty?
-			raise TypeError, "Unresolved vars of #{@obj.name}\n#{unresolved_vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{obj.source.format}"
-		end
+		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
 		
 		@type = type
 		@obj.ctype = self
@@ -817,7 +521,7 @@
 		@typeclass = Types::Complex.new(@obj.source, typeclass, Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, analyze_args)] }])
 		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
 		
-		TypeContext.infer_scope(@obj.scope, @infer_args)
+		InferContext.infer_scope(@obj.scope, @infer_args)
 		
 		infer(typeclass)
 		
@@ -853,7 +557,7 @@
 				end
 				process_type_params
 				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
-				TypeContext.infer_scope(value.scope, @infer_args)
+				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
 				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source), true)
 			when AST::Function
@@ -870,7 +574,7 @@
 	end
 	
 	def infer(value)
-		TypeContext.infer(value, @infer_args)
+		InferContext.infer(value, @infer_args)
 	end
 
 	def self.infer(value, infer_args)
@@ -880,7 +584,7 @@
 		
 		infer_args.stack.push(" #{value.scoped_name} - #{value.class}\n#{value.source.format}")
 		
-		TypeContext.new(infer_args, value).process
+		InferContext.new(infer_args, value).process
 		
 		infer_args.stack.pop
 		
