@@ -129,6 +129,13 @@
 		result
 	end
 	
+	def inst_map(obj, params)
+		infer(obj)
+		inst_args = InstArgs.new({}, params)
+		inst_limits(obj, inst_args)
+		inst_args
+	end
+	
 	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
 		inst_args = InstArgs.new({}, params)

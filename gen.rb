@@ -1,5 +1,6 @@
 class Codegen
 	def initialize(infer_args)
+		@infer_args = infer_args
 		@out = {prelude: '', struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
 		@ctx = InferContext.new(infer_args, AST::Variable.new(Core::Src, :ERROR, nil, nil, {}))
 		@gen = {}
@@ -65,11 +66,11 @@ class Codegen
 			when Types::Variable
 				r = map.vars[type]
 				raise "Unable to find type for #{type.text}" unless r
-				r
+				r.prune
 			when Types::Param
 				r = map.params[type.param]
 				raise "Unable to find instance of #{type.text} #{map}" unless r
-				r
+				r.prune
 			when Types::Complex
 				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
 			else
@@ -78,12 +79,12 @@ class Codegen
 	end
 	
 	def map_vars(ref, map)
-		# TODO: Create a new type context and find the dependent_vars from there
+		ctx = TypeContext.new(@infer_args)
+		inst_args = ctx.inst_map(ref, map.params)
+		map.vars = Hash[ref.ctype.dependent_vars.map { |var| [var, ctx.inst_type(inst_args, var)] }]
+		ctx.reduce(ref)
 		
-		map.vars = Hash[ref.ctype.dependent_vars.map do |limit|
-			iref, new_map = find_instance(limit.typeclass_limit.var, map, limit.type_ast)
-			[limit.var, inst_type(iref.ctype.type, new_map)]
-		end]
+		raise "Unable to reduce vars for map #{map}" unless ctx.limits.empty?
 	end
 
 	def do_ref(ast, old_map, new_params)
