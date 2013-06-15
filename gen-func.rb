@@ -177,7 +177,7 @@ class FuncCodegen
 						apply_args[Core::Func::Args].tuple_map.first.prune.param => ast.gen,
 						apply_args[Core::Func::Result].prune.param => ast.gtype.first}
 						
-				o "#{ref(Core::Callable::Apply, params)}(&#{obj.ref}, #{var.ref}, #{args.ref});"
+				o "#{ref(Core::Callable::Apply, params)}(&#{obj.ref}, &#{var.ref}, #{args.ref});"
 			else
 				raise "(unknown #{ast.class.inspect})"
 		end
