@@ -215,6 +215,21 @@ class Codegen
 		puts "Generating #{ast.name}"
 		case ast
 			when AST::TypeClass
+			when Core::CallableFuncApply
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				
+				owner = ast.declared.owner
+				
+				args = map.params[Core::CallableFuncArgs].tuple_map
+				
+				self_type = inst_type(owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first], map)
+				
+				o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
+				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.f_#{i}" }.join});\n}\n\n"
+				
+				@out[:func] << o
 			when Core::Ptr::Node
 			when Core::Func::Node
 				args = map.params[Core::Func::Args].tuple_map

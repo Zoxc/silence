@@ -675,6 +675,9 @@ class Core
 		apply.scope = AST::LocalScope.new([])
 		apply.props = {}
 		
+		CallableFuncArgs = args
+		CallableFuncApply = apply
+		
 		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result])
 	end.()
 
