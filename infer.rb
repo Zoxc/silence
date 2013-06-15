@@ -1,5 +1,5 @@
 ﻿class TypeContext
-	attr_accessor :obj, :type, :type_vars, :limits, :typeclass, :value, :vars, :infer_args, :dependent_vars
+	attr_accessor :obj, :type, :type_vars, :limits, :fields, :typeclass, :value, :vars, :infer_args, :dependent_vars
 	
 	class TypeError < CompileError
 	end
@@ -69,6 +69,7 @@
 		@type_vars = []
 		@var_name = 1
 		@limits = []
+		@fields = []
 		@views = {}
 	end
 	
@@ -372,7 +373,7 @@
 				
 				if value
 					result = new_var(ast.source)
-					@limits << FieldLimit.new(ast.source, result, type, ast.name, get_index_args(args), ast, args.lvalue)
+					@fields << FieldLimit.new(ast.source, result, type, ast.name, get_index_args(args), ast, args.lvalue)
 					[result, true]
 				else
 					if type.kind_of? Types::Complex
@@ -468,14 +469,12 @@
 	
 	def inst_limits(obj, inst_args)
 		obj.ctype.limits.map do |limit|
-			raise "Unknown limit #{limit.class}" unless limit.is_a?(TypeClassLimit)
-			
 			class_limit = TypeClassLimit.new(limit.source, inst_type(inst_args, limit.var))
 			class_limit.eqs = limit.eqs.map do |eq|
 				EqLimit.new(eq.source, inst_type(inst_args, eq.var), eq.type_ast)
 			end
 			class_limit
-		end.compact
+		end
 	end
 	
 	def inst(obj, params = {}, type_obj = nil)
@@ -539,6 +538,41 @@
 		r ? r.last : var
 	end
 	
+	def solve_fields
+		nil while @fields.reject! do |c|
+			var = c.var.prune
+			type = c.type.prune
+			type = view(type) if type.is_a? Types::Variable
+			raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
+			case type
+				when Types::Complex
+					field = type.complex.scope.names[c.name]
+					
+					raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
+					
+					lvalue_check(c.ast.source, field, c.lvalue)
+				
+					if field.is_a?(AST::Function)
+						parent_args = type.args.dup
+						map_type_params(c.source, parent_args, field.type_params, c.args, field.name, field.type_param_count)
+					else
+						parent_args = type.args
+					end
+					
+					field_type, inst_args = inst_ex(field, parent_args)
+					
+					c.ast.gen = {type: :field, ref: field, args: inst_args}
+					
+					unify(field_type, var)
+					
+					true
+				when Types::Variable
+				else
+					raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
+			end
+		end
+	end
+	
 	def is_instance?(input, inst)
 		map = {}
 		
@@ -594,10 +628,7 @@
 	
 	def reduce_limits
 		@limits.reject! do |c|
-			next unless c.is_a?(TypeClassLimit)
-			
 			dup = @limits.find do |oc|
-				next unless oc.is_a?(TypeClassLimit)
 				next if c == oc
 				
 				c.var == oc.var				
@@ -610,76 +641,35 @@
 		end
 		
 		@limits.each do |c|
-			next unless c.is_a?(TypeClassLimit)
 			reduce_eqs(c.eqs)
-		end
-	end
-	
-	def solve
-		nil while @limits.reject! do |c|
-			case c
-				when TypeClassLimit
-					next if (@obj.declared && @obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
-					
-					#puts "Searching instance for #{c}"
-					inst, map = find_instance(c.var)
-					if inst
-						instance = inst(inst, map) # Adds the limits of the instance to the @limits array
-						
-						# Resolve the type functions
-						c.eqs.each do |eq| 
-							ast = instance.complex.scope.names[eq.type_ast.name]
-							result = inst(ast, instance.args)
-							unify(result, eq.var)
-						end
-						
-						true
-					elsif c.var.fixed_type?
-						raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.source.format}")
-					end
-					
-				# Move FieldLimit into a separate list which we process before the one containing TypeClassLimit?
-				when FieldLimit
-					var = c.var.prune
-					type = c.type.prune
-					type = view(type) if type.is_a? Types::Variable
-					raise TypeError.new(recmsg(var, type)) if occurs_in?(var, type)
-					case type
-						when Types::Complex
-							field = type.complex.scope.names[c.name]
-							
-							raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
-							
-							lvalue_check(c.ast.source, field, c.lvalue)
-						
-							if field.is_a?(AST::Function)
-								parent_args = type.args.dup
-								map_type_params(c.source, parent_args, field.type_params, c.args, field.name, field.type_param_count)
-							else
-								parent_args = type.args
-							end
-							
-							field_type, inst_args = inst_ex(field, parent_args)
-							
-							c.ast.gen = {type: :field, ref: field, args: inst_args}
-							
-							unify(field_type, var)
-							
-							true
-						when Types::Variable
-						else
-							raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
-					end
-				else
-					raise "Unknown limit #{c.class}"
-			end
 		end
 	end
 	
 	def context_reduction
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
 		reduce_limits
-		solve
+		
+		nil while @limits.reject! do |c|
+			next if (@obj.declared && @obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
+			
+			#puts "Searching instance for #{c}"
+			inst, map = find_instance(c.var)
+			if inst
+				instance = inst(inst, map) # Adds the limits of the instance to the @limits array
+				
+				# Resolve the type functions
+				c.eqs.each do |eq| 
+					ast = instance.complex.scope.names[eq.type_ast.name]
+					result = inst(ast, instance.args)
+					unify(result, eq.var)
+				end
+				
+				true
+			elsif c.var.fixed_type?
+				raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.source.format}")
+			end
+		end
+		
 		reduce_limits
 	end
 	
@@ -739,8 +729,6 @@
 		map[var] = false # It's not dependent if recursive
 		
 		@limits.each do |c|
-			next unless c.is_a?(TypeClassLimit)
-			
 			if c.eqs.any? { |eq| occurs_in?(var, eq.var.prune) }
 				# All type variables in the arguments to the type class must be dependent for the type function result to be so too
 				type_vars = vars.select { |var| occurs_in?(var, c.var) }
@@ -763,6 +751,9 @@
 	def finalize(type, value)
 		type = type.prune
 		@value = value
+		
+		solve_fields
+		
 		context_reduction
 		
 		@limits.each do |c|
@@ -794,10 +785,7 @@
 		
 		# Find unresolved type variables used in type class constraints
 		unresolved_vars = unresolved_vars.select do |var|
-			@limits.any? do |c|
-				next unless c.is_a?(TypeClassLimit)
-				occurs_in?(var, c.var)
-			end
+			@limits.any? { |c| occurs_in?(var, c.var) }
 		end
 		
 		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
