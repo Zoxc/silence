@@ -37,7 +37,7 @@ class Codegen
 	
 	def ast_keys(ast)
 		case ast
-			when AST::Program, AST::TypeClassInstance
+			when AST::Program
 				[]
 			else
 				ast.type_params + ast_keys(ast.declared.owner)
@@ -152,7 +152,7 @@ class Codegen
 		r = ast.name.to_s.gsub('_', '_u')
 		return r if ast.is_a? AST::TypeClass
 		unless ast.type_params.empty?
-			r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_l")}_d"
+			r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_n")}_l"
 		end
 		#puts "mangling #{ast.name} #{ast.ctype.type_vars.map { |p| p.text }.join(",")} #{map}"
 		r
@@ -162,7 +162,11 @@ class Codegen
 		case ast
 			when AST::TypeClassInstance
 				id = @named[ast] ||= (@names += 1)
-				"_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}_l"
+				r = "_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}"
+				unless ast.type_params.empty?
+					r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_n")}"
+				end
+				r << "_l"
 			when Core::Ptr::Node
 				"_P#{mangle_type(map.params[Core::Ptr::Type], map)}_l"
 			when Core::Func::Node
