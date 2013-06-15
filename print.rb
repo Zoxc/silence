@@ -71,7 +71,7 @@ def print_ast(ast)
 		when AST::TypeFunction
 			format.(ast, [[:name], [:id, :value, ast.__id__]])
 		when AST::Function
-			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:attributes], [:result, :single], [:params, ast.params], [:scope, :single], [:type_params, ast.type_params]])
+			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:result, :single], [:params, ast.params], [:scope, :single], [:type_params, ast.type_params]])
 		when AST::Function::Param
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		else

@@ -496,7 +496,7 @@
 		
 		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
 		
-		puts "  #{@obj.scoped_name}  \t::  #{type.text}"
+		puts "\n  #{@obj.scoped_name}  \t::  #{type.text}"
 		
 		unless @ctx.limits.empty?
 			@ctx.limits.each{|i| puts "    - #{i}"}

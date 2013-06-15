@@ -366,7 +366,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :name, :params, :result, :attributes, :scope, :type, :ctype, :instances, :type_params, :props, :type_param_count
+		attr_accessor :name, :params, :result, :scope, :type, :ctype, :instances, :type_params, :props, :type_param_count
 		
 		class Param < Node
 			attr_accessor :name, :type, :var
@@ -655,9 +655,8 @@ class Core
 		Apply.params = [AST::Function::Param.new(Src, Apply, :args, ref(Args))]
 		Apply.type_params = []
 		Apply.result = ref(Result)
-		Apply.attributes = []
 		Apply.scope = AST::LocalScope.new([])
-		Apply.props = []
+		Apply.props = {}
 		
 		T = param :T
 		Node = complex(:Callable, [T], AST::TypeClass, [Args, Result, Apply])
@@ -673,9 +672,8 @@ class Core
 		apply.params = [AST::Function::Param.new(Src, apply, :args, ref(args))]
 		apply.type_params = []
 		apply.result = ref(result)
-		apply.attributes = []
 		apply.scope = AST::LocalScope.new([])
-		apply.props = []
+		apply.props = {}
 		
 		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result])
 	end.()

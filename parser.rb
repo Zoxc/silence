@@ -238,7 +238,6 @@ class Parser
 		func.params = params
 		func.type_params = tp
 		func.result = result
-		func.attributes = []
 		func.scope = group
 		func.props = props
 		func

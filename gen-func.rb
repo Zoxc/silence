@@ -90,7 +90,7 @@ class FuncCodegen
 		case ast
 			when AST::Scope
 				if ast.nodes.empty?
-					assign_var(var, [AST::Unit.ctype.type, true], nil)
+					assign_var(var, [Core::Unit.ctype.type, true], nil)
 				else
 					ast.nodes[0...-1].each do |e|
 						convert(e, new_var)

@@ -189,7 +189,7 @@
 		InferContext.infer(obj, @infer_args)
 	end
 	
-	def is_instance?(input, inst)
+	def self.is_instance?(input, inst)
 		map = {}
 		
 		result = Types.cmp_types(input, inst) do |input, inst|
@@ -208,7 +208,7 @@
 		[result, map]
 	end
 	
-	def find_instance(obj, input)
+	def self.find_instance(obj, infer_args, input)
 		#TODO: Find all matching instances and error if multiple are appliable
 		#      If one instance is more specific than the other (or an instance of), use the most specific one.
 		#      If we can't tell if we want the specific one, keep the constraint around until it has a fixed type.
@@ -218,7 +218,7 @@
 		[input.complex.instances.find do |inst|
 			next if inst == obj # Instances can't find themselves
 			
-			infer(inst)
+			InferContext.infer(inst, infer_args)
 			result, map = is_instance?(input, inst.ctype.typeclass)
 			
 			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}\n#{input.source.format}"
@@ -269,7 +269,7 @@
 			next if (obj.declared && obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
 			#puts "Searching instance for #{c}"
-			inst, map = find_instance(obj, c.var)
+			inst, map = TypeContext.find_instance(obj, @infer_args, c.var)
 			if inst
 				instance = inst(inst, map) # Adds the limits of the instance to the @limits array
 				

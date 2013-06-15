@@ -2,7 +2,6 @@ class Codegen
 	def initialize(infer_args)
 		@infer_args = infer_args
 		@out = {prelude: '', struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
-		@ctx = InferContext.new(infer_args, AST::Variable.new(Core::Src, :ERROR, nil, nil, {}))
 		@gen = {}
 		@named = {}
 		@names = 0
@@ -47,7 +46,7 @@ class Codegen
 	
 	def find_instance(tc, map, ast)
 		typeclass = inst_type(tc, map)
-		inst, inst_map = @ctx.find_instance(typeclass)
+		inst, inst_map = TypeContext.find_instance(nil, @infer_args, typeclass)
 		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
 		puts "found typeclass inst #{inst.ctype.type.text}"
 		
@@ -233,7 +232,7 @@ class Codegen
 					if owner.is_a?(AST::TypeClassInstance)
 						puts "typeclass first: #{owner.typeclass.obj.type_params.first.name}"
 						puts "inst_args: #{owner.ctype.typeclass.text}"
-						self_type = @ctx.inst_type(map.dup, owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first])
+						self_type = inst_type(owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first], map)
 						puts "Self type of instance #{ast.name} is #{self_type.text}"
 					else
 						self_type = owner.ctype.type
