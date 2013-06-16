@@ -1,8 +1,7 @@
 ﻿class InferContext
 	attr_accessor :obj, :type, :ctx, :fields, :typeclass, :value, :vars, :infer_args, :dependent_vars
 	
-	# TODO: Move limits and variable names into it's own type TypeContext and rename this back to InferContext
-	#         How to deal with type specifiers which have limits inside expressions?
+	# TODO: How to deal with type specifiers which have limits inside expressions?
 	#            Return a list of limits in analyze_impl and use that to check types?
 	#            Run them after resolving all constraints?
 		
