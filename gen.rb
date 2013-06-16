@@ -32,21 +32,6 @@ class Codegen
 		end
 	end
 	
-	def find_instance(tc, map, ast)
-		typeclass = inst_type(tc, map)
-		inst, inst_map = TypeContext.find_instance(nil, @infer_args, typeclass)
-		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
-		puts "found typeclass inst #{inst.ctype.type.text}"
-		
-		ref = inst.scope.names[ast.name]
-		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
-		new_map = TypeContext::Map.new({}, inst_map, {})	
-		
-		puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
-		
-		return ref, new_map
-	end
-	
 	def inst_type(type, map)
 		type = type.prune
 		case type
@@ -73,22 +58,41 @@ class Codegen
 		
 		raise "Unable to reduce vars for map #{map}" unless ctx.limits.empty?
 	end
+	
+	def fixup_limit(ast, limit)
+		result = ast.ctype.ctx.limit_corrections[limit]
+		case result
+			when nil
+				limit
+			when TypeContext::TypeClassLimit
+				fixup_limit(ast, result)
+			else
+				result
+		end
+	end
 
-	def do_ref(ast, old_map, context_map)
+	def do_ref(ast, context_map, tc_limit, q = false)
 		raise "Expected Map" unless context_map.is_a? TypeContext::Map
+		raise "Unresolved typeclass parent for #{ast.scoped_name} = #{tc_limit}" if (tc_limit && tc_limit.is_a?(TypeContext::TypeClassLimit))
 		
 		map = TypeContext::Map.new({}, {}, {})
 		
 		ast_keys(ast).each do |p|
 			type = context_map.params[p]
 			raise "missing key #{p.name} in [#{context_map.params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}]" unless type
-			map.params[p] = inst_type(type, old_map)
+			map.params[p] = type
 		end
 		
 		owner = ast.declared.owner
 		
 		if owner.is_a?(AST::TypeClass)
-			ref, new_map = find_instance(owner.ctype.type, map, ast)
+			raise "Expected typeclass parent for #{ast.scoped_name}" unless tc_limit
+			
+			inst = tc_limit.complex
+			new_map = TypeContext::Map.new({}, tc_limit.args, {})
+			
+			ref = inst.scope.names[ast.name]
+			raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
 			
 			ref.type_params.each_with_index do |p, i|
 				param = ast.type_params[i]
@@ -103,22 +107,30 @@ class Codegen
 			ref = ast
 		end
 		
+		# Adjust for changes in ast's limits
+		context_map.limits.each do |k, v|
+			raise "Unresolved typeclass instance" if v.is_a?(TypeContext::TypeClassLimit)
+			key = fixup_limit(ref, k)
+			next unless key.is_a?(TypeContext::TypeClassLimit)
+			map.limits[key] = v
+		end
+		
 		map_vars(ref, map)
 		
-		puts "ref #{ast.name} old:#{old_map} new:#{map}"
+		puts "ref:#{ast.scoped_name} context:#{context_map} new:#{map}" unless q
 			
 		gen(ref, map)
 		[ref, map]
 	end
 	
-	def ref(ast, old_map, context_map)
-		ast, map = do_ref(ast, old_map, context_map)
+	def ref(ast, tc_limit, context_map)
+		ast, map = do_ref(ast, tc_limit, context_map)
 		mangle(ast, map)
 	end
 	
 	def fixed_type(type, map)
 		type = inst_type(type, map)
-		yield do_ref(type.complex, map, TypeContext::Map.new({}, type.args, {}))
+		yield do_ref(type.complex, TypeContext::Map.new({}, type.args, {}), nil, true)
 	end
 
 	def mangle_type(type, map)
@@ -242,7 +254,6 @@ class Codegen
 				o << "};\n\n"
 				@out[:struct] << o
 			when AST::Function
-				puts "generating function #{ast.name} #{map}"
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
 				o << "\n{\n"

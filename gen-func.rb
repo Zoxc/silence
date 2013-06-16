@@ -36,8 +36,26 @@ class FuncCodegen
 		@vars.map(&:decl).join + "\n" + @out.join("\n")
 	end
 	
-	def ref(obj, context_map)
-		@gen.ref(obj, @map, context_map)
+	def resolve_limit(limit)
+		limit = @gen.fixup_limit(@func, limit)
+		return limit if limit.is_a?(Types::Complex)
+		r = @map.limits[limit]
+		raise "Unable to find instance for limit #{limit}" unless r
+		r
+	end
+	
+	def ref(obj, context_map, tc_limit = nil)
+		map = TypeContext::Map.new({}, {}, {})
+		
+		context_map.params.each do |k, v|
+			map.params[k] = @gen.inst_type(v, @map)
+		end
+		
+		context_map.limits.each do |k, v|
+			map.limits[k] = @gen.inst_type(resolve_limit(v), @map)
+		end
+		
+		@gen.ref(obj, map, tc_limit ? @gen.inst_type(resolve_limit(tc_limit), @map) : nil)
 	end
 	
 	def o(str)
@@ -123,7 +141,7 @@ class FuncCodegen
 						
 						if ast.gen[:ref].is_a?(AST::Function)
 							assign_var(var, ast.gtype, nil)
-							assign_func(var, obj.ref, ref(ast.gen[:ref], ast.gen[:args]))
+							assign_func(var, obj.ref, ref(ast.gen[:ref], ast.gen[:args], ast.gen[:tc_limit]))
 						else
 							assign_var(var, ast.gtype, "#{obj.ref}.f_#{ast.gen[:ref].name}")
 						end
@@ -170,11 +188,11 @@ class FuncCodegen
 					o "#{args.ref}.f_#{i} = #{arg.ref};"
 				end
 				assign_var(var, ast.gtype, nil)
-				assign_var(args, [ast.gen], nil)
+				assign_var(args, [ast.gen[:args]], nil)
 				
 				# TODO: Find out which typeclass instances to pass along here
 				map = TypeContext::Map.new({}, {Core::Callable::T => ast.obj.gtype.first}, {})
-				o "#{ref(Core::Callable::Apply, map)}(&#{obj.ref}, &#{var.ref}, #{args.ref});"
+				o "#{ref(Core::Callable::Apply, map, ast.gen[:tc_limit])}(&#{obj.ref}, &#{var.ref}, #{args.ref});"
 			else
 				raise "(unknown #{ast.class.inspect})"
 		end

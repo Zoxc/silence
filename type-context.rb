@@ -270,10 +270,10 @@
 			inst, map = TypeContext.find_instance(obj, @infer_args, c.var)
 			if inst
 				instance = inst(inst, map) # Adds the limits of the instance to the @limits array
+				@limit_corrections[c] = instance
 				
 				# Resolve the type functions
 				c.eqs.each do |eq| 
-					@limit_corrections[c] = instance
 					ast = instance.complex.scope.names[eq.type_ast.name]
 					result = inst(ast, instance.args)
 					unify(result, eq.var)

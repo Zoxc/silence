@@ -110,9 +110,9 @@
 			result = result.source_dup(source)
 			
 			if type.type_class?
-				typeclass_limit(source, result)
+				tp = typeclass_limit(source, result)
 				if !analyze_args.scoped
-					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
+					@views[type_class_result] = [result, tp] # TODO: Views won't work nice since type_class_result can be unified with anything
 													   #       Generate an error when the view's type variable is unified with anything other than another type variable
 													   #       When unifing with another type variable, pick the one with a view. If both have a view, create a type error
 													   #       Have the view bind to the variable name instead?
@@ -204,12 +204,12 @@
 				
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
-				ast.gen = callable_args
-				
 				type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
 				limit = typeclass_limit(ast.source, type_class)
 				limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
 				limit.eq_limit(ast.source, result, Core::Callable::Result)
+				
+				ast.gen = {args: callable_args, tc_limit: limit}
 				
 				[result, true]
 			when AST::Literal
@@ -361,17 +361,20 @@
 	end
 	
 	def view(var)
-		r = @views.each.find do |pair|
-			true if pair.first.prune == var
+		r = @views.each.find do |k, v|
+			true if k.prune == var
 		end
-		r ? r.last : var
+		r ? r.last : nil
 	end
 	
 	def solve_fields
 		nil while @fields.reject! do |c|
 			var = c.var.prune
 			type = c.type.prune
-			type = view(type) if type.is_a? Types::Variable
+			if type.is_a? Types::Variable
+				view = view(type)
+				type = view.first if view
+			end
 			raise TypeError.new(recmsg(var, type)) if @ctx.occurs_in?(var, type)
 			case type
 				when Types::Complex
@@ -390,7 +393,7 @@
 					
 					field_type, inst_args = inst_ex(field, parent_args)
 					
-					c.ast.gen = {type: :field, ref: field, args: inst_args}
+					c.ast.gen = {type: :field, ref: field, args: inst_args, tc_limit: (view.last if view)}
 					
 					unify(field_type, var)
 					
@@ -513,8 +516,14 @@
 			@ctx.limits.each{|i| puts "    - #{i}"}
 		end
 		
+		unless @ctx.limit_corrections.empty?
+			@ctx.limit_corrections.each do |k, v|
+				puts "    @#{k} == #{v}"
+			end
+		end
+		
 		unless @views.empty?
-			@views.each_pair{|k,v| puts "    * #{k.text} <= #{v.text}"}
+			@views.each_pair{|k,v| puts "    * #{k.text} <= #{v.first.text}  - #{v.last}"}
 		end
 		
 		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
