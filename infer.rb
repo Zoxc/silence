@@ -484,12 +484,12 @@
 		
 		unresolved_vars = type_vars
 		
-		type_vars = type_vars.select { |var| @ctx.occurs_in?(var, type) }
-		
-		# Variables aren't allowed to have non-dependent type variables in their type
-		unresolved_vars -= type_vars unless @obj.is_a?(AST::Variable)
-		
-		parameterize(type_vars) if @obj.is_a? AST::Function
+		if @obj.is_a?(AST::Function)
+			type_vars = type_vars.select { |var| @ctx.occurs_in?(var, type) }
+			unresolved_vars -= type_vars
+		else
+			type_vars = []
+		end
 		
 		# TODO: Find a proper way to find type variables which doesn't have definition. Done for TypeFunctionLimits, same needed for FieldLimits?
 		#         Probably not if we can resolve all FieldLimit before this point (added errors for any remaining field limits)
@@ -498,11 +498,13 @@
 		#end
 		
 		# Remove dependent type variables
-		@dependent_vars = @ctx.find_dependent_vars(unresolved_vars)
+		@dependent_vars, type_vars = @ctx.find_dependent_vars(unresolved_vars, type_vars)
 		unresolved_vars -= @dependent_vars
 		
 		# Find unresolved type variables used in type class constraints
 		unresolved_vars = @ctx.vars_in_typeclass_args(unresolved_vars)
+		
+		parameterize(type_vars) if @obj.is_a?(AST::Function)
 		
 		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
 		
@@ -540,9 +542,17 @@
 			member, = @obj.scope.require_with_scope(@obj.source, name, proc { "Expected '#{name}' in instance of typeclass #{typeclass.name}" })
 			next if value.is_a? AST::TypeFunction
 			m = infer(member)
+			
+			ctx = TypeContext.new(@infer_args)
+			expected_type = ctx.inst(value, @typeclass.args)
+			ctx.reduce_limits
+			ctx.reduce(nil)
+			
+			raise TypeError, "Expected type '#{expected_type.text}' for #{name} in typeclass instance, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless m == expected_type
+			
 			#TODO: How to ensure members are a proper instance of the typeclass?
-			#b = inst(value, @typeclass.args)
-			#raise TypeError, "Expected type '#{b.text}' for #{name}, but '#{m.text}' found\n#{member.source.format}" unless m == b
+			#TODO: Figure out how this should work for type parameters in members
+			#TODO: Compare the limits of the expected and actual member
 		end
 	end
 	

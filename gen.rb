@@ -39,6 +39,8 @@ class Codegen
 		case ast
 			when AST::Program
 				[]
+			when AST::TypeClassInstance
+				ast.type_params
 			else
 				ast.type_params + ast_keys(ast.declared.owner)
 		end

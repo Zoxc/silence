@@ -265,7 +265,7 @@
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
 
 		nil while @limits.reject! do |c|
-			next if (obj.declared && obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
+			next if (obj && obj.declared && obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
 			#puts "Searching instance for #{c}"
 			inst, map = TypeContext.find_instance(obj, @infer_args, c.var)
@@ -303,9 +303,11 @@
 		false
 	end
 	
-	def find_dependent_vars(vars)
+	def find_dependent_vars(vars, type_vars)
 		map = {}
-		vars.select { |var| dependent_var(map, var, vars) }
+		dependent_vars = vars.select { |var| dependent_var(map, var, vars) }
+		dependent_type_vars = type_vars.select { |var| dependent_var(map, var, type_vars) }
+		[dependent_vars + dependent_type_vars, type_vars - dependent_type_vars]
 	end
 	
 	def vars_in_typeclass_args(vars)
