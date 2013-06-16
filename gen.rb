@@ -7,23 +7,9 @@ class Codegen
 		@names = 0
 		
 		{Core::Int => 'int', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
-			@gen[type] = [Map.new({}, {})]
+			@gen[type] = [TypeContext::Map.new({}, {}, {})]
 			type.c_prefix = false
 			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
-		end
-	end
-	
-	Map = Struct.new(:params, :vars) do
-		def to_s
-			"Map(#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")} | #{vars.each.map { |p| "#{p.first.text}: #{p.last.text}" }.join(", ")})"
-		end
-		
-		def merge(other)
-			self.class.new(params.merge(other.params), vars.merge(other.vars))
-		end
-		
-		def copy
-			self.class.new(params.dup, vars.dup)
 		end
 	end
 	
@@ -54,7 +40,7 @@ class Codegen
 		
 		ref = inst.scope.names[ast.name]
 		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
-		new_map = Map.new(inst_map, {})	
+		new_map = TypeContext::Map.new({}, inst_map, {})	
 		
 		puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
 		
@@ -88,18 +74,20 @@ class Codegen
 		raise "Unable to reduce vars for map #{map}" unless ctx.limits.empty?
 	end
 
-	def do_ref(ast, old_map, new_params)
-		map = Map.new({}, {})
+	def do_ref(ast, old_map, context_map)
+		raise "Expected Map" unless context_map.is_a? TypeContext::Map
+		
+		map = TypeContext::Map.new({}, {}, {})
 		
 		ast_keys(ast).each do |p|
-			type = new_params[p]
-			raise "missing key #{p.name} in [#{new_params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}]" unless type
+			type = context_map.params[p]
+			raise "missing key #{p.name} in [#{context_map.params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}]" unless type
 			map.params[p] = inst_type(type, old_map)
 		end
 		
 		owner = ast.declared.owner
 		
-		if owner.is_a?(AST::TypeClass)	
+		if owner.is_a?(AST::TypeClass)
 			ref, new_map = find_instance(owner.ctype.type, map, ast)
 			
 			ref.type_params.each_with_index do |p, i|
@@ -123,14 +111,14 @@ class Codegen
 		[ref, map]
 	end
 	
-	def ref(ast, old_map, new_params)
-		ast, map = do_ref(ast, old_map, new_params)
+	def ref(ast, old_map, context_map)
+		ast, map = do_ref(ast, old_map, context_map)
 		mangle(ast, map)
 	end
 	
 	def fixed_type(type, map)
 		type = inst_type(type, map)
-		yield do_ref(type.complex, map, type.args)
+		yield do_ref(type.complex, map, TypeContext::Map.new({}, type.args, {}))
 	end
 
 	def mangle_type(type, map)
@@ -328,7 +316,7 @@ class Codegen
 				apply.(ast.nodes)
 			when AST::Function
 				return if !ast.type_params.empty? || !ast.ctype.type.fixed_type? || !ast.props[:export]
-				gen(ast, Map.new({}, {}))
+				gen(ast, TypeContext::Map.new({}, {}, {}))
 		end
 	end
 	

@@ -36,8 +36,8 @@ class FuncCodegen
 		@vars.map(&:decl).join + "\n" + @out.join("\n")
 	end
 	
-	def ref(obj, params)
-		@gen.ref(obj, @map, params)
+	def ref(obj, context_map)
+		@gen.ref(obj, @map, context_map)
 	end
 	
 	def o(str)
@@ -49,8 +49,8 @@ class FuncCodegen
 		(o var.ref + ".data = &" + data + ";") if data
 	end
 	
-	def assign_f(var, ast, obj, params)
-		ref = ref(obj, params)
+	def assign_f(var, ast, obj, context_map)
+		ref = ref(obj, context_map)
 		
 		if obj.is_a?(AST::Function)
 			assign_var(var, ast.gtype, nil)
@@ -69,7 +69,7 @@ class FuncCodegen
 			when AST::Field
 				case ast.gen[:type]
 					when :single
-						return ref(ast.gen[:ref], ast.gen[:args].last.params)
+						return ref(ast.gen[:ref], ast.gen[:args].last)
 					when :field
 						obj = new_var
 						convert(ast.obj, obj)
@@ -81,7 +81,7 @@ class FuncCodegen
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					return "self->f_#{ast.obj.name}"
 				else
-					return ref(ast.obj, ast.gen.last.params.dup.merge(@map.params))
+					return ref(ast.obj, TypeContext::Map.new({}, ast.gen.last.params.dup.merge(@map.params), ast.gen.last.limits.dup.merge(@map.limits)))
 				end
 		end
 	end
@@ -116,14 +116,14 @@ class FuncCodegen
 			when AST::Field
 				case ast.gen[:type]
 					when :single
-						assign_f(var, ast, ast.gen[:ref], ast.gen[:args].params)
+						assign_f(var, ast, ast.gen[:ref], ast.gen[:args])
 					when :field
 						obj = new_var
 						convert(ast.obj, obj)
 						
 						if ast.gen[:ref].is_a?(AST::Function)
 							assign_var(var, ast.gtype, nil)
-							assign_func(var, obj.ref, ref(ast.gen[:ref], ast.gen[:args].params))
+							assign_func(var, obj.ref, ref(ast.gen[:ref], ast.gen[:args]))
 						else
 							assign_var(var, ast.gtype, "#{obj.ref}.f_#{ast.gen[:ref].name}")
 						end
@@ -136,7 +136,7 @@ class FuncCodegen
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					assign_var(var, ast.gtype, "self->f_#{ast.obj.name}") # TODO: Check for the case when accesing a field in a parent struct
 				else
-					assign_f(var, ast, ast.obj, ast.gen.last.params.dup.merge(@map.params))
+					assign_f(var, ast, ast.obj, TypeContext::Map.new({}, ast.gen.last.params.dup.merge(@map.params), ast.gen.last.limits.dup.merge(@map.limits)))
 				end
 			when AST::Return
 				result = new_var
@@ -172,7 +172,9 @@ class FuncCodegen
 				assign_var(var, ast.gtype, nil)
 				assign_var(args, [ast.gen], nil)
 				
-				o "#{ref(Core::Callable::Apply, {Core::Callable::T => ast.obj.gtype.first})}(&#{obj.ref}, &#{var.ref}, #{args.ref});"
+				# TODO: Find out which typeclass instances to pass along here
+				map = TypeContext::Map.new({}, {Core::Callable::T => ast.obj.gtype.first}, {})
+				o "#{ref(Core::Callable::Apply, map)}(&#{obj.ref}, &#{var.ref}, #{args.ref});"
 			else
 				raise "(unknown #{ast.class.inspect})"
 		end

@@ -130,9 +130,9 @@
 			class_limit = typeclass_limit(source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
 			result = new_var(source)
 			class_limit.eq_limit(source, result, obj)
-			inst_args = TypeContext::InstArgs.new({})
+			inst_args = TypeContext::Map.new({}, {}, {})
 		else
-			result, inst_args = type, TypeContext::InstArgs.new({})
+			result, inst_args = type, TypeContext::Map.new({}, {}, {})
 			result = result.source_dup(source)
 		end
 		

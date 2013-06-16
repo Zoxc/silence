@@ -24,7 +24,7 @@
 		end
 	end
 	
-	attr_accessor :type_vars, :limits, :infer_args, :var_allocs
+	attr_accessor :type_vars, :limits, :infer_args, :var_allocs, :limit_corrections
 		
 	def initialize(infer_args)
 		@infer_args = infer_args
@@ -32,6 +32,7 @@
 		@type_vars = []
 		@var_name = 1
 		@limits = []
+		@limit_corrections = {}
 	end
 	
 	def new_var_name
@@ -85,17 +86,13 @@
 		end
 	end
 	
-	InstArgs = Struct.new(:map, :params) do
+	Map = Struct.new(:vars, :params, :limits) do
 		def to_s
-			"Inst({#{map.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}}, [#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}])"
-		end
-		
-		def merge(other)
-			self.class.new(map.merge(other.map), params.merge(other.params))
+			"Map(#{vars.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")} | #{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")} | #{limits.each.map { |p| "#{p.first} = #{p.last}" }.join(", ")})"
 		end
 		
 		def copy
-			self.class.new(map.dup, params.dup)
+			self.class.new(vars.dup, params.dup, limits.dup)
 		end
 	end
 	
@@ -105,6 +102,7 @@
 			class_limit.eqs = limit.eqs.map do |eq|
 				EqLimit.new(eq.source, inst_type(inst_args, eq.var), eq.type_ast)
 			end
+			inst_args.limits[limit] = class_limit
 			class_limit
 		end
 		@limits.concat(limits)
@@ -114,7 +112,7 @@
 		type = type.prune
 		case type
 			when Types::Variable
-				args.map[type] ||= new_var(type.source, type.name)
+				args.vars[type] ||= new_var(type.source, type.name)
 			when Types::Param
 				args.params[type.param] || type
 			when Types::Complex
@@ -131,14 +129,14 @@
 	
 	def inst_map(obj, params)
 		infer(obj)
-		inst_args = InstArgs.new({}, params)
+		inst_args = Map.new({}, params, {})
 		inst_limits(obj, inst_args)
 		inst_args
 	end
 	
 	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
-		inst_args = InstArgs.new({}, params)
+		inst_args = Map.new({}, params, {})
 		
 		inst_limits(obj, inst_args)
 		
@@ -251,6 +249,7 @@
 			end
 			
 			if dup
+				@limit_corrections[c] = dup
 				dup.eqs.concat c.eqs
 				true
 			end
@@ -274,6 +273,7 @@
 				
 				# Resolve the type functions
 				c.eqs.each do |eq| 
+					@limit_corrections[c] = instance
 					ast = instance.complex.scope.names[eq.type_ast.name]
 					result = inst(ast, instance.args)
 					unify(result, eq.var)
