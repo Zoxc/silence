@@ -37,28 +37,10 @@ class FuncCodegen
 	end
 	
 	def resolve_limit(limit)
-		return limit if limit.is_a?(TypeContext::InstanceStruct)
 		limit = @gen.fixup_limit(@func, limit)
-		return limit if limit.is_a?(TypeContext::InstanceStruct)
+		return limit if limit.is_a?(Types::Complex)
 		r = @map.limits[limit]
 		raise "Unable to find instance for limit #{limit}" unless r
-		r
-	end
-	
-	def resolve_limit_inst(limit)
-		v = resolve_limit(limit)
-		puts "resolve_limit_inst #{limit} as #{v}"
-		inst = @gen.inst_type(v.inst, @map)
-		TypeContext::InstanceStruct.new(inst, resolve_limits(v.map))
-	end
-	
-	def resolve_limits(limits)
-		r = {}
-		
-		limits.each do |k, v|
-			r[k] = resolve_limit_inst(v)
-		end
-		
 		r
 	end
 	
@@ -69,9 +51,11 @@ class FuncCodegen
 			map.params[k] = @gen.inst_type(v, @map)
 		end
 		
-		map.limits = resolve_limits(context_map.limits)
+		context_map.limits.each do |k, v|
+			map.limits[k] = @gen.inst_type(resolve_limit(v), @map)
+		end
 		
-		@gen.ref(obj, map, tc_limit ? resolve_limit_inst(tc_limit) : nil)
+		@gen.ref(obj, map, tc_limit ? @gen.inst_type(resolve_limit(tc_limit), @map) : nil)
 	end
 	
 	def o(str)

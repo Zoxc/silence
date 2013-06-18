@@ -1,10 +1,5 @@
 ﻿class TypeContext
-	InstanceStruct = Struct.new(:inst, :map) do
-		def to_s
-			"Inst{#{inst} (#{map.each.map { |p| "#{p.first} = #{p.last}" }.join(", ")})}"
-		end
-	end
-	
+
 	class TypeClassLimit
 		attr_accessor :source, :var, :eqs
 		
@@ -130,6 +125,13 @@
 	def inst(obj, params = {}, type_obj = nil)
 		result, args = inst_ex(obj, params, type_obj)
 		result
+	end
+	
+	def inst_map(obj, params)
+		infer(obj)
+		inst_args = Map.new({}, params, {})
+		inst_limits(obj, inst_args)
+		inst_args
 	end
 	
 	def inst_ex(obj, params = {}, type_obj = nil)
@@ -258,8 +260,6 @@
 		end
 	end
 	
-	# TODO: Turn this into recursion for typeclass instance constraints like solve_limits does
-	#          Won't work since we need to have a list of constraints incase we can't solve them all
 	def reduce(obj)
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
 
@@ -269,14 +269,13 @@
 			#puts "Searching instance for #{c}"
 			inst, map = TypeContext.find_instance(obj, @infer_args, c.var)
 			if inst
-				instance, inst_map = inst_ex(inst, map) # Adds the limits of the instance to the @limits array
-				@limit_corrections[c] = InstanceStruct.new(instance, inst_map.limits)
+				instance = inst(inst, map) # Adds the limits of the instance to the @limits array
+				@limit_corrections[c] = instance
 				
 				# Resolve the type functions
 				c.eqs.each do |eq| 
 					ast = instance.complex.scope.names[eq.type_ast.name]
 					result = inst(ast, instance.args)
-					raise "Type function result can't have additional constraints" unless ast.ctype.ctx.limits.empty?
 					unify(result, eq.var)
 				end
 				

@@ -50,33 +50,11 @@ class Codegen
 		end
 	end
 	
-	def solve_limits(ctx, inst_args, limits, map)
-		puts "solving limits, context (#{map.each.map { |p| "#{p.first} = #{p.last}" }.join(", ")})"
-		limits.each do |limit|
-			inst = map[limit]
-			puts "solving #{limit} to #{inst}"
-			instance = inst.inst
-			
-			limit.eqs.each do |eq|
-				ast = instance.complex.scope.names[eq.type_ast.name]
-				result = inst_type(ast.ctype.type, TypeContext::Map.new({}, instance.args, {}))
-				ctx.unify(result, ctx.inst_type(inst_args, eq.var))
-			end
-			
-			solve_limits(ctx, inst_args, instance.complex.ctype.ctx.limits, inst.map)
-		end
-	end
-	
 	def map_vars(ref, map)
-		ctx = TypeContext.new(nil)
-		inst_args = TypeContext::Map.new({}, map.params, {})
+		ctx = TypeContext.new(@infer_args)
+		inst_args = ctx.inst_map(ref, map.params)
 		map.vars = Hash[ref.ctype.dependent_vars.map { |var| [var, ctx.inst_type(inst_args, var)] }]
-		
-		limits = ref.ctype.ctx.limits
-		unless limits.empty?
-			puts "solving limits on #{ref.scoped_name} #{map}"
-			solve_limits(ctx, inst_args, ref.ctype.ctx.limits, map.limits)
-		end
+		ctx.reduce(ref)
 		
 		raise "Unable to reduce vars for map #{map}" unless ctx.limits.empty?
 	end
@@ -88,10 +66,8 @@ class Codegen
 				limit
 			when TypeContext::TypeClassLimit
 				fixup_limit(ast, result)
-			when TypeContext::InstanceStruct
-				result
 			else
-				raise "Unknown result"
+				result
 		end
 	end
 
@@ -112,8 +88,8 @@ class Codegen
 		if owner.is_a?(AST::TypeClass)
 			raise "Expected typeclass parent for #{ast.scoped_name}" unless tc_limit
 			
-			inst = tc_limit.inst.complex
-			new_map = TypeContext::Map.new({}, tc_limit.inst.args, tc_limit.map)
+			inst = tc_limit.complex
+			new_map = TypeContext::Map.new({}, tc_limit.args, {})
 			
 			ref = inst.scope.names[ast.name]
 			raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
