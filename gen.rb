@@ -32,6 +32,21 @@ class Codegen
 		end
 	end
 	
+	def find_instance(tc, map, ast)
+		typeclass = inst_type(tc, map)
+		inst, inst_map = TypeContext.find_instance(nil, @infer_args, typeclass)
+		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
+		puts "found typeclass inst #{inst.ctype.type.text}"
+		
+		ref = inst.scope.names[ast.name]
+		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
+		new_map = TypeContext::Map.new({}, inst_map, {})	
+		
+		puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
+		
+		return ref, new_map
+	end
+	
 	def inst_type(type, map)
 		type = type.prune
 		case type
@@ -58,22 +73,9 @@ class Codegen
 		
 		raise "Unable to reduce vars for map #{map}" unless ctx.limits.empty?
 	end
-	
-	def fixup_limit(ast, limit)
-		result = ast.ctype.ctx.limit_corrections[limit]
-		case result
-			when nil
-				limit
-			when TypeContext::TypeClassLimit
-				fixup_limit(ast, result)
-			else
-				result
-		end
-	end
 
-	def do_ref(ast, context_map, tc_limit, q = false)
+	def do_ref(ast, context_map)
 		raise "Expected Map" unless context_map.is_a? TypeContext::Map
-		raise "Unresolved typeclass parent for #{ast.scoped_name} = #{tc_limit}" if (tc_limit && tc_limit.is_a?(TypeContext::TypeClassLimit))
 		
 		map = TypeContext::Map.new({}, {}, {})
 		
@@ -86,13 +88,7 @@ class Codegen
 		owner = ast.declared.owner
 		
 		if owner.is_a?(AST::TypeClass)
-			raise "Expected typeclass parent for #{ast.scoped_name}" unless tc_limit
-			
-			inst = tc_limit.complex
-			new_map = TypeContext::Map.new({}, tc_limit.args, {})
-			
-			ref = inst.scope.names[ast.name]
-			raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
+			ref, new_map = find_instance(owner.ctype.type, map, ast)
 			
 			ref.type_params.each_with_index do |p, i|
 				param = ast.type_params[i]
@@ -107,30 +103,22 @@ class Codegen
 			ref = ast
 		end
 		
-		# Adjust for changes in ast's limits
-		context_map.limits.each do |k, v|
-			raise "Unresolved typeclass instance" if v.is_a?(TypeContext::TypeClassLimit)
-			key = fixup_limit(ref, k)
-			next unless key.is_a?(TypeContext::TypeClassLimit)
-			map.limits[key] = v
-		end
-		
 		map_vars(ref, map)
 		
-		puts "ref:#{ref.scoped_name} context:#{context_map} new:#{map}" unless q
+		puts "ref:#{ref.scoped_name} context:#{context_map} new:#{map}"
 			
 		gen(ref, map)
 		[ref, map]
 	end
 	
-	def ref(ast, tc_limit, context_map)
-		ast, map = do_ref(ast, tc_limit, context_map)
+	def ref(ast, context_map)
+		ast, map = do_ref(ast, context_map)
 		mangle(ast, map)
 	end
 	
 	def fixed_type(type, map)
 		type = inst_type(type, map)
-		yield do_ref(type.complex, TypeContext::Map.new({}, type.args, {}), nil, true)
+		yield do_ref(type.complex, TypeContext::Map.new({}, type.args, {}))
 	end
 
 	def mangle_type(type, map)
