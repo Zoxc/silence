@@ -24,7 +24,7 @@
 		end
 	end
 	
-	attr_accessor :type_vars, :limits, :infer_args, :var_allocs, :limit_corrections
+	attr_accessor :type_vars, :limits, :infer_args, :var_allocs
 		
 	def initialize(infer_args)
 		@infer_args = infer_args
@@ -32,7 +32,6 @@
 		@type_vars = []
 		@var_name = 1
 		@limits = []
-		@limit_corrections = {}
 	end
 	
 	def new_var_name
@@ -86,13 +85,13 @@
 		end
 	end
 	
-	Map = Struct.new(:vars, :params, :limits) do
+	Map = Struct.new(:vars, :params) do
 		def to_s
-			"Map(#{vars.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")} | #{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")} | #{limits.each.map { |p| "#{p.first} = #{p.last}" }.join(", ")})"
+			"Map(#{vars.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")} | #{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")})"
 		end
 		
 		def copy
-			self.class.new(vars.dup, params.dup, limits.dup)
+			self.class.new(vars.dup, params.dup)
 		end
 	end
 	
@@ -102,7 +101,6 @@
 			class_limit.eqs = limit.eqs.map do |eq|
 				EqLimit.new(eq.source, inst_type(inst_args, eq.var), eq.type_ast)
 			end
-			inst_args.limits[limit] = class_limit
 			class_limit
 		end
 		@limits.concat(limits)
@@ -129,14 +127,14 @@
 	
 	def inst_map(obj, params)
 		infer(obj)
-		inst_args = Map.new({}, params, {})
+		inst_args = Map.new({}, params)
 		inst_limits(obj, inst_args)
 		inst_args
 	end
 	
 	def inst_ex(obj, params = {}, type_obj = nil)
 		infer(obj)
-		inst_args = Map.new({}, params, {})
+		inst_args = Map.new({}, params)
 		
 		inst_limits(obj, inst_args)
 		
@@ -249,7 +247,6 @@
 			end
 			
 			if dup
-				@limit_corrections[c] = dup
 				dup.eqs.concat c.eqs
 				true
 			end
@@ -273,7 +270,6 @@
 				
 				# Resolve the type functions
 				c.eqs.each do |eq| 
-					@limit_corrections[c] = instance
 					ast = instance.complex.scope.names[eq.type_ast.name]
 					result = inst(ast, instance.args)
 					unify(result, eq.var)
