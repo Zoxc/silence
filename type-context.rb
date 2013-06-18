@@ -87,7 +87,9 @@
 	
 	Map = Struct.new(:vars, :params) do
 		def to_s
-			"Map(#{vars.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")} | #{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")})"
+			r = "Map{#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}"
+			r << " | #{vars.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}" unless vars.empty?
+			r << "}"
 		end
 		
 		def copy
