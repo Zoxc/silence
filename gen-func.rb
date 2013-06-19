@@ -39,31 +39,22 @@ class FuncCodegen
 		destroy_var(var.ref, var.type)
 	end
 	
-	def assign_var(var, type, str, copy = false)
+	def assign_var(var, type, str)
 		if var
 			var.type = type.first
-			if str
-				if copy
-					copy_var(str, var.ref, type.first) 
-				else
-					(o var.ref + " = " + str + ";")
-				end
-			end
+			(o var.ref + " = " + str + ";") if str
 		else
-			if copy
-				copy_var(str, var.ref, type.first) 
-			else
-				(o str + ";") if str
-			end
+			(o str + ";") if str
 		end
 	end
 	
 	def process
-		@func.params.each { |p| o "auto &v_#{p.name} = *p_#{p.name};" }
-		
 		var = new_var
 		convert(func.scope, var)
 		del_var var
+		
+		param_types = @func.ctype.type.args[Core::Func::Args].tuple_map.reverse
+		@func.params.reverse.each_with_index { |p, i| destroy_var("v_#{p.name}", param_types[i]) }
 		
 		@vars.map { |v| v.decl(self) }.join + "\n" + @out.join("\n")
 	end
@@ -111,7 +102,7 @@ class FuncCodegen
 			assign_var(var, ast.gtype, nil)
 			assign_func(var, nil, ref)
 		else
-			assign_var(var, ast.gtype, ref, true)
+			assign_var(var, ast.gtype, ref)
 		end
 	end
 	
@@ -184,7 +175,7 @@ class FuncCodegen
 							assign_var(var, ast.gtype, nil)
 							assign_func(var, lval, ref(ast.gen[:ref], ast.gen[:args].params))
 						else
-							assign_var(var, ast.gtype, "(#{lval}).f_#{ast.gen[:ref].name}", true)
+							assign_var(var, ast.gtype, "(#{lval}).f_#{ast.gen[:ref].name}")
 						end
 						del_var lvar
 				end
@@ -192,9 +183,9 @@ class FuncCodegen
 				convert(ast.obj, var)
 			when AST::Ref
 				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Function)
-					assign_var(var, ast.gtype, "v_#{ast.obj.name}", true)
+					assign_var(var, ast.gtype, "v_#{ast.obj.name}")
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-					assign_var(var, ast.gtype, "self->f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
+					assign_var(var, ast.gtype, "self->f_#{ast.obj.name}") # TODO: Check for the case when accesing a field in a parent struct
 				else
 					assign_f(var, ast, ast.obj, ast.gen.last.params.dup.merge(@map.params))
 				end
@@ -217,6 +208,7 @@ class FuncCodegen
 					lhs = new_var
 					convert(ast.lhs, lhs)
 					assign_var(var, ast.gtype, lhs.ref + " #{ast.op} " + rhs.ref)
+					del_var lhs
 				end
 				del_var rhs
 			when AST::If
@@ -229,15 +221,18 @@ class FuncCodegen
 				convert(ast.obj, obj)
 				
 				args = new_var
+				arg_vars = []
 				ast.args.each_with_index do |a, i|
 					arg = new_var
+					arg_vars << arg
 					convert(a, arg)
 					copy_var(arg.ref, "#{args.ref}.f_#{i}", a.gtype.first)
 				end
 				assign_var(var, ast.gtype, nil)
 				assign_var(args, [ast.gen], nil)
 				
-				o "#{ref(Core::Callable::Apply, {Core::Callable::T => ast.obj.gtype.first})}(&#{obj.ref}, #{var ? "&#{var.ref}" : "0"}, &#{args.ref});"
+				o "#{ref(Core::Callable::Apply, {Core::Callable::T => ast.obj.gtype.first})}(&#{obj.ref}, #{var ? "&#{var.ref}" : "0"}, #{args.ref});"
+				arg_vars.each { |v| del_var v }
 				del_var args
 				del_var obj
 			else

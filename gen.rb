@@ -185,7 +185,7 @@ class Codegen
 		
 		param_types = ast.ctype.type.args[Core::Func::Args].tuple_map
 		
-		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} #{"*" unless bare}p_#{p.name}" }
+		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} v_#{p.name}" }
 		
 		unless bare
 			args.unshift("#{c_type(result, map)} *result")
@@ -214,7 +214,7 @@ class Codegen
 				self_type = inst_type(owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first], map)
 				
 				o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
-				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", &(*p_args).f_#{i}" }.join});\n}\n\n"
+				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.f_#{i}" }.join});\n}\n\n"
 				
 				@out[:func] << o
 			when Core::Ptr::Node
@@ -226,7 +226,7 @@ class Codegen
 				@out[:struct_forward] << o << ";\n"
 				o << "\n{\n"
 				o << "   void *data;\n"
-				o << "   void (*func)(#{(["void *", c_type(result, map) + " *"] + args.map{|a| c_type(a, map) + " *"}).join(", ")});\n"
+				o << "   void (*func)(#{(["void *", c_type(result, map) + " *"] + args.map{|a| c_type(a, map) }).join(", ")});\n"
 				o << "};\n\n"
 				@out[:struct] << o
 			when Core::Cell::Node
@@ -265,7 +265,7 @@ class Codegen
 				# TODO: Generate an error when using type with copy operators in import/export functions
 				
 				if ast.props[:import]
-					o << "    #{"*result = " if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type}#{ast.name}(#{ast.params.map { |p| "*p_#{p.name}"}.join(", ")});"
+					o << "    #{"*result = " if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type}#{ast.name}(#{ast.params.map { |p| "v_#{p.name}"}.join(", ")});"
 					@out[:func_forward] << function_proto(ast, map, true) << ";\n"
 				else
 					o << FuncCodegen.new(self, ast, map).process
@@ -275,7 +275,7 @@ class Codegen
 				if ast.props[:export]
 					o << function_proto(ast, map, true)
 					o << "\n{\n    #{c_type(ast.ctype.type.args[Core::Func::Result], map)} result;\n"
-					o << "    #{mangle(ast, map)}(#{(["0", "&result"] + ast.params.map { |p| "&p_#{p.name}"}).join(", ")});"
+					o << "    #{mangle(ast, map)}(#{(["0", "&result"] + ast.params.map { |p| "v_#{p.name}"}).join(", ")});"
 					(o << "\n    return result;") if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type
 					o << "\n}\n\n"
 				end
