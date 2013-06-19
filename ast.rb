@@ -598,8 +598,24 @@ class Core
 			AST::Ref.new(Src, node)
 		end
 		
+		def ptr(node)
+			AST::UnaryOp.new(Src, '*', node)
+		end
+		
 		def param(name, tp = nil)
 			AST::TypeParam.new(Src, name, tp)
+		end
+		
+		def func(fname, args, result)
+			r = AST::Function.new
+			r.source = Src
+			r.name = fname
+			r.params = args.each.map { |name, type| AST::Function::Param.new(Src, r, name, type) }
+			r.type_params = []
+			r.result = result
+			r.scope = AST::LocalScope.new([])
+			r.props = {}
+			r
 		end
 	end
 	
@@ -638,6 +654,7 @@ class Core
 	end
 	
 	Int = complex :int
+	UInt = complex :uint
 	Bool = complex :bool
 	String = complex :string
 	Char = complex :char
@@ -646,14 +663,7 @@ class Core
 		Args = AST::TypeFunction.new(Src, :Args) # TODO: Constrain this to Tuple
 		Result = AST::TypeFunction.new(Src, :Result)
 		
-		Apply = AST::Function.new
-		Apply.source = Src
-		Apply.name = :apply
-		Apply.params = [AST::Function::Param.new(Src, Apply, :args, ref(Args))]
-		Apply.type_params = []
-		Apply.result = ref(Result)
-		Apply.scope = AST::LocalScope.new([])
-		Apply.props = {}
+		Apply = func(:apply, {args: ref(Args)}, ref(Result))
 		
 		T = param :T
 		Node = complex(:Callable, [T], AST::TypeClass, [Args, Result, Apply])
@@ -663,14 +673,7 @@ class Core
 		args = param :Args
 		result = param :Result
 		
-		apply = AST::Function.new
-		apply.source = Src
-		apply.name = :apply
-		apply.params = [AST::Function::Param.new(Src, apply, :args, ref(args))]
-		apply.type_params = []
-		apply.result = ref(result)
-		apply.scope = AST::LocalScope.new([])
-		apply.props = {}
+		apply = func(:apply, {args: ref(args)}, ref(result))
 		
 		CallableFuncArgs = args
 		CallableFuncApply = apply
@@ -678,6 +681,25 @@ class Core
 		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result])
 	end.()
 
+	class StringLiteral < Core
+		T = param :T
+		
+		Create = func(:create, {data: ptr(ref(Char)), length: ref(UInt)}, ref(T))
+		
+		Node = complex(:StringLiteral, [T], AST::TypeClass, [Create])
+	end
+	
+	class Joinable < Core
+		T = param :T
+		
+		Join = func(:join, {lhs: ref(T), rhs: ref(T)}, ref(T))
+		
+		Node = complex(:Joinable, [T], AST::TypeClass, [Join])
+	end
+	
+	OpMap = {'~' => {ref: Joinable::Node, param: Joinable::T, func: :join}}
+
+	
 	Program.run_pass(:declare_pass, false)
 	Program.run_pass(:ref_pass)
 end

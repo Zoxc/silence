@@ -168,7 +168,7 @@ class Lexer
 				end
 				s.getch
 				[v, :sym, v]
-			when v = s.scan(/[\.*+=\-,:&]/)
+			when v = s.scan(/[\.*+=\-,:&~]/)
 				[v, :sym, v]
 			when s.eos?
 				@pos = @src.size - 1

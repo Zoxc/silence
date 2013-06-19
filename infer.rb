@@ -219,7 +219,9 @@
 					when :bool
 						Core::Bool.ctype.type
 					when :string
-						make_ptr(ast.source, Core::Char.ctype.type)
+						type = new_var(ast.source)
+						typeclass_limit(ast.source, Types::Complex.new(ast.source, Core::StringLiteral::Node, {Core::StringLiteral::T => type}))
+						type
 					else
 						raise "Unknown literal type #{ast.type}"
 				end.source_dup(ast.source), true]
@@ -268,6 +270,9 @@
 				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
 				
 				if lvalue
+					typeclass = Core::OpMap[ast.op]
+					typeclass_limit(ast.source, Types::Complex.new(ast.source, typeclass[:ref], {typeclass[:param] => lhs})) if typeclass
+					
 					unify(lhs, rhs)
 					[lhs, true]
 				else
