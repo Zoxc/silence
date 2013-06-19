@@ -1,6 +1,5 @@
 class Codegen
-	def initialize(infer_args)
-		@infer_args = infer_args
+	def initialize
 		@out = {prelude: '', struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
 		@gen = {}
 		@named = {}
@@ -34,17 +33,13 @@ class Codegen
 	
 	def find_instance(tc, map, ast)
 		typeclass = inst_type(tc, map)
-		inst, inst_map = TypeContext.find_instance(nil, @infer_args, typeclass)
+		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass)
 		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
-		puts "found typeclass inst #{inst.ctype.type.text}"
-		
+
 		ref = inst.scope.names[ast.name]
 		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
-		new_map = TypeContext::Map.new({}, inst_map)	
-		
-		puts "typeclass_ref #{inst.ctype.type.text} #{new_map}"
-		
-		return ref, new_map
+
+		return ref, inst_map
 	end
 	
 	def inst_type(type, map)
@@ -66,7 +61,7 @@ class Codegen
 	end
 	
 	def map_vars(ref, map)
-		ctx = TypeContext.new(@infer_args)
+		ctx = TypeContext.new(nil)
 		inst_args = ctx.inst_map(ref, map.params)
 		map.vars = Hash[ref.ctype.dependent_vars.map { |var| [var, ctx.inst_type(inst_args, var)] }]
 		ctx.reduce(ref)
@@ -78,7 +73,7 @@ class Codegen
 		params.each.map { |k, v| "#{k.scoped_name}: #{v.text}" }.join(", ")
 	end
 
-	def do_ref(ast, new_params)
+	def do_ref(ast, new_params, q = true)
 		map = TypeContext::Map.new({}, {})
 		
 		ast_keys(ast).each do |p|
@@ -107,14 +102,14 @@ class Codegen
 		
 		map_vars(ref, map)
 		
-		puts "ref:#{ref.scoped_name} params:(#{format_params(new_params)}) new:#{map}"
+		puts "ref:#{ref.scoped_name} params:(#{format_params(new_params)}) new:#{map}" unless q
 			
 		gen(ref, map)
 		[ref, map]
 	end
 	
 	def ref(ast, new_params)
-		ast, map = do_ref(ast, new_params)
+		ast, map = do_ref(ast, new_params, false)
 		mangle(ast, map)
 	end
 	
@@ -190,7 +185,7 @@ class Codegen
 		
 		param_types = ast.ctype.type.args[Core::Func::Args].tuple_map
 		
-		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} v_#{p.name}" }
+		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} #{"*" unless bare}p_#{p.name}" }
 		
 		unless bare
 			args.unshift("#{c_type(result, map)} *result")
@@ -219,7 +214,7 @@ class Codegen
 				self_type = inst_type(owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first], map)
 				
 				o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
-				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.f_#{i}" }.join});\n}\n\n"
+				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", &(*p_args).f_#{i}" }.join});\n}\n\n"
 				
 				@out[:func] << o
 			when Core::Ptr::Node
@@ -231,7 +226,7 @@ class Codegen
 				@out[:struct_forward] << o << ";\n"
 				o << "\n{\n"
 				o << "   void *data;\n"
-				o << "   void (*func)(#{(["void *", c_type(result, map) + " *"] + args.map{|a| c_type(a, map)}).join(", ")});\n"
+				o << "   void (*func)(#{(["void *", c_type(result, map) + " *"] + args.map{|a| c_type(a, map) + " *"}).join(", ")});\n"
 				o << "};\n\n"
 				@out[:struct] << o
 			when Core::Cell::Node
@@ -267,8 +262,10 @@ class Codegen
 					o << "    #{c_type(ast.ctype.vars[value], map)} v_#{value.name};\n"
 				end
 				
+				# TODO: Generate an error when using type with copy operators in import/export functions
+				
 				if ast.props[:import]
-					o << "    #{"*result = " if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type}#{ast.name}(#{ast.params.map { |p| "v_#{p.name}"}.join(", ")});"
+					o << "    #{"*result = " if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type}#{ast.name}(#{ast.params.map { |p| "*p_#{p.name}"}.join(", ")});"
 					@out[:func_forward] << function_proto(ast, map, true) << ";\n"
 				else
 					o << FuncCodegen.new(self, ast, map).process
@@ -278,7 +275,7 @@ class Codegen
 				if ast.props[:export]
 					o << function_proto(ast, map, true)
 					o << "\n{\n    #{c_type(ast.ctype.type.args[Core::Func::Result], map)} result;\n"
-					o << "    #{mangle(ast, map)}(#{(["0", "&result"] + ast.params.map { |p| "v_#{p.name}"}).join(", ")});"
+					o << "    #{mangle(ast, map)}(#{(["0", "&result"] + ast.params.map { |p| "&p_#{p.name}"}).join(", ")});"
 					(o << "\n    return result;") if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type
 					o << "\n}\n\n"
 				end

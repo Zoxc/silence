@@ -224,13 +224,14 @@
 						raise "Unknown literal type #{ast.type}"
 				end.source_dup(ast.source), true]
 			when AST::Scope
-				[if ast.nodes.empty?
+				nodes = ast.nodes.compact
+				[if nodes.empty?
 					Core::Unit.ctype.type.source_dup(ast.source)
 				else
-					ast.nodes[0...-1].each do |node|
+					nodes[0...-1].each do |node|
 						unit_default analyze_value(node, args.next)
 					end
-					analyze_value(ast.nodes.last, args.next)
+					analyze_value(nodes.last, args.next)
 				end, true]
 				
 			# The tricky mix of values and types

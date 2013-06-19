@@ -33,7 +33,7 @@ def process(file, parent)
 		exit
 	end
 	
-	output = File.open("output.cpp", "w") { |f| f.write Codegen.new(InferArgs).codegen(ast) }
+	output = File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
 	`g++ -std=gnu++0x -Wall -Wno-unused-value -Wno-unused-variable output.cpp -o output`
 	`output.exe`
 	

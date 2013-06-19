@@ -458,12 +458,9 @@ module AST
 		end
 		
 		def sema(scope)
-			ref = Ref.new(@source, @var)
-			
 			if @value
+				ref = Ref.new(@source, @var)
 				BinOp.new(@right_source, ref, :'=', @value)
-			else
-				ref
 			end
 		end
 		
