@@ -1,5 +1,31 @@
 ﻿class TypeContext
-
+	LevelMap = {opaque: 0, sizeable: 1, copyable: 2}
+	
+	LevelLimit = Struct.new(:source, :type, :level) do
+		def to_s
+			"{#{level.to_s.capitalize}} #{type.text}\n#{source.format(8)}"
+		end
+	end
+	
+	def ensure_level(src, type, level)
+		raise TypeError.new("#{level.to_s.capitalize} type required. Type '#{type.text}' is a #{type.complex.level} type\n#{src.format}" ) if LevelMap[level] > LevelMap[type.complex.level]
+	end
+	
+	def reduce_level(src, type, level)
+		type = type.prune
+		
+		if type.is_a?(Types::Complex) && type.complex.is_a?(AST::Struct)
+			ensure_level(src, type, level)
+			true
+		end
+	end
+	
+	def require_level(src, type, level)
+		unless reduce_level(src, type, level)
+			@levels << LevelLimit.new(src, type, level)
+		end
+	end
+	
 	class TypeClassLimit
 		attr_accessor :source, :var, :eqs
 		
@@ -24,7 +50,7 @@
 		end
 	end
 	
-	attr_accessor :type_vars, :limits, :infer_args, :var_allocs
+	attr_accessor :type_vars, :limits, :infer_args, :var_allocs, :levels
 		
 	def initialize(infer_args)
 		@infer_args = infer_args
@@ -32,6 +58,7 @@
 		@type_vars = []
 		@var_name = 1
 		@limits = []
+		@levels = []
 	end
 	
 	def new_var_name
@@ -85,7 +112,7 @@
 		end
 	end
 	
-	Map = Struct.new(:vars, :params) do
+	Map = Struct.new(:vars, :params, :src) do
 		def to_s
 			r = "Map{#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}"
 			r << " | #{vars.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}" unless vars.empty?
@@ -93,52 +120,61 @@
 		end
 		
 		def copy
-			self.class.new(vars.dup, params.dup)
+			self.class.new(vars.dup, params.dup, src)
 		end
 	end
 	
-	def inst_limits(obj, inst_args)
+	def src_wrap(src, args)
+		AST::NestedSource.new(src, args.src.outer)
+	end
+	
+	def inst_limits(obj, args)
 		limits = obj.ctype.ctx.limits.map do |limit|
-			class_limit = TypeClassLimit.new(limit.source, inst_type(inst_args, limit.var))
+			class_limit = TypeClassLimit.new(src_wrap(limit.source, args), inst_type(args, limit.var))
 			class_limit.eqs = limit.eqs.map do |eq|
-				EqLimit.new(eq.source, inst_type(inst_args, eq.var), eq.type_ast)
+				EqLimit.new(src_wrap(eq.source, args), inst_type(args, eq.var), eq.type_ast)
 			end
 			class_limit
 		end
 		@limits.concat(limits)
 	end
 	
+	def inst_levels(obj, args)
+		levels = obj.ctype.ctx.levels.map do |limit|
+			LevelLimit.new(src_wrap(limit.source, args), inst_type(args, limit.type), limit.level)
+		end
+		@levels.concat(levels)
+	end
+	
 	def inst_type(args, type)
 		type = type.prune
 		case type
 			when Types::Variable
-				args.vars[type] ||= new_var(type.source, type.name)
+				args.vars[type] ||= new_var(src_wrap(type.source, args), type.name)
 			when Types::Param
 				args.params[type.param] || type
 			when Types::Complex
-				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+				Types::Complex.new(src_wrap(type.source, args), type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
 			else
 				raise "Unknown type #{type.class}"
 		end
 	end
 	
-	def inst(obj, params = {}, type_obj = nil)
-		result, args = inst_ex(obj, params, type_obj)
+	def inst(src, obj, params = {}, type_obj = nil)
+		result, args = inst_ex(src, obj, params, type_obj)
 		result
 	end
 	
-	def inst_map(obj, params)
+	def inst_map(src, obj, params)
 		infer(obj)
-		inst_args = Map.new({}, params)
+		inst_args = Map.new({}, params, src)
 		inst_limits(obj, inst_args)
+		inst_levels(obj, inst_args)
 		inst_args
 	end
 	
-	def inst_ex(obj, params = {}, type_obj = nil)
-		infer(obj)
-		inst_args = Map.new({}, params)
-		
-		inst_limits(obj, inst_args)
+	def inst_ex(src, obj, params = {}, type_obj = nil)
+		inst_args = inst_map(src, obj, params)
 		
 		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
 	end
@@ -259,6 +295,25 @@
 		end
 	end
 	
+	def reduce_levels
+		@levels.reject! do |l|
+			reduced = reduce_level(l.source, l.type, l.level)
+			if reduced
+				true
+			else
+				dup = @levels.find do |ol|
+					next if l == ol
+					l.type == ol.type				
+				end
+				
+				if dup
+					dup.level = [dup.level, l.level].max_by { |v| LevelMap[v] }
+					true
+				end
+			end
+		end
+	end
+	
 	def reduce(obj)
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
 
@@ -268,12 +323,12 @@
 			#puts "Searching instance for #{c}"
 			inst, map = TypeContext.find_instance(obj, @infer_args, c.var)
 			if inst
-				instance = inst(inst, map) # Adds the limits of the instance to the @limits array
+				instance = inst(c.source, inst, map) # Adds the limits of the instance to the @limits array
 				
 				# Resolve the type functions
 				c.eqs.each do |eq| 
 					ast = instance.complex.scope.names[eq.type_ast.name]
-					result = inst(ast, instance.args)
+					result = inst(eq.source, ast, instance.args)
 					unify(result, eq.var)
 				end
 				
@@ -284,6 +339,7 @@
 		end
 		
 		reduce_limits
+		reduce_levels
 	end
 	
 	def dependent_var(map, var, vars)

@@ -18,6 +18,10 @@ b(y A)
 a()
 	return b(h)
 	
+instance StringLiteral *char
+	create(data *char, length uint)
+		return data
+	
 import printf(str *char)
 
 export t()

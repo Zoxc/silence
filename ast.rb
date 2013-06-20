@@ -17,7 +17,11 @@ module AST
 			str.gsub("\t", " " * 8)
 		end
 		
-		def format
+		def outer
+			self
+		end
+		
+		def format(lshift = 0)
 			lines = @input.lines.to_a
 			i = 0
 			line = 1
@@ -29,11 +33,27 @@ module AST
 			count = [@range.max - @range.min, lines.first.chomp.size].max
 			pad = @range.min - i
 			source = @input[i, count]
-			linestr = "  line #{line}: "
+			linestr = "line #{line}: "
 			padstr = " " * (untab(source[0...pad]).size + linestr.size)
 			count = untab(@input[@range]).size
 			rep = count == 1 ? "^" : "~"
-			"#{linestr}#{untab(source)}\n#{padstr}#{rep * count}"
+			lshift = " " * lshift
+			"#{lshift}#{linestr}#{untab(source)}\n#{lshift}#{padstr}#{rep * count}"
+		end
+	end
+	
+	class NestedSource
+		def initialize(inner, outer)
+			@inner = inner
+			@outer = outer
+		end
+		
+		def outer
+			@outer
+		end
+		
+		def format(lshift = 0)
+			"#{@outer.format(lshift)}\n#{" " * lshift} From:\n#{@inner.format(lshift + 2)}"
 		end
 	end
 	
@@ -280,18 +300,19 @@ module AST
 	end
 	
 	class Complex < Node
-		attr_accessor :name, :scope, :ctype, :type_params, :c_prefix
+		attr_accessor :name, :scope, :ctype, :type_params, :ctx, :c_prefix
 		
 		def parent
 			ast = @scope.parent.owner
 			ast.is_a?(Program) ? nil : ast
 		end
 		
-		def initialize(source, name, scope, type_params)
+		def initialize(source, name, scope, type_params, ctx)
 			super(source)
 			@name = name
 			@scope = scope
 			@type_params = type_params
+			@ctx = ctx
 			@c_prefix = true
 		end
 		
@@ -327,8 +348,8 @@ module AST
 	class TypeClassInstance < Complex
 		attr_accessor :typeclass, :args
 		
-		def initialize(source, typeclass, args, scope, type_params)
-			super(source, nil, scope, type_params)
+		def initialize(source, typeclass, args, scope, type_params, ctx)
+			super(source, nil, scope, type_params, ctx)
 			@typeclass = typeclass
 			@args = args
 		end
@@ -357,6 +378,13 @@ module AST
 	end
 	
 	class Struct < Complex
+		attr_accessor :level
+		
+		def initialize(*args)
+			super
+			@level = :copyable
+		end
+		
 		def type_class?
 			false
 		end
@@ -579,8 +607,12 @@ end
 class Core
 	Src = Object.new
 	class << Src
-		def format
-			"  <builtin>\n\n"
+		def format(lshift = 0)
+			"#{" " * lshift}<builtin>"
+		end
+		
+		def outer
+			self
 		end
 	end
 	
@@ -588,8 +620,8 @@ class Core
 	Nodes = Program.scope.nodes
 	
 	class << self
-		def complex(name, args = [], klass = AST::Struct, scope = [])
-			r = klass.new(Src, name, AST::GlobalScope.new(scope), args)
+		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
+			r = klass.new(Src, name, AST::GlobalScope.new(scope), args, ctx)
 			Nodes << r
 			r
 		end
@@ -619,27 +651,49 @@ class Core
 		end
 	end
 	
+	# Typeclasses which allows you to increase required levels in type parameters
+	
+	class Sizeable < Core
+		T = param :T
+		Node = complex(:Sizeable, [T], AST::TypeClass)
+		
+		t = param :T
+		Instance = AST::TypeClassInstance.new(Src, ref(Sizeable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
+		Nodes << Instance
+	end
+	
+	class Copyable < Core
+		T = param :T
+		Node = complex(:Copyable, [T], AST::TypeClass)
+		
+		t = param :T
+		Instance = AST::TypeClassInstance.new(Src, ref(Copyable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
+		Nodes << Instance
+	end
+	
+	
 	Unit = complex :Unit
 	
 	class Tuple < Core
-		T = param :T
+		T = param(:T, ref(Copyable::Node))
 		Node = complex(:Tuple, [T], AST::TypeClass)
 	end
 	
 	class Cell < Core
-		Val = param :Val
+		Val = param(:Val, ref(Copyable::Node))
+		#Val = param(:Val)
 		Next = param(:Next, ref(Tuple::Node))
 		Node = complex(:Cell, [Val, Next])
 	end
 	
 	proc do
-		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [ref(Unit)], AST::GlobalScope.new([]), [])
+		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [ref(Unit)], AST::GlobalScope.new([]), [], [])
 	end.()
 
 	proc do
 		val = param :Val
 		_next = param :Next
-		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [AST::Index.new(Src, ref(Cell::Node), [ref(val), ref(_next)])], AST::GlobalScope.new([]), [val, _next])
+		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [AST::Index.new(Src, ref(Cell::Node), [ref(val), ref(_next)])], AST::GlobalScope.new([]), [val, _next], [])
 	end.()
 
 	class Func < Core
@@ -661,7 +715,7 @@ class Core
 	
 	class Callable < Core
 		Args = AST::TypeFunction.new(Src, :Args) # TODO: Constrain this to Tuple
-		Result = AST::TypeFunction.new(Src, :Result)
+		Result = AST::TypeFunction.new(Src, :Result) # TODO: Constrain this to Sizeable
 		
 		Apply = func(:apply, {args: ref(Args)}, ref(Result))
 		
@@ -678,11 +732,11 @@ class Core
 		CallableFuncArgs = args
 		CallableFuncApply = apply
 		
-		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result])
+		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result], [])
 	end.()
 
 	class StringLiteral < Core
-		T = param :T
+		T = param(:T, ref(Sizeable::Node))
 		
 		Create = func(:create, {data: ptr(ref(Char)), length: ref(UInt)}, ref(T))
 		

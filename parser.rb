@@ -124,6 +124,22 @@ class Parser
 		end
 	end
 	
+	def type_context
+		if matches(:id, :where)
+			r = []
+			loop do
+				r << expression
+				if matches(:sym, ',')
+					skip :line
+				else
+					return r
+				end
+			end
+		else
+			[]
+		end
+	end
+	
 	def type_params
 		r = []
 		return r unless tok == :id
@@ -152,8 +168,9 @@ class Parser
 			step
 			name = match :id
 			tp = type_params
+			ctx = type_context
 			scope = global_scope(baseline)
-			AST::TypeClass.new(s, name, scope, tp)
+			AST::TypeClass.new(s, name, scope, tp, ctx)
 		end
 	end
 	
@@ -168,10 +185,11 @@ class Parser
 		end
 		type_class = source { |s| AST::NameRef.new(s, match(:id)) }
 		args = type_parameters(false)
+		ctx = type_context
 		s.extend(@l.last_ended)
 		
 		scope = global_scope(baseline)
-		AST::TypeClassInstance.new(s, type_class, args, scope, tp || [])
+		AST::TypeClassInstance.new(s, type_class, args, scope, tp || [], ctx)
 	end
 	
 	def struct
@@ -180,8 +198,9 @@ class Parser
 			step
 			name = match :id
 			tp = type_params
+			ctx = type_context
 			scope = global_scope(baseline)
-			AST::Struct.new(s, name, scope, tp)
+			AST::Struct.new(s, name, scope, tp, ctx)
 		end
 	end
 	

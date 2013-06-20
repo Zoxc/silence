@@ -56,6 +56,10 @@
 		tcl
 	end
 	
+	def req_level(src, type, level = :copyable)
+		@ctx.require_level(src, type, level)
+	end
+	
 	class AnalyzeArgs
 		attr_accessor :scoped, :index, :lvalue
 		def initialize
@@ -106,7 +110,7 @@
 			
 			map_type_params(source, parent_args, obj.type_params, args, type.text)
 			
-			result, inst_args = inst_ex(obj, parent_args, type)
+			result, inst_args = inst_ex(source, obj, parent_args, type)
 			result = result.source_dup(source)
 			
 			if type.type_class?
@@ -125,7 +129,7 @@
 			typeclass = obj.declared.owner
 			raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
 			
-			typeclass_type, inst_args = inst_ex(typeclass, parent_args)
+			typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
 			
 			class_limit = typeclass_limit(source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
 			result = new_var(source)
@@ -270,6 +274,8 @@
 				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
 				
 				if lvalue
+					req_level(ast.source, lhs) if ast.op == '='
+					
 					typeclass = Core::OpMap[ast.op]
 					typeclass_limit(ast.source, Types::Complex.new(ast.source, typeclass[:ref], {typeclass[:param] => lhs})) if typeclass
 					
@@ -311,7 +317,7 @@
 						
 						ensure_shared(ast.obj, ast.source) if shared?
 						
-						ast.gen = inst_ex(ast.obj, parent_args)
+						ast.gen = inst_ex(ast.source, ast.obj, parent_args)
 						
 						[ast.gen.first, true]
 					else
@@ -358,8 +364,8 @@
 		end
 	end
 	
-	def inst_ex(obj, params = {}, type_obj = nil)
-		@ctx.inst_ex(obj, params, type_obj)
+	def inst_ex(src, obj, params = {}, type_obj = nil)
+		@ctx.inst_ex(src, obj, params, type_obj)
 	end
 	
 	def unify(a, b, loc = proc { "" })
@@ -394,7 +400,7 @@
 						parent_args = type.args
 					end
 					
-					field_type, inst_args = inst_ex(field, parent_args)
+					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 					
 					c.ast.gen = {type: :field, ref: field, args: inst_args}
 					
@@ -515,13 +521,9 @@
 		
 		puts "\n  #{@obj.scoped_name}  \t::  #{type.text}"
 		
-		unless @ctx.limits.empty?
-			@ctx.limits.each{|i| puts "    - #{i}"}
-		end
-		
-		unless @views.empty?
-			@views.each_pair{|k,v| puts "    * #{k.text} <= #{v.text}"}
-		end
+		@ctx.limits.each{|i| puts "    - #{i}"}
+		@ctx.levels.each{|i| puts "    - #{i}"}
+		@views.each_pair{|k,v| puts "    * #{k.text} <= #{v.text}"}
 		
 		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
 		
@@ -531,6 +533,17 @@
 	
 	def process_instance
 		process_type_params
+
+		case @obj
+			when Core::Sizeable::Instance
+				p = @obj.type_params.first
+				p = Types::Param.new(p.source, p)
+				req_level(Core::Src, p, :sizeable)
+			when Core::Copyable::Instance
+				p = @obj.type_params.first
+				p = Types::Param.new(p.source, p)
+				req_level(Core::Src, p, :copyable)
+		end
 		
 		typeclass = @obj.typeclass.obj
 		analyze_args = AnalyzeArgs.new
@@ -549,7 +562,7 @@
 			m = infer(member)
 			
 			ctx = TypeContext.new(@infer_args)
-			expected_type = ctx.inst(value, @typeclass.args)
+			expected_type = ctx.inst(member.source, value, @typeclass.args)
 			ctx.reduce_limits
 			ctx.reduce(nil)
 			
@@ -581,6 +594,7 @@
 					parent = []
 				end
 				process_type_params
+				
 				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
 				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
