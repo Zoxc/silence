@@ -158,7 +158,7 @@ class Parser
 		source do |s|
 			step
 			name = match :id
-			AST::TypeFunction.new(s, name)
+			AST::TypeFunction.new(s, name, nil)
 		end
 	end
 	
@@ -308,7 +308,7 @@ class Parser
 	end
 	
 	def opt_type_specifier
-		expression if is_expression
+		pred_operator if is_expression
 	end
 	
 	def group(baseline)
@@ -362,7 +362,7 @@ class Parser
 			return variable_decl
 		end
 		
-		pred_operator
+		assign_operator
 	end
 	
 	def variable_decl
@@ -410,10 +410,23 @@ class Parser
 		AST::If.new(exp, grp, else_grp)
 	end
 	
+	def assign_operator
+		result = pred_operator
+		
+		case tok_val
+			when '+=', '-=', '*=', '/=', '%=', '='
+				src = @l.source
+				step
+				skip :line
+				return AST::BinOp.new(src, result, tok_val, assign_operator)
+		end if tok == :sym
+		
+		result
+	end
+	
 	Operators = {}
 	pred = proc { |p, *args| args.each { |a| Operators[a] = p }}
 	pred_num = 0
-	pred.(pred_num += 1, '+=', '-=', '*=', '/=', '%=', '=')
 	pred.(pred_num += 1, '->')
 	pred.(pred_num += 1, '+', '-', '~')
 	pred.(pred_num += 1, '*', '/', '%')
@@ -603,6 +616,9 @@ class Parser
 					AST::Literal.new(s, :string, match(:str))
 				when :id
 					case tok_val
+						when :typeof
+							step
+							AST::TypeOf.new(s, chain)
 						when :true
 							step
 							AST::Literal.new(s, :bool, true)

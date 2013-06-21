@@ -61,7 +61,7 @@ def print_ast(ast)
 		when AST::Program
 			format.(ast, [[:scope, :single]])
 		when AST::Scope
-			format.(ast, [[:nodes, ast.nodes]])
+			format.(ast, [[:id, :value, ast.__id__], [:nodes, ast.nodes]])
 		when AST::TypeClassInstance
 			format.(ast, [[:type_params, ast.type_params], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
 		when AST::Complex
@@ -74,7 +74,11 @@ def print_ast(ast)
 			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:result, :single], [:params, ast.params], [:scope, :single], [:type_params, ast.type_params]])
 		when AST::Function::Param
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
+		when AST::TypeOf
+			format.(ast, [[:value, :single]])
+		when AST::TypeAlias
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		else
-			"(unknown #{ast.class.inspect} - #{ast.inspect})"
+			"(unknown #{ast.class.inspect})"
 	end
 end

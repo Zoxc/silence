@@ -28,7 +28,8 @@
 		@obj.respond_to?(:props) ? @obj.props[:shared] : true
 	end
 	
-	def ensure_shared(obj, source)
+	def ensure_shared(obj, source, args)
+		return if args.typeof
 		case obj
 			when AST::Function, AST::Variable
 				raise TypeError.new("Can't access member '#{obj.name}' without an instance\n#{source.format}") unless obj.props[:shared]
@@ -42,8 +43,12 @@
 	def unit_default(type)
 	end
 	
-	def make_tuple(source, args)
+	def self.make_tuple(source, args)
 		args.reverse.inject(Core::Unit.ctype.type.source_dup(source)) { |m, p| Types::Complex.new(source, Core::Cell::Node, {Core::Cell::Val => p, Core::Cell::Next => m}) }
+	end
+	
+	def make_tuple(source, args)
+		self.make_tuple(source, args)
 	end
 	
 	def make_ptr(source, type)
@@ -61,16 +66,18 @@
 	end
 	
 	class AnalyzeArgs
-		attr_accessor :scoped, :index, :lvalue
+		attr_accessor :scoped, :index, :lvalue, :typeof
 		def initialize
 			@scoped = false
 			@lvalue = false
+			@typeof = false
 			@index = {}
 		end
 		
 		def next(opts = {})
 			new = dup
 			new.scoped = opts[:scoped] || @scoped
+			new.typeof = opts[:typeof] || @typeof
 			new.lvalue = opts[:lvalue] || false
 			new.index = opts[:index] || {}
 			new
@@ -132,7 +139,7 @@
 			typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
 			
 			class_limit = typeclass_limit(source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
-			result = new_var(source)
+			result, inst_args = inst_ex(source, obj, parent_args)
 			class_limit.eq_limit(source, result, obj)
 			inst_args = TypeContext::Map.new({}, {})
 		else
@@ -203,17 +210,31 @@
 				
 				[@unit_type, true]
 			when AST::Call
-				type = analyze_value(ast.obj, args.next)
+				type, value = analyze(ast.obj, args.next)
+				
 				result = new_var(ast.source)
 				
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
-				ast.gen = callable_args
+				if value
+					# It's a call
+					ast.gen = callable_args
+					
+					type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
+					limit = typeclass_limit(ast.source, type_class)
+					limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
+					limit.eq_limit(ast.source, result, Core::Callable::Result)
+				else
+					# It's a constructor
+					ast.gen = callable_args
+					
+					type_class = Types::Complex.new(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
+					limit = typeclass_limit(ast.source, type_class)
+					limit.eq_limit(ast.source, callable_args, Core::Constructor::Args)
+					limit.eq_limit(ast.source, result, Core::Constructor::Constructed)
+				end
 				
-				type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
-				limit = typeclass_limit(ast.source, type_class)
-				limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
-				limit.eq_limit(ast.source, result, Core::Callable::Result)
+				req_level(ast.source, result, :sizeable) # Constraint on Callable.Result / Types must be sizeable for constructor syntax
 				
 				[result, true]
 			when AST::Literal
@@ -240,6 +261,12 @@
 					analyze_value(nodes.last, args.next)
 				end, true]
 				
+			# Value to type
+			
+			when AST::TypeOf
+				type = analyze_value(ast.value, args.next(typeof: true))
+				[type, false]
+			
 			# The tricky mix of values and types
 			
 			when AST::Grouped
@@ -315,7 +342,7 @@
 						
 						lvalue_check(ast.source, ast.obj, args.lvalue)
 						
-						ensure_shared(ast.obj, ast.source) if shared?
+						ensure_shared(ast.obj, ast.source, args) if shared?
 						
 						ast.gen = inst_ex(ast.source, ast.obj, parent_args)
 						
@@ -340,7 +367,7 @@
 						
 						raise TypeError.new("'#{ast.name}' is not a member of type '#{type.text}'\n#{ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless ref
 						
-						ensure_shared(ref, ast.source)
+						ensure_shared(ref, ast.source, args)
 						
 						result, inst_args = analyze_ref(ast.source, ref, args, type.args.dup)
 						
@@ -414,15 +441,19 @@
 		end
 	end
 	
-	def process_type_params
+	def process_type_constraint(ast_type, unify_type)
 		analyze_args = AnalyzeArgs.new
 		
+		if ast_type
+			type = analyze_type(ast_type, analyze_args)
+			raise(TypeError.new("'#{type.text}' is not a type class\n#{ast_type.source.format}")) if type.fixed_type?
+			unify(type, unify_type)
+		end
+	end
+	
+	def process_type_params
 		@obj.type_params.map do |p|
-			if p.type
-				type = analyze_type(p.type, analyze_args)
-				raise(TypeError.new("'#{type.text}' is not a type class\n#{p.type.source.format}")) if type.fixed_type?
-				unify(type, Types::Param.new(p.source, p))
-			end
+			process_type_constraint(p.type, Types::Param.new(p.source, p))
 		end
 	end
 	
@@ -495,11 +526,12 @@
 		
 		unresolved_vars = type_vars
 		
-		if @obj.is_a?(AST::Function)
-			type_vars = type_vars.select { |var| @ctx.occurs_in?(var, type) }
-			unresolved_vars -= type_vars
-		else
-			type_vars = []
+		case @obj
+			when AST::Function, AST::TypeFunction
+				type_vars = type_vars.select { |var| @ctx.occurs_in?(var, type) }
+				unresolved_vars -= type_vars
+			else
+				type_vars = []
 		end
 		
 		# TODO: Find a proper way to find type variables which doesn't have definition. Done for TypeFunctionLimits, same needed for FieldLimits?
@@ -519,7 +551,9 @@
 		
 		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
 		
-		puts "\n  #{@obj.scoped_name}  \t::  #{type.text}"
+		puts "" unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
+		
+		puts "#{@obj.scoped_name}  ::  #{type.text}"
 		
 		@ctx.limits.each{|i| puts "    - #{i}"}
 		@ctx.levels.each{|i| puts "    - #{i}"}
@@ -538,11 +572,11 @@
 			when Core::Sizeable::Instance
 				p = @obj.type_params.first
 				p = Types::Param.new(p.source, p)
-				req_level(Core::Src, p, :sizeable)
+				req_level(Core.src, p, :sizeable)
 			when Core::Copyable::Instance
 				p = @obj.type_params.first
 				p = Types::Param.new(p.source, p)
-				req_level(Core::Src, p, :copyable)
+				req_level(Core.src, p, :copyable)
 		end
 		
 		typeclass = @obj.typeclass.obj
@@ -578,6 +612,43 @@
 		finalize(analyze_value(@obj, AnalyzeArgs.new), true)
 	end
 	
+	def create_constructor
+		src = proc do @obj.source
+			AST::NestedSource.new(@obj.source, Core.src(2))
+		end
+		
+		ref = proc do |node|
+			AST::Ref.new(src.(), node)
+		end
+		type_params = @obj.type_params.map { |tp| AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, nil) }
+		fields = @obj.scope.names.values.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
+		
+		type_ref = proc do AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) }) end
+
+		r = AST::Function.new
+		
+		args = AST::TypeAlias.new(src.(), :Args, AST::Tuple.new(src.(), fields.map { |f| AST::TypeOf.new(src.(), AST::Field.new(src.(), type_ref.(), f.name)) }))
+		constructed = AST::TypeAlias.new(src.(), :Constructed, type_ref.())
+			
+		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), type_params, [])
+	
+		r.source = src.()
+		r.name = :construct
+		r.params = [AST::Function::Param.new(src.(), r, :obj, AST::UnaryOp.new(src.(), '*', ref.(constructed))), AST::Function::Param.new(src.(), r, :args, ref.(args))]
+		r.type_params = []
+		r.result = ref.(Core::Unit)
+		r.scope = AST::LocalScope.new([])
+		r.props = {}
+		r
+	
+		#puts "RUNNING #{@obj.scoped_name}"
+		instance.run_pass(:declare_pass)
+		instance.run_pass(:ref_pass)
+		
+		#puts "HELLLO"
+		#puts print_ast(instance)
+	end
+	
 	def process
 		value = @obj
 		
@@ -596,6 +667,9 @@
 				process_type_params
 				
 				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
+				
+				create_constructor if value.is_a?(AST::Struct)
+				
 				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
 				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source), true)
@@ -605,8 +679,12 @@
 				else
 					process_fixed(value)
 				end
+			when AST::TypeAlias
+				finalize(analyze_type(value.type, AnalyzeArgs.new), false)
 			when AST::TypeFunction
-				finalize(Types::TypeFunc.new(value.source, value), false)
+				type = new_var(value.source)
+				process_type_constraint(value.type, type)
+				finalize(type, false)
 			else
 				raise "Unknown value #{value.class}"
 		end
@@ -632,9 +710,9 @@
 
 	InferArgs = Struct.new :visited, :stack
 
-	def self.infer_scope(scope, infer_args)
+	def self.infer_scope(scope, infer_args, filter = proc { true })
 		scope.names.each_pair do |name, value|
-			infer(value, infer_args)
+			infer(value, infer_args) if filter.(value)
 		end
 	end
 end

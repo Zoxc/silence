@@ -62,7 +62,7 @@ class Codegen
 	
 	def map_vars(ref, map)
 		ctx = TypeContext.new(nil)
-		inst_args = ctx.inst_map(Core::Src, ref, map.params)
+		inst_args = ctx.inst_map(Core.src, ref, map.params)
 		map.vars = Hash[ref.ctype.dependent_vars.map { |var| [var, ctx.inst_type(inst_args, var)] }]
 		ctx.reduce(ref)
 		
@@ -202,6 +202,19 @@ class Codegen
 		puts "Generating #{ast.name}"
 		case ast
 			when AST::TypeClass
+			when Core::ForceCast
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				
+				owner = ast.declared.owner
+				
+				in_type = map.params[Core::ForceCastIn]
+				out_type = map.params[Core::ForceCastOut]
+				
+				o << "    *result = (#{c_type(out_type, map)})v_in;\n}\n\n"
+				
+				@out[:func] << o
 			when Core::CallableFuncApply
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

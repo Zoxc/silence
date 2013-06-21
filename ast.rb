@@ -53,7 +53,23 @@ module AST
 		end
 		
 		def format(lshift = 0)
-			"#{@outer.format(lshift)}\n#{" " * lshift} From:\n#{@inner.format(lshift + 2)}"
+			"#{@outer.format(lshift)}\n#{@inner.format(lshift + 4)}"
+		end
+	end
+	
+	class BuiltinSource
+		def initialize(src)
+			@src = src
+		end
+		
+		def format(lshift = 0)
+			@src.map do |src|
+				"#{" " * lshift}<builtin> #{src}"
+			end.join
+		end
+		
+		def outer
+			self
 		end
 	end
 	
@@ -186,7 +202,7 @@ module AST
 		
 		def declare(name, obj)
 			existing = @names[name]
-			raise CompileError, "Unable to declare name '#{name}'\n#{obj.source.format}\nName was already taked by:\n#{existing.source.format}" if existing
+			raise CompileError, "Unable to declare name '#{name}' (#{__id__})\n#{obj.source.format}\nName was already taked by:\n#{existing.source.format}" if existing
 			#puts "|declaring #{name} in #{__id__} \n#{obj.source.format if obj.source}|"
 			@names[name] = obj
 			self
@@ -269,15 +285,20 @@ module AST
 	end
 	
 	class TypeFunction < Node
-		attr_accessor :name, :ctype
+		attr_accessor :name, :ctype, :type
 	
-		def initialize(source, name)
+		def initialize(source, name, type)
 			super(source)
 			@name = name
+			@type = type
 		end
 		
 		def declare_pass(scope)
 			@declared = scope.declare(@name, self)
+		end
+		
+		def visit
+			@type = yield @type if @type
 		end
 	end
 
@@ -296,6 +317,25 @@ module AST
 		
 		def visit
 			@type = yield @type if @type
+		end
+	end
+	
+	class TypeAlias < Node
+		attr_accessor :name, :type, :ctype, :type_params
+		
+		def initialize(source, name, type)
+			super(source)
+			@name = name
+			@type = type
+			@type_params = []
+		end
+		
+		def declare_pass(scope)
+			@declared = scope.declare(@name, self)
+		end
+		
+		def visit
+			@type = yield @type
 		end
 	end
 	
@@ -602,47 +642,53 @@ module AST
 			@value = yield @value
 		end
 	end
+	
+	class TypeOf < ExpressionNode
+		attr_accessor :source, :value
+		
+		def initialize(source, value)
+			@source = source
+			@value = value
+		end
+		
+		def visit
+			@value = yield @value
+		end
+	end
 end
 
 class Core
-	Src = Object.new
-	class << Src
-		def format(lshift = 0)
-			"#{" " * lshift}<builtin>"
-		end
-		
-		def outer
-			self
-		end
-	end
-	
 	Program = AST::Program.new(AST::Scope.new([]))
 	Nodes = Program.scope.nodes
 	
 	class << self
 		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
-			r = klass.new(Src, name, AST::GlobalScope.new(scope), args, ctx)
+			r = klass.new(src(2), name, AST::GlobalScope.new(scope), args, ctx)
 			Nodes << r
 			r
 		end
 		
+		def src(lvl = 1)
+			AST::BuiltinSource.new(caller(lvl, 1))
+		end
+		
 		def ref(node)
-			AST::Ref.new(Src, node)
+			AST::Ref.new(src(2), node)
 		end
 		
 		def ptr(node)
-			AST::UnaryOp.new(Src, '*', node)
+			AST::UnaryOp.new(src(2), '*', node)
 		end
 		
 		def param(name, tp = nil)
-			AST::TypeParam.new(Src, name, tp)
+			AST::TypeParam.new(src(2), name, tp)
 		end
 		
 		def func(fname, args, result)
 			r = AST::Function.new
-			r.source = Src
+			r.source = src(2)
 			r.name = fname
-			r.params = args.each.map { |name, type| AST::Function::Param.new(Src, r, name, type) }
+			r.params = args.each.map { |name, type| AST::Function::Param.new(src(2), r, name, type) }
 			r.type_params = []
 			r.result = result
 			r.scope = AST::LocalScope.new([])
@@ -658,7 +704,7 @@ class Core
 		Node = complex(:Sizeable, [T], AST::TypeClass)
 		
 		t = param :T
-		Instance = AST::TypeClassInstance.new(Src, ref(Sizeable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
+		Instance = AST::TypeClassInstance.new(src, ref(Sizeable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
 		Nodes << Instance
 	end
 	
@@ -667,7 +713,7 @@ class Core
 		Node = complex(:Copyable, [T], AST::TypeClass)
 		
 		t = param :T
-		Instance = AST::TypeClassInstance.new(Src, ref(Copyable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
+		Instance = AST::TypeClassInstance.new(src, ref(Copyable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
 		Nodes << Instance
 	end
 	
@@ -687,13 +733,13 @@ class Core
 	end
 	
 	proc do
-		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [ref(Unit)], AST::GlobalScope.new([]), [], [])
+		Nodes << AST::TypeClassInstance.new(src, ref(Tuple::Node), [ref(Unit)], AST::GlobalScope.new([]), [], [])
 	end.()
 
 	proc do
 		val = param :Val
 		_next = param :Next
-		Nodes << AST::TypeClassInstance.new(Src, ref(Tuple::Node), [AST::Index.new(Src, ref(Cell::Node), [ref(val), ref(_next)])], AST::GlobalScope.new([]), [val, _next], [])
+		Nodes << AST::TypeClassInstance.new(src, ref(Tuple::Node), [AST::Index.new(src, ref(Cell::Node), [ref(val), ref(_next)])], AST::GlobalScope.new([]), [val, _next], [])
 	end.()
 
 	class Func < Core
@@ -713,9 +759,28 @@ class Core
 	String = complex :string
 	Char = complex :char
 	
+	proc do
+		ForceCastIn = param :In
+		ForceCastOut = param :Out
+		ForceCast = func(:force_cast, {in: ref(ForceCastIn)}, ref(ForceCastOut))
+		ForceCast.type_params << ForceCastOut << ForceCastIn
+		Nodes << ForceCast
+	end.()
+
+	class Constructor < Core
+		Constructed = AST::TypeFunction.new(src, :Constructed, nil)
+		Args = AST::TypeFunction.new(src, :Args, ref(Tuple::Node))
+		
+		Construct = func(:construct, {obj: ptr(ref(Constructed)), args: ref(Args)}, ref(Unit))
+		Construct.props[:shared] = true
+		
+		T = param :T
+		Node = complex(:Constructor, [T], AST::TypeClass, [Constructed, Args, Construct])
+	end
+
 	class Callable < Core
-		Args = AST::TypeFunction.new(Src, :Args) # TODO: Constrain this to Tuple
-		Result = AST::TypeFunction.new(Src, :Result) # TODO: Constrain this to Sizeable
+		Args = AST::TypeFunction.new(src, :Args, ref(Tuple::Node))
+		Result = AST::TypeFunction.new(src, :Result, ref(Sizeable::Node))
 		
 		Apply = func(:apply, {args: ref(Args)}, ref(Result))
 		
@@ -732,7 +797,7 @@ class Core
 		CallableFuncArgs = args
 		CallableFuncApply = apply
 		
-		Nodes << AST::TypeClassInstance.new(Src, ref(Callable::Node), [AST::BinOp.new(Src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result], [])
+		Nodes << AST::TypeClassInstance.new(src, ref(Callable::Node), [AST::BinOp.new(src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result], [])
 	end.()
 
 	class StringLiteral < Core

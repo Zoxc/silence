@@ -40,7 +40,7 @@
 		end
 		
 		def to_s
-			"#{@var.text}#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}"
+			"#{@var.text}#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}\n#{source.format(8)}"
 		end
 	end
 	

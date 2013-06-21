@@ -131,13 +131,33 @@ class FuncCodegen
 		end
 	end
 	
+	def call(var, obj, obj_type, args, result_type)
+		args = new_var
+		arg_vars = []
+		arg_types = []
+		args.each_with_index do |a, i|
+			arg = new_var
+			arg_vars << arg
+			convert(a, arg)
+			arg_type = a.gtype.first
+			arg_types << arg_type
+			copy_var(arg.ref, "#{args.ref}.f_#{i}", arg_type)
+		end
+		assign_var(var, [result_type], nil)
+		assign_var(args, [InferContext.make_tuple(Core.src, arg_types)], nil)
+		
+		o "#{ref(Core::Callable::Apply, {Core::Callable::T => obj_type})}(&#{obj.ref}, #{var ? "&#{var.ref}" : "0"}, #{args.ref});"
+		arg_vars.each { |v| del_var v }
+		del_var args
+	end
+	
 	def convert(ast, var)
 		case ast
 			when AST::Scope
 				nodes = ast.nodes.compact
 				
 				if nodes.empty?
-					assign_var(var, [Core::Unit.ctype.type, true], nil)
+					assign_var(var, [Core::Unit.ctype.type], nil)
 				else
 					nodes[0...-1].each do |e|
 						convert(e, nil)
@@ -219,21 +239,7 @@ class FuncCodegen
 			when AST::Call
 				obj = new_var
 				convert(ast.obj, obj)
-				
-				args = new_var
-				arg_vars = []
-				ast.args.each_with_index do |a, i|
-					arg = new_var
-					arg_vars << arg
-					convert(a, arg)
-					copy_var(arg.ref, "#{args.ref}.f_#{i}", a.gtype.first)
-				end
-				assign_var(var, ast.gtype, nil)
-				assign_var(args, [ast.gen], nil)
-				
-				o "#{ref(Core::Callable::Apply, {Core::Callable::T => ast.obj.gtype.first})}(&#{obj.ref}, #{var ? "&#{var.ref}" : "0"}, #{args.ref});"
-				arg_vars.each { |v| del_var v }
-				del_var args
+				#call(var, obj, ast.obj.gtype.first, ast.args, ast.gtype.first)
 				del_var obj
 			else
 				raise "(unknown #{ast.class.inspect})"

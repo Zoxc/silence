@@ -16,8 +16,6 @@ module Types
 				a.complex == b.complex
 			when Types::Param
 				a.param == b.param
-			when Types::TypeFunc
-				a.func == b.func
 		end
 		
 		a_args = a.type_args
@@ -204,19 +202,6 @@ module Types
 
 		def text
 			"#{@param.scoped_name}"
-		end
-	end
-	
-	class TypeFunc < Type
-		attr_accessor :func
-		
-		def initialize(source, func)
-			@source = source
-			@func = func
-		end
-		
-		def text
-			"type_func #{@func.name}"
 		end
 	end
 end
