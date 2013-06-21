@@ -48,7 +48,7 @@
 	end
 	
 	def make_tuple(source, args)
-		self.make_tuple(source, args)
+		self.class.make_tuple(source, args)
 	end
 	
 	def make_ptr(source, type)
@@ -218,7 +218,7 @@
 				
 				if value
 					# It's a call
-					ast.gen = callable_args
+					ast.gen = [true, callable_args]
 					
 					type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
 					limit = typeclass_limit(ast.source, type_class)
@@ -226,7 +226,7 @@
 					limit.eq_limit(ast.source, result, Core::Callable::Result)
 				else
 					# It's a constructor
-					ast.gen = callable_args
+					ast.gen = [false, callable_args]
 					
 					type_class = Types::Complex.new(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
 					limit = typeclass_limit(ast.source, type_class)

@@ -416,9 +416,10 @@ class Parser
 		case tok_val
 			when '+=', '-=', '*=', '/=', '%=', '='
 				src = @l.source
+				op = tok_val
 				step
 				skip :line
-				return AST::BinOp.new(src, result, tok_val, assign_operator)
+				return AST::BinOp.new(src, result, op, assign_operator)
 		end if tok == :sym
 		
 		result

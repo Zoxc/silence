@@ -669,7 +669,7 @@ class Core
 		end
 		
 		def src(lvl = 1)
-			AST::BuiltinSource.new(caller(lvl, 1))
+			AST::BuiltinSource.new([caller(lvl).first])
 		end
 		
 		def ref(node)
@@ -816,7 +816,7 @@ class Core
 		Node = complex(:Joinable, [T], AST::TypeClass, [Join])
 	end
 	
-	OpMap = {'~' => {ref: Joinable::Node, param: Joinable::T, func: :join}}
+	OpMap = {'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join}}
 
 	
 	Program.run_pass(:declare_pass, false)

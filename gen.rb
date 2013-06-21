@@ -1,11 +1,11 @@
 class Codegen
 	def initialize
-		@out = {prelude: '', struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
+		@out = {prelude: "#include <cstdint>\n\n", struct_forward: '', struct: '', globals: '', func_forward: '', func: ''}
 		@gen = {}
 		@named = {}
 		@names = 0
 		
-		{Core::Int => 'int', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
+		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
 			@gen[type] = [TypeContext::Map.new({}, {})]
 			type.c_prefix = false
 			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
@@ -34,7 +34,7 @@ class Codegen
 	def find_instance(tc, map, ast)
 		typeclass = inst_type(tc, map)
 		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass)
-		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text}") unless inst
+		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text} for #{ast.name}\n#{ast.source.format}") unless inst
 
 		ref = inst.scope.names[ast.name]
 		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
@@ -212,7 +212,7 @@ class Codegen
 				in_type = map.params[Core::ForceCastIn]
 				out_type = map.params[Core::ForceCastOut]
 				
-				o << "    *result = (#{c_type(out_type, map)})v_in;\n}\n\n"
+				o << "    *result = reinterpret_cast<#{c_type(out_type, map)}>(v_in);\n}\n\n"
 				
 				@out[:func] << o
 			when Core::CallableFuncApply

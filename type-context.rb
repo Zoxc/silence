@@ -182,6 +182,7 @@
 	def unify(a, b, loc = proc { "" })
 		a = a.prune
 		b = b.prune
+		error = proc { raise TypeError.new(errmsg(a, b) + loc.()) }
 		
 		if a.is_a? Types::Variable
 			# Don't unify type variables with themselves TODO: Can this happen?
@@ -195,10 +196,21 @@
 		
 		return unify(b, a, loc) if b.is_a? Types::Variable
 		
+		error.() if (a.class != b.class)
+		
+		error.() unless case a
+			when Types::Complex
+				a.complex == b.complex
+			when Types::Param
+				a.param == b.param
+			else
+				raise "Unhandled"
+		end
+		
 		a_args = a.type_args
 		b_args = b.type_args
 		
-		raise TypeError.new(errmsg(a, b) + loc.()) if (a.class != b.class) || (a_args.size != b_args.size)
+		error.() if (a_args.size != b_args.size)
 		
 		new_loc = proc do
 			source = a.source || b.source
