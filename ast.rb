@@ -509,32 +509,22 @@ module AST
 	end
 	
 	class VariableDecl < ExpressionNode
-		attr_accessor :name, :value, :type, :declared
+		attr_accessor :name, :value, :var
 		
 		def initialize(source, right_source, name, type, value, props)
 			@source = source
-			@right_source = right_source
 			@name = name
-			@value = value
-			@type = type
 			@props = props
+			@var = Variable.new(@source, @name, nil, type, @props)
+			@value = BinOp.new(right_source, Ref.new(@source, @var), '=', value) if value
 		end
 		
 		def declare_pass(scope)
-			@var = Variable.new(@source, @name, scope, @type, @props)
-			@declared = scope.declare(@name, @var)
-		end
-		
-		def sema(scope)
-			if @value
-				ref = Ref.new(@source, @var)
-				BinOp.new(@right_source, ref, :'=', @value)
-			end
+			@var.declared = scope.declare(@name, @var)
 		end
 		
 		def visit
 			@var = yield @var if @var
-			@type = yield @type if @type
 			@value = yield @value if @value
 		end
 	end
@@ -800,6 +790,24 @@ class Core
 		Nodes << AST::TypeClassInstance.new(src, ref(Callable::Node), [AST::BinOp.new(src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result], [])
 	end.()
 
+	class IntLiteral < Core
+		T = param(:T, ref(Sizeable::Node))
+		
+		Create = func(:create, {input: ref(Int)}, ref(T))
+		
+		Node = complex(:IntLiteral, [T], AST::TypeClass, [Create])
+	end
+	
+	num_lit = proc do |type|
+		create = func(:create, {input: ref(Int)}, ref(type))
+		Nodes << AST::TypeClassInstance.new(src, ref(IntLiteral::Node), [ref(type)], AST::GlobalScope.new([create]), [], [])
+		create
+	end
+	
+	CharLiteralCreate = num_lit.(Char)
+	IntLiteralCreate = num_lit.(Int)
+	UIntLiteralCreate = num_lit.(UInt)
+	
 	class StringLiteral < Core
 		T = param(:T, ref(Sizeable::Node))
 		

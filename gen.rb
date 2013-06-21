@@ -202,12 +202,14 @@ class Codegen
 		puts "Generating #{ast.name}"
 		case ast
 			when AST::TypeClass
+			when Core::CharLiteralCreate, Core::IntLiteralCreate, Core::UIntLiteralCreate
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				@out[:func] << o << "\n{\n    *result = v_input;\n}\n\n"
 			when Core::ForceCast
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
 				o << "\n{\n"
-				
-				owner = ast.declared.owner
 				
 				in_type = map.params[Core::ForceCastIn]
 				out_type = map.params[Core::ForceCastOut]

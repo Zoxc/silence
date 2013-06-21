@@ -189,6 +189,9 @@
 		case ast
 			# Values only
 			
+			when AST::VariableDecl
+				analyze_value(ast.value, args.next) if ast.value
+				[Core::Unit.ctype.type.source_dup(ast.source), true]
 			when AST::Return
 				result = analyze_value(ast.value, args.next)
 				prev = @result
@@ -208,7 +211,7 @@
 				unit_default analyze_value(ast.group, args.next)
 				analyze_value(ast.else_node, args.next) if ast.else_node
 				
-				[@unit_type, true]
+				[Core::Unit.ctype.type.source_dup(ast.source), true]
 			when AST::Call
 				type, value = analyze(ast.obj, args.next)
 				
@@ -240,7 +243,9 @@
 			when AST::Literal
 				[case ast.type
 					when :int
-						Core::Int.ctype.type
+						type = new_var(ast.source)
+						typeclass_limit(ast.source, Types::Complex.new(ast.source, Core::IntLiteral::Node, {Core::IntLiteral::T => type}))
+						type
 					when :bool
 						Core::Bool.ctype.type
 					when :string

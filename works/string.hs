@@ -14,7 +14,7 @@ instance Joinable String
 		.rhs_pos uint = force_cast new + lhs.size
 		memcpy(force_cast rhs_pos, force_cast rhs.data, rhs.size)
 		*force_cast[*char](rhs_pos + rhs.size) = 0
-		return String(new, new_size)
+		return String(force_cast new, new_size)
 
 test()
 	.var = "Hello"

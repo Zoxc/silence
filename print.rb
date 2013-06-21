@@ -31,7 +31,7 @@ def print_ast(ast)
 		when AST::Literal
 			format.(ast, [[:value]])
 		when AST::VariableDecl
-			format.(ast, [[:name], [:type, :single], [:value, :single]])
+			format.(ast, [[:name], [:var, :single], [:value, :single]])
 		when AST::Return
 			format.(ast, [[:value, :single]])
 		when AST::Ref

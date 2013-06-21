@@ -168,12 +168,18 @@ class FuncCodegen
 					end
 					convert(nodes.last, var)
 				end
+			when AST::VariableDecl
+				convert(ast.value, nil) if ast.value
+				assign_var(var, [Core::Unit.ctype.type, true], nil)
 			when AST::Literal
 				assign_var(var, ast.gtype, case ast.type
-					when :int, :bool
+					when :int
+						direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast.gtype.first}), nil, [ast.value.to_s])
+						nil
+					when :bool
 						ast.value.to_s
 					when :string
-						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gtype.first}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"],)
+						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gtype.first}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"])
 						nil
 					else
 						raise "Unknown literal type #{ast.type}"
@@ -247,7 +253,6 @@ class FuncCodegen
 						del_var lhs_arg
 						del_var rhs_arg
 					else
-					 o	"//binop"
 						assign_var(var, ast.gtype, lhs.ref + " #{ast.op} " + rhs.ref)
 					end
 					
