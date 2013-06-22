@@ -21,7 +21,7 @@ test()
 	return var ~ " world!"
 	
 import malloc(size uint) -> *()
-import memcpy(dst *(), src *(), len uint) -> *()
+import memcpy(dst *(), src *(), len uint)
 import puts(str *char)
 
 export main() -> int
