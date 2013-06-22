@@ -155,21 +155,23 @@
 	end
 	
 	def analyze_value(ast, args)
-		ast.gtype = analyze(ast, args)
-		type, value = ast.gtype
+		type, value = analyze(ast, args)
+		ast.gtype = type
 		raise TypeError.new("Expected value, but got type '#{type.text}'\n#{type.source.format}") unless value
 		type
 	end
 	
 	def analyze_type(ast, args)
-		ast.gtype = analyze(ast, args)
-		type, value = ast.gtype
+		type, value = analyze(ast, args)
+		ast.gtype = type
 		raise TypeError.new("Expected type, but got value of type '#{type.text}'\n#{type.source.format}") if value
 		type
 	end
 	
 	def analyze(ast, args)
-		ast.gtype = analyze_impl(ast, args)
+		type, value = analyze_impl(ast, args)
+		ast.gtype = type
+		[type, value]
 	end
 	
 	def get_index_args(args)
