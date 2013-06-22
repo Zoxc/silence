@@ -66,10 +66,11 @@
 	end
 	
 	class AnalyzeArgs
-		attr_accessor :scoped, :index, :lvalue, :typeof
+		attr_accessor :scoped, :index, :lvalue, :tuple_lvalue, :typeof
 		def initialize
 			@scoped = false
 			@lvalue = false
+			@tuple_lvalue = false
 			@typeof = false
 			@index = {}
 		end
@@ -79,6 +80,7 @@
 			new.scoped = opts[:scoped] || @scoped
 			new.typeof = opts[:typeof] || @typeof
 			new.lvalue = opts[:lvalue] || false
+			new.tuple_lvalue = opts[:tuple_lvalue] || false
 			new.index = opts[:index] || {}
 			new
 		end
@@ -181,7 +183,7 @@
 	
 	def analyze_impl(ast, args)
 		case ast
-			when AST::Ref, AST::Field, AST::UnaryOp
+			when AST::Ref, AST::Field, AST::UnaryOp, AST::Tuple
 			else
 				raise TypeError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
 		end if args.lvalue
@@ -298,9 +300,14 @@
 						raise TypeError.new("Invalid unary operator '#{ast.op}' allowed\n#{ast.source.format}")
 				end
 			when AST::Tuple
-				[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
+				if args.lvalue
+					raise TypeError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
+					[make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next(lvalue: true, tuple_lvalue: true)) }), true]
+				else
+					[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
+				end
 			when AST::BinOp
-				lhs, lvalue = analyze(ast.lhs, args.next(lvalue: ast.op == '='))
+				lhs, lvalue = analyze(ast.lhs, args.next(lvalue: ast.op == '=', tuple_lvalue: ast.op == '='))
 				rhs, rvalue = analyze(ast.rhs, args.next)
 				
 				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
@@ -360,7 +367,7 @@
 					end
 				end
 			when AST::Field
-				type, value = analyze(ast.obj, args.next(scoped: true))
+				type, value = analyze(ast.obj, args.next(scoped: true, lvalue: args.lvalue))
 				
 				if value
 					result = new_var(ast.source)
@@ -642,15 +649,15 @@
 		r.params = [AST::Function::Param.new(src.(), r, :obj, AST::UnaryOp.new(src.(), '*', ref.(constructed))), AST::Function::Param.new(src.(), r, :args, ref.(args))]
 		r.type_params = []
 		r.result = ref.(Core::Unit)
-		r.scope = AST::LocalScope.new([])
+		fields = fields.map { |field| AST::Field.new(src.(), AST::UnaryOp.new(src.(), '*', AST::NameRef.new(src.(), :obj)), field.name) }
+		r.scope = AST::LocalScope.new([AST::BinOp.new(src.(), AST::Tuple.new(src.(), fields), '=', AST::NameRef.new(src.(), :args))])
 		r.props = {}
 		r
 	
-		#puts "RUNNING #{@obj.scoped_name}"
 		instance.run_pass(:declare_pass)
+		instance.run_pass(:sema, true)
 		instance.run_pass(:ref_pass)
 		
-		#puts "HELLLO"
 		#puts print_ast(instance)
 	end
 	

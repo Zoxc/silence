@@ -111,48 +111,53 @@ class FuncCodegen
 			when AST::UnaryOp
 				ptr = new_var
 				convert(ast.node, ptr)
-				return ["*#{ptr.ref}", ptr]
+				return [:single, "*#{ptr.ref}", ptr]
 			when AST::Field
 				case ast.gen[:type]
 					when :single
 						return ref(ast.gen[:ref], ast.gen[:args].last.params)
 					when :field
-						lval, lvar = lvalue(ast.obj)
-						return ["(#{lval}).f_#{ast.gen[:ref].name}", lvar]
+						single, lval, lvar = lvalue(ast.obj)
+						return [:single, "(#{lval}).f_#{ast.gen[:ref].name}", lvar]
 				end
 			when AST::Ref
 				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Function)
-					return ["v_#{ast.obj.name}"]
+					return [:single, "v_#{ast.obj.name}"]
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-					return ["self->f_#{ast.obj.name}"]
+					return [:single, "self->f_#{ast.obj.name}"]
 				else
-					return [ref(ast.obj, ast.gen.last.params.dup.merge(@map.params))]
+					return [:single, ref(ast.obj, ast.gen.last.params.dup.merge(@map.params))]
 				end
+			when AST::Tuple
+				[:tuple, ast.nodes.map { |n| lvalue(n) }]
+			else
+				raise "Unknown"
 		end
 	end
 	
-	def direct_call(var, ref, obj, args)
-		o "#{ref}(#{obj ? "&#{obj.ref}" : "0"}, #{var ? "&#{var.ref}" : "0"}#{args.map{|a| ", #{a}"}.join});"
+	def direct_call(var, ref, obj, args, result_type)
+		rvar = var ? var : new_var
+		assign_var(rvar, [result_type], nil)
+		o "#{ref}(#{obj ? "&#{obj.ref}" : "0"}, &#{rvar.ref}#{args.map{|a| ", #{a}"}.join});"
+		del_var rvar unless var
 	end
 	
-	def call(var, obj, obj_type, ast_args, result_type)
-		args = new_var
-		arg_vars = []
-		arg_types = []
-		ast_args.each_with_index do |a, i|
-			arg = new_var
-			arg_type = a.gtype.first
-			arg_types << arg_type
-			arg_vars << arg
-			convert(a, arg)
-			copy_var(arg.ref, "#{args.ref}.f_#{i}", arg_type)
+	def assign(var, type, lvalue_result, rhs)
+		assign_var(var, [type], nil) if var
+		kind, lval, tvar = lvalue_result
+		case kind
+			when :single
+				destroy_var(lval, type)
+				copy_var(rhs, lval, type)
+				copy_var(lval, var.ref, type) if var
+				del_var tvar
+			when :tuple
+				tuple_map = type.tuple_map
+				lval.each_with_index do |v, i|
+					assign(nil, tuple_map[i], v, "(#{rhs}).f_#{i}")
+				end
+				copy_var(rhs, var.ref, type) if var
 		end
-		assign_var(var, [result_type], nil)
-		assign_var(args, [InferContext.make_tuple(Core.src, arg_types)], nil)
-		
-		direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => obj_type}), obj, [args.ref])
-		arg_vars.each { |v| del_var v }
-		del_var args
 	end
 	
 	def convert(ast, var)
@@ -174,12 +179,12 @@ class FuncCodegen
 			when AST::Literal
 				assign_var(var, ast.gtype, case ast.type
 					when :int
-						direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast.gtype.first}), nil, [ast.value.to_s])
+						direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast.gtype.first}), nil, [ast.value.to_s], ast.gtype.first)
 						nil
 					when :bool
 						ast.value.to_s
 					when :string
-						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gtype.first}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"])
+						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gtype.first}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"], ast.gtype.first)
 						nil
 					else
 						raise "Unknown literal type #{ast.type}"
@@ -192,7 +197,7 @@ class FuncCodegen
 						assign_var(var, ast.gtype, "*#{ptr.ref}")
 						del_var ptr
 					when '&'
-						lval, tvar = lvalue(ast.node)
+						single, lval, tvar = lvalue(ast.node)
 						assign_var(var, ast.gtype, "&(#{lval})")
 						del_var tvar
 				end
@@ -201,7 +206,7 @@ class FuncCodegen
 					when :single
 						assign_f(var, ast.gtype, ast.gen[:ref], ast.gen[:args].params)
 					when :field
-						lval, lvar = lvalue(ast.obj)
+						single, lval, lvar = lvalue(ast.obj)
 						if ast.gen[:ref].is_a?(AST::Function)
 							assign_var(var, ast.gtype, nil)
 							assign_func(var, lval, ref(ast.gen[:ref], ast.gen[:args].params))
@@ -230,11 +235,7 @@ class FuncCodegen
 				rhs = new_var
 				convert(ast.rhs, rhs)
 				if ast.op == '='
-					lval, tvar = lvalue(ast.lhs)
-					destroy_var(lval, ast.gtype.first)
-					copy_var(rhs.ref, lval, ast.gtype.first)
-					assign_var(var, ast.gtype, lval)
-					del_var tvar
+					assign(var, ast.gtype.first, lvalue(ast.lhs), rhs.ref)
 				else
 					lhs = new_var
 					convert(ast.lhs, lhs)
@@ -248,8 +249,7 @@ class FuncCodegen
 						copy_var(rhs.ref, rhs_arg.ref, ast.gtype.first)
 						assign_var(lhs_arg, [ast.gtype.first], nil)
 						assign_var(rhs_arg, [ast.gtype.first], nil)
-						assign_var(var, [ast.gtype.first], nil)
-						direct_call(var, ref(typeclass[:func], {typeclass[:param] => ast.gtype.first}), nil, [lhs_arg.ref, rhs_arg.ref])
+						direct_call(var, ref(typeclass[:func], {typeclass[:param] => ast.gtype.first}), nil, [lhs_arg.ref, rhs_arg.ref], ast.gtype.first)
 						del_var lhs_arg
 						del_var rhs_arg
 					else
@@ -281,15 +281,15 @@ class FuncCodegen
 					convert(a, arg)
 					copy_var(arg.ref, "#{args.ref}.f_#{i}", arg_type)
 				end
-				assign_var(var, [ast.gtype.first], nil)
 				assign_var(args, [ast.gen.last], nil)
 				
 				if ast.gen.first
-					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.obj.gtype.first}), obj, [args.ref])
+					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.obj.gtype.first}), obj, [args.ref], ast.gtype.first)
 				else
-					tvar = new_var unless var
-					direct_call(nil, ref(Core::Constructor::Construct, {Core::Constructor::T => ast.obj.gtype.first}), nil, ["#{var ? "&#{var.ref}" : "&#{tvar.ref}"}", args.ref])
-					del_var tvar unless var
+					rvar = var ? var : new_var
+					assign_var(rvar, ast.gtype, nil)
+					direct_call(nil, ref(Core::Constructor::Construct, {Core::Constructor::T => ast.obj.gtype.first}), nil, ["&#{rvar.ref}", args.ref], Core::Unit.ctype.type)
+					del_var rvar unless var
 				end
 				
 				arg_vars.each { |v| del_var v }
