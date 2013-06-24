@@ -298,7 +298,7 @@ class FuncCodegen
 				del_var args
 				del_var obj if ast.gen.first
 			else
-				raise "(unknown #{ast.class.inspect})"
+				raise "(unhandled #{ast.class})"
 		end
 	end
 end

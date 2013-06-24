@@ -370,6 +370,10 @@ module AST
 			@type_params.map! { |n| yield n }
 			@scope = yield scope
 		end
+		
+		def type_class?
+			false
+		end
 	end
 	
 	class TypeClass < Complex
@@ -411,10 +415,6 @@ module AST
 			@args.map! { |n| yield n }
 			@typeclass = yield @typeclass
 		end
-		
-		def type_class?
-			false
-		end
 	end
 	
 	class Struct < Complex
@@ -423,10 +423,6 @@ module AST
 		def initialize(*args)
 			super
 			@level = :copyable
-		end
-		
-		def type_class?
-			false
 		end
 	end
 	

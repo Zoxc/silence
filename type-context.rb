@@ -167,8 +167,8 @@
 		end
 	end
 	
-	def inst(src, obj, params = {}, type_obj = nil)
-		result, args = inst_ex(src, obj, params, type_obj)
+	def inst(src, obj, params = {})
+		result, args = inst_ex(src, obj, params)
 		result
 	end
 	
@@ -180,10 +180,10 @@
 		inst_args
 	end
 	
-	def inst_ex(src, obj, params = {}, type_obj = nil)
+	def inst_ex(src, obj, params = {})
 		inst_args = inst_map(src, obj, params)
 		
-		return inst_type(inst_args, type_obj ? type_obj : obj.ctype.type), inst_args
+		return inst_type(inst_args, obj.ctype.type), inst_args
 	end
 	
 	def unify(a, b, loc = proc { "" })

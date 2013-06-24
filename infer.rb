@@ -115,21 +115,22 @@
 		args = analyze_args.index
 		args[:used] = true
 		args = args[:args]
-		type = infer(obj)
 		
-		if type.kind_of?(Types::Complex)
-			args ||= []
+		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{obj.scoped_name}\n#{source.format}") if args && !obj.is_a?(AST::Complex) 
+		
+		args ||= []
+		
+		case obj
+			when AST::TypeClass
+				if !analyze_args.scoped
+					type_class_result = new_var(source)
+					args.unshift(type_class_result)
+				end
+				
+				map_type_params(source, parent_args, obj.type_params, args, obj.scoped_name)
+				
+				result, inst_args = inst_ex(source, obj, parent_args)
 			
-			if !analyze_args.scoped && type.type_class?
-				type_class_result = new_var(source)
-				args.unshift(type_class_result)
-			end
-			
-			map_type_params(source, parent_args, obj.type_params, args, type.text)
-			
-			result, inst_args = inst_ex(source, obj, parent_args, type)
-			
-			if type.type_class?
 				typeclass_limit(source, result.complex, result.args)
 				if !analyze_args.scoped
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
@@ -138,21 +139,23 @@
 													   #       Have the view bind to the variable name instead?
 					result = type_class_result
 				end
-			end
-		elsif args
-			raise TypeError.new("Unexpected type parameter(s) for non-template type #{type.text}\n#{source.format}")
-		elsif obj.kind_of?(AST::TypeFunction)
-			typeclass = obj.declared.owner
-			raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
-			
-			typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
-			
-			class_limit = typeclass_limit(source, typeclass_type.complex, typeclass_type.args) # TODO: Find the typeclass limit for the parent ref AST node
-			result, inst_args = inst_ex(source, obj, parent_args)
-			class_limit.eq_limit(source, result, obj)
-			inst_args = TypeContext::Map.new({}, {})
-		else
-			result = @ctx.inst(source, obj)
+			when AST::Struct
+				map_type_params(source, parent_args, obj.type_params, args, obj.scoped_name)
+				result, inst_args = inst_ex(source, obj, parent_args)
+			when AST::TypeFunction
+				typeclass = obj.declared.owner
+				raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
+				
+				typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
+				
+				class_limit = typeclass_limit(source, typeclass_type.complex, typeclass_type.args) # TODO: Find the typeclass limit for the parent ref AST node
+				result, inst_args = inst_ex(source, obj, parent_args)
+				class_limit.eq_limit(source, result, obj)
+				inst_args = TypeContext::Map.new({}, {})
+			when AST::Variable, AST::TypeParam, AST::Function, AST::TypeAlias
+				result, inst_args = inst_ex(source, obj, parent_args)
+			else
+				raise "(unhandled #{obj.class})"
 		end
 		
 		lvalue_check(source, obj, analyze_args.lvalue)
@@ -408,8 +411,8 @@
 		end
 	end
 	
-	def inst_ex(src, obj, params = {}, type_obj = nil)
-		@ctx.inst_ex(src, obj, params, type_obj)
+	def inst_ex(src, obj, params = {})
+		@ctx.inst_ex(src, obj, params)
 	end
 	
 	def unify(a, b, loc = proc { "" })
