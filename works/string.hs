@@ -4,7 +4,10 @@ struct String
 
 instance StringLiteral String
 	create(data *char, size uint)
-		return String(data, size)
+		.new = malloc(size + 1)
+		memcpy(new, force_cast data, size)
+		*force_cast[*char](force_cast new + size) = 0
+		return String(force_cast new, size)
 
 instance Joinable String
 	join(lhs String, rhs String) -> String

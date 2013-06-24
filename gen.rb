@@ -33,7 +33,7 @@ class Codegen
 	
 	def find_instance(tc, map, ast)
 		typeclass = inst_type(tc, map)
-		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass)
+		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass.complex, typeclass.args)
 		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text} for #{ast.name}\n#{ast.source.format}") unless inst
 
 		ref = inst.scope.names[ast.name]
@@ -226,7 +226,7 @@ class Codegen
 				
 				args = map.params[Core::CallableFuncArgs].tuple_map
 				
-				self_type = inst_type(owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first], map)
+				self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.type_params.first], map)
 				
 				o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
 				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.f_#{i}" }.join});\n}\n\n"
@@ -263,8 +263,8 @@ class Codegen
 				if owner.is_a?(AST::Complex) && !ast.props[:shared]
 					if owner.is_a?(AST::TypeClassInstance)
 						puts "typeclass first: #{owner.typeclass.obj.type_params.first.name}"
-						puts "inst_args: #{owner.ctype.typeclass.text}"
-						self_type = inst_type(owner.ctype.typeclass.args[owner.typeclass.obj.type_params.first], map)
+						puts "inst_args: #{TypeContext.print_params(owner.ctype.typeclass)}"
+						self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.type_params.first], map)
 						puts "Self type of instance #{ast.name} is #{self_type.text}"
 					else
 						self_type = owner.ctype.type

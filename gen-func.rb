@@ -40,6 +40,8 @@ class FuncCodegen
 	end
 	
 	def assign_var(var, type, str)
+		raise "Expected type" unless type.is_a?(Types::Type)
+		
 		if var
 			var.type = type
 			(o var.ref + " = " + str + ";") if str
@@ -166,7 +168,7 @@ class FuncCodegen
 				nodes = ast.nodes.compact
 				
 				if nodes.empty?
-					assign_var(var, [Core::Unit.ctype.type], nil)
+					assign_var(var, Core::Unit.ctype.type, nil)
 				else
 					nodes[0...-1].each do |e|
 						convert(e, nil)
@@ -175,7 +177,7 @@ class FuncCodegen
 				end
 			when AST::VariableDecl
 				convert(ast.value, nil) if ast.value
-				assign_var(var, [Core::Unit.ctype.type, true], nil)
+				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::Literal
 				assign_var(var, ast.gtype, case ast.type
 					when :int

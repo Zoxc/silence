@@ -27,11 +27,12 @@
 	end
 	
 	class TypeClassLimit
-		attr_accessor :source, :var, :eqs
+		attr_accessor :source, :typeclass, :args, :eqs
 		
-		def initialize(source, var)
+		def initialize(source, typeclass, args)
 			@source = source
-			@var = var
+			@typeclass = typeclass
+			@args = args
 			@eqs = []
 		end
 		
@@ -40,7 +41,7 @@
 		end
 		
 		def to_s
-			"#{@var.text}#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}\n#{source.format(8)}"
+			"#{@typeclass.scoped_name}[#{TypeContext.print_params(@args)}]#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}\n#{source.format(8)}"
 		end
 	end
 	
@@ -76,6 +77,10 @@
 		var
 	end
 	
+	def occurs_in_list?(t, list)
+		list.any? { |arg| occurs_in?(t, arg.prune) }
+	end
+	
 	def occurs_in?(a, b)
 		a.require_pruned
 		b.require_pruned
@@ -83,9 +88,7 @@
 		return true if a == b
 		return false if b.is_a? Types::Variable
 		
-		return b.type_args.any? do |arg|
-			occurs_in?(a, arg.prune)
-		end
+		return occurs_in_list?(a, b.type_args)
 	end
 	
 	def errmsg(a, b)
@@ -112,9 +115,13 @@
 		end
 	end
 	
+	def self.print_params(params)
+		params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")
+	end
+	
 	Map = Struct.new(:vars, :params, :src) do
 		def to_s
-			r = "Map{#{params.each.map { |p| "#{p.first.scoped_name}: #{p.last.text}" }.join(", ")}"
+			r = "Map{#{TypeContext.print_params(params)}"
 			r << " | #{vars.each.map { |p| "#{p.first.text} => #{p.last.text}" }.join(", ")}" unless vars.empty?
 			r << "}"
 		end
@@ -130,7 +137,7 @@
 	
 	def inst_limits(obj, args)
 		limits = obj.ctype.ctx.limits.map do |limit|
-			class_limit = TypeClassLimit.new(src_wrap(limit.source, args), inst_type(args, limit.var))
+			class_limit = TypeClassLimit.new(src_wrap(limit.source, args), limit.typeclass, Hash[limit.args.map { |k, v| [k, inst_type(args, v)] }])
 			class_limit.eqs = limit.eqs.map do |eq|
 				EqLimit.new(src_wrap(eq.source, args), inst_type(args, eq.var), eq.type_ast)
 			end
@@ -238,7 +245,7 @@
 	def self.is_instance?(input, inst)
 		map = {}
 		
-		result = Types.cmp_types(input, inst) do |input, inst|
+		result = Types.cmp_types_args(input, inst) do |input, inst|
 			if inst.is_a? Types::Param
 				if map.key? inst.param
 					[true, map[inst.param] == input]
@@ -254,18 +261,18 @@
 		[result, map]
 	end
 	
-	def self.find_instance(obj, infer_args, input)
+	def self.find_instance(obj, infer_args, typeclass, args)
 		#TODO: Find all matching instances and error if multiple are appliable
 		#      If one instance is more specific than the other (or an instance of), use the most specific one.
 		#      If we can't tell if we want the specific one, keep the constraint around until it has a fixed type.
 		#      Implement this by ensuring all the more specific instances can't be used before picking.
 		
 		map = nil
-		[input.complex.instances.find do |inst|
+		[typeclass.instances.find do |inst|
 			next if inst == obj # Instances can't find themselves
 			
 			InferContext.infer(inst, infer_args)
-			result, map = is_instance?(input, inst.ctype.typeclass)
+			result, map = is_instance?(args.values, inst.ctype.typeclass.values)
 			
 			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}\n#{input.source.format}"
 			
@@ -293,7 +300,7 @@
 			dup = @limits.find do |oc|
 				next if c == oc
 				
-				c.var == oc.var				
+				c.typeclass == oc.typeclass && c.args == oc.args				
 			end
 			
 			if dup
@@ -330,10 +337,10 @@
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
 
 		nil while @limits.reject! do |c|
-			next if (obj && obj.declared && obj.declared.inside?(c.var.complex.scope)) # Don't search for a typeclass instance inside typeclass declarations
+			next if (obj && obj.declared && obj.declared.inside?(c.typeclass.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
 			#puts "Searching instance for #{c}"
-			inst, map = TypeContext.find_instance(obj, @infer_args, c.var)
+			inst, map = TypeContext.find_instance(obj, @infer_args, c.typeclass, c.args)
 			if inst
 				instance = inst(c.source, inst, map) # Adds the limits of the instance to the @limits array
 				
@@ -345,8 +352,8 @@
 				end
 				
 				true
-			elsif c.var.fixed_type?
-				raise TypeError.new("Unable to find an instance of the type class '#{c.var.text}'\n#{c.source.format}")
+			elsif c.args.values.all? { |t| t.fixed_type? }
+				raise TypeError.new("Unable to find an instance of the type class '#{c}'\n#{c.source.format}")
 			end
 		end
 		
@@ -361,7 +368,7 @@
 		@limits.each do |c|
 			if c.eqs.any? { |eq| occurs_in?(var, eq.var.prune) }
 				# All type variables in the arguments to the type class must be dependent for the type function result to be so too
-				type_vars = vars.select { |var| occurs_in?(var, c.var) }
+				type_vars = vars.select { |var| occurs_in_list?(var, c.args.values) }
 				dependent = type_vars.all? { |var| dependent_var(map, var, vars) }
 				(return map[var] = true) if dependent
 			end
@@ -378,7 +385,7 @@
 	
 	def vars_in_typeclass_args(vars)
 		vars.select do |var|
-			@limits.any? { |c| occurs_in?(var, c.var) }
+			@limits.any? { |c| occurs_in_list?(var, c.args.values) }
 		end
 	end
 end

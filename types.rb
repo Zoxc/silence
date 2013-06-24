@@ -18,12 +18,13 @@ module Types
 				a.param == b.param
 		end
 		
-		a_args = a.type_args
-		b_args = b.type_args
+		return cmp_types_args(a.type_args, b.type_args, &cmp)
+	end
+	
+	def self.cmp_types_args(a, b, &cmp)
+		return false if a.size != b.size
 		
-		return false if a_args.size != b_args.size
-		
-		return a_args.zip(b_args).all? do |arg|
+		return a.zip(b).all? do |arg|
 			cmp_types(arg.first, arg.last, &cmp)
 		end
 	end

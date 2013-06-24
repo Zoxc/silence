@@ -55,8 +55,8 @@
 		Types::Complex.new(source, Core::Ptr::Node, {Core::Ptr::Type => type})
 	end
 	
-	def typeclass_limit(source, typeclass)
-		tcl = TypeContext::TypeClassLimit.new(source, typeclass)
+	def typeclass_limit(source, typeclass, args)
+		tcl = TypeContext::TypeClassLimit.new(source, typeclass, args)
 		@ctx.limits << tcl
 		tcl
 	end
@@ -123,7 +123,7 @@
 			result = result.source_dup(source)
 			
 			if type.type_class?
-				typeclass_limit(source, result)
+				typeclass_limit(source, result.complex, result.args)
 				if !analyze_args.scoped
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
 													   #       Generate an error when the view's type variable is unified with anything other than another type variable
@@ -140,7 +140,7 @@
 			
 			typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
 			
-			class_limit = typeclass_limit(source, typeclass_type) # TODO: Find the typeclass limit for the parent ref AST node
+			class_limit = typeclass_limit(source, typeclass_type.complex, typeclass_type.args) # TODO: Find the typeclass limit for the parent ref AST node
 			result, inst_args = inst_ex(source, obj, parent_args)
 			class_limit.eq_limit(source, result, obj)
 			inst_args = TypeContext::Map.new({}, {})
@@ -227,16 +227,14 @@
 					# It's a call
 					ast.gen = [true, callable_args]
 					
-					type_class = Types::Complex.new(ast.source, Core::Callable::Node, {Core::Callable::T => type})
-					limit = typeclass_limit(ast.source, type_class)
+					limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
 					limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
 					limit.eq_limit(ast.source, result, Core::Callable::Result)
 				else
 					# It's a constructor
 					ast.gen = [false, callable_args]
 					
-					type_class = Types::Complex.new(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
-					limit = typeclass_limit(ast.source, type_class)
+					limit = typeclass_limit(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
 					limit.eq_limit(ast.source, callable_args, Core::Constructor::Args)
 					limit.eq_limit(ast.source, result, Core::Constructor::Constructed)
 				end
@@ -248,13 +246,13 @@
 				[case ast.type
 					when :int
 						type = new_var(ast.source)
-						typeclass_limit(ast.source, Types::Complex.new(ast.source, Core::IntLiteral::Node, {Core::IntLiteral::T => type}))
+						typeclass_limit(ast.source, Core::IntLiteral::Node, {Core::IntLiteral::T => type})
 						type
 					when :bool
 						Core::Bool.ctype.type
 					when :string
 						type = new_var(ast.source)
-						typeclass_limit(ast.source, Types::Complex.new(ast.source, Core::StringLiteral::Node, {Core::StringLiteral::T => type}))
+						typeclass_limit(ast.source, Core::StringLiteral::Node, {Core::StringLiteral::T => type})
 						type
 					else
 						raise "Unknown literal type #{ast.type}"
@@ -318,7 +316,7 @@
 					req_level(ast.source, lhs) if ast.op == '='
 					
 					typeclass = Core::OpMap[ast.op]
-					typeclass_limit(ast.source, Types::Complex.new(ast.source, typeclass[:ref], {typeclass[:param] => lhs})) if typeclass
+					typeclass_limit(ast.source, typeclass[:ref], {typeclass[:param] => lhs}) if typeclass
 					
 					unify(lhs, rhs)
 					[lhs, true]
@@ -332,8 +330,7 @@
 						when AST::Tuple
 							lhs
 						else
-							type_class = Types::Complex.new(ast.source, Core::Tuple::Node, {Core::Tuple::T => lhs})
-							typeclass_limit(ast.source, type_class)
+							typeclass_limit(ast.source, Core::Tuple::Node, {Core::Tuple::T => lhs})
 							lhs
 							# DONE: Constraint to tuple type instances only! - TODO: Do this is a general way for all typeclass references?
 					end				
@@ -596,7 +593,7 @@
 		typeclass = @obj.typeclass.obj
 		analyze_args = AnalyzeArgs.new
 		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
-		@typeclass = Types::Complex.new(@obj.source, typeclass, Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, analyze_args)] }])
+		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, analyze_args)] }]
 		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
 		
 		InferContext.infer_scope(@obj.scope, @infer_args)
@@ -610,7 +607,7 @@
 			m = infer(member)
 			
 			ctx = TypeContext.new(@infer_args)
-			expected_type = ctx.inst(member.source, value, @typeclass.args)
+			expected_type = ctx.inst(member.source, value, @typeclass)
 			ctx.reduce_limits
 			ctx.reduce(nil)
 			
