@@ -273,15 +273,14 @@ class FuncCodegen
 					obj = new_var
 					convert(ast.obj, obj) 
 				end
-						
+				
 				args = new_var
-				arg_vars = []
 				ast.args.each_with_index do |a, i|
 					arg = new_var
 					arg_type = a.gtype
-					arg_vars << arg
 					convert(a, arg)
 					copy_var(arg.ref, "#{args.ref}.f_#{i}", arg_type)
+					del_var arg
 				end
 				assign_var(args, ast.gen.last, nil)
 				
@@ -294,7 +293,6 @@ class FuncCodegen
 					del_var rvar unless var
 				end
 				
-				arg_vars.each { |v| del_var v }
 				del_var obj if ast.gen.first
 			else
 				raise "(unhandled #{ast.class})"
