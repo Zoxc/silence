@@ -25,13 +25,14 @@
 	end
 	
 	def shared?
-		@obj.respond_to?(:props) ? @obj.props[:shared] : true
+		shared = @obj.respond_to?(:props) ? @obj.props[:shared] : true
 	end
 	
 	def ensure_shared(obj, source, args)
 		return if args.typeof
 		case obj
 			when AST::Function, AST::Variable
+				return if @obj.declared.owner.is_a?(AST::Program)
 				raise TypeError.new("Can't access member '#{obj.name}' without an instance\n#{source.format}") unless obj.props[:shared]
 		end
 	end
@@ -154,8 +155,8 @@
 				if scope
 					scope[:complex] = obj
 					scope[:args] = result.args
-					result = nil
-					inst_args = nil
+					#result = nil
+					#inst_args = nil
 				end
 			when AST::TypeFunction
 				typeclass = obj.declared.owner
@@ -493,6 +494,19 @@
 		end
 	end
 	
+	def process_vars(scope)
+		analyze_args = AnalyzeArgs.new
+		scope.names.each_value do |var|
+			next if var.is_a? AST::TypeParam
+			
+			@vars[var] = if var.type
+					analyze_type(var.type, analyze_args)
+				else
+					new_var(var.source)
+				end
+		end
+	end
+	
 	def process_function
 		func = @obj
 		
@@ -502,15 +516,7 @@
 		
 		@result = (analyze_type(func.result, analyze_args) if func.result)
 		
-		func.scope.names.each_value do |var|
-			next if var.is_a? AST::TypeParam
-			
-			@vars[var] = if var.type
-					analyze_type(var.type, analyze_args)
-				else
-					new_var(var.source)
-				end
-		end
+		process_vars(func.scope)
 		
 		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
 		
@@ -544,7 +550,7 @@
 		
 		@ctx.reduce_limits
 		
-		# If we are a complex, we can allow to give a less strict constraints in case @ctx.reduce refers back to it
+		# If we are a complex, we can allow to give less strict constraints in case @ctx.reduce refers back to it
 		if @obj.is_a? AST::Complex
 			@type = type
 			@obj.ctype = self
@@ -685,6 +691,20 @@
 		#puts print_ast(instance)
 	end
 	
+	def process_action
+		func = @obj
+		
+		analyze_args = AnalyzeArgs.new
+		
+		process_vars(func.scope)
+		
+		analyze(func.scope, AnalyzeArgs.new)
+		
+		func.scope.parent.owner.actions[func.action_type] = func
+		
+		finalize(unit_type(func.source), true)
+	end
+	
 	def process
 		value = @obj
 		
@@ -715,6 +735,8 @@
 				else
 					process_fixed(value)
 				end
+			when AST::Action
+				process_action
 			when AST::TypeAlias
 				finalize(analyze_type(value.type, AnalyzeArgs.new), false)
 			when AST::TypeFunction
@@ -732,6 +754,7 @@
 
 	def self.infer(value, infer_args)
 		return value.ctype.type if value.ctype
+		raise "Infer for #{value.scoped_name} during code generation" unless infer_args
 		raise "Recursive #{value.scoped_name} - #{value.class}\nStack:\n#{infer_args.stack.reverse.join("\n")}" if infer_args.visited[value]
 		infer_args.visited[value] = true
 		
@@ -746,9 +769,14 @@
 
 	InferArgs = Struct.new :visited, :stack
 
-	def self.infer_scope(scope, infer_args, filter = proc { true })
-		scope.names.each_pair do |name, value|
-			infer(value, infer_args) if filter.(value)
+	def self.infer_scope(scope, infer_args)
+		scope.nodes.each do |value|
+			case value
+				when AST::VariableDecl
+					infer(value.var, infer_args)
+				else
+					infer(value, infer_args)
+			end
 		end
 	end
 end

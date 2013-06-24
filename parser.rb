@@ -118,6 +118,8 @@ class Parser
 						self.class
 					when :type
 						type_function
+					when :action
+						action
 					else
 						field_or_func
 				end
@@ -201,6 +203,16 @@ class Parser
 			ctx = type_context
 			scope = global_scope(baseline)
 			AST::Struct.new(s, name, scope, tp, ctx)
+		end
+	end
+	
+	def action
+		source do |s|
+			step
+			baseline = @l.indent
+			type = match :id
+			group = group(baseline)
+			AST::Action.new(s, group, type)
 		end
 	end
 	

@@ -146,10 +146,6 @@ module Types
 			@args.values.all? { |v| v.fixed_type? }
 		end
 		
-		def type_class?
-			@complex.type_class?
-		end
-
 		def tuple_map
 			case complex
 				when Core::Unit

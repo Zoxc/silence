@@ -370,10 +370,6 @@ module AST
 			@type_params.map! { |n| yield n }
 			@scope = yield scope
 		end
-		
-		def type_class?
-			false
-		end
 	end
 	
 	class TypeClass < Complex
@@ -382,10 +378,6 @@ module AST
 		def initialize(*args)
 			super
 			@instances = []
-		end
-		
-		def type_class?
-			true
 		end
 	end
 	
@@ -418,19 +410,59 @@ module AST
 	end
 	
 	class Struct < Complex
-		attr_accessor :level
+		attr_accessor :level, :actions
 		
 		def initialize(*args)
 			super
 			@level = :copyable
+			@actions = {}
 		end
 	end
 	
 	class LocalScope < Scope
 	end
 	
+	class Action < Node
+		attr_accessor :scope, :ctype, :action_type
+		
+		def initialize(source, scope, action_type)
+			super(source)
+			@scope = scope
+			@action_type = action_type
+		end
+		
+		def type_params
+			[]
+		end
+		
+		def scoped_name
+			name
+		end
+		
+		def props
+			{shared: false}
+		end
+		
+		def name
+			"action_#{action_type}_#{__id__}"
+		end
+		
+		def declare_pass(scope)
+			@scope.owner = self
+			@scope.parent = scope
+		end
+		
+		def apply_pass(scope)
+			@scope
+		end
+		
+		def visit
+			@scope = yield @scope if @scope
+		end
+	end
+	
 	class Function < Node
-		attr_accessor :name, :params, :result, :scope, :type, :ctype, :instances, :type_params, :props, :type_param_count
+		attr_accessor :name, :params, :result, :scope, :type, :ctype, :type_params, :props, :type_param_count
 		
 		class Param < Node
 			attr_accessor :name, :type, :var

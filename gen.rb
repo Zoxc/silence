@@ -26,6 +26,8 @@ class Codegen
 				[]
 			when AST::TypeClassInstance
 				ast.type_params
+			when AST::Action
+				ast.type_params + ast_keys(ast.scope.parent.owner)
 			else
 				ast.type_params + ast_keys(ast.declared.owner)
 		end
@@ -82,30 +84,21 @@ class Codegen
 			map.params[p] = type
 		end
 		
-		owner = ast.declared.owner
+		map_vars(ast, map)
 		
-		if owner.is_a?(AST::TypeClass)	
-			ref, new_map = find_instance(owner.ctype.type, map, ast)
+		puts "ref:#{ast.scoped_name} params:(#{format_params(new_params)}) new:#{map}" unless q
 			
-			ref.type_params.each_with_index do |p, i|
-				param = ast.type_params[i]
-				raise "Didn't find matching param for '#{p.name}'" unless param
-				param_mapped = map.params[param]
-				raise "Param '#{p.name}' type not provided" unless param_mapped
-				new_map.params[p] = param_mapped
-			end
-			
-			map = new_map
-		else
-			ref = ast
+		gen(ast, map)
+		[ast, map]
+	end
+	
+	def ref_action(type, map, action)
+		complex, map = fixed_type(type, map)
+		action = complex.actions[action]
+		if action
+			gen(action, map)
+			mangle(action, map)
 		end
-		
-		map_vars(ref, map)
-		
-		puts "ref:#{ref.scoped_name} params:(#{format_params(new_params)}) new:#{map}" unless q
-			
-		gen(ref, map)
-		[ref, map]
 	end
 	
 	def ref(ast, new_params)
@@ -115,23 +108,21 @@ class Codegen
 	
 	def fixed_type(type, map)
 		type = inst_type(type, map)
-		yield do_ref(type.complex, type.args)
+		do_ref(type.complex, type.args)
 	end
 
 	def mangle_type(type, map)
-		fixed_type(type, map) do |complex, map|
-			mangle_impl(complex, map)
-		end
+		complex, map = fixed_type(type, map)
+		mangle_impl(complex, map)
 	end
 
 	def c_type(type, map)
-		fixed_type(type, map) do |complex, map|
-			case complex
-				when Core::Ptr::Node
-					"#{c_type(map.params[Core::Ptr::Type], map)}*"
-				else
-					mangle(complex, map)
-			end
+		complex, map = fixed_type(type, map)
+		case complex
+			when Core::Ptr::Node
+				"#{c_type(map.params[Core::Ptr::Type], map)}*"
+			else
+				mangle(complex, map)
 		end
 	end
 
@@ -147,6 +138,8 @@ class Codegen
 
 	def mangle_impl(ast, map)
 		case ast
+			when AST::Action
+				"_A#{ast.action_type}_#{mangle_impl(ast.scope.parent.owner, map)}_l"
 			when AST::TypeClassInstance
 				id = @named[ast] ||= (@names += 1)
 				r = "_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}"
@@ -253,6 +246,21 @@ class Codegen
 				o << fields.each_with_index.map { |f, i| "   #{c_type(f, map)} f_#{i};\n" }.join
 				o << "};\n\n"
 				@out[:struct] << o
+			when AST::Action
+				owner = ast.scope.parent.owner
+				o = "void #{mangle(ast, map)}(#{c_type(owner.ctype.type, map)} *self)"
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				
+				ast.scope.names.values.each do |value|
+					next if !value.is_a?(AST::Variable)
+					o << "    #{c_type(ast.ctype.vars[value], map)} v_#{value.name};\n"
+				end
+				
+				o << FuncCodegen.new(self, ast, map).process
+				
+				o << "\n}\n\n"
+				@out[:func] << o
 			when AST::Function
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

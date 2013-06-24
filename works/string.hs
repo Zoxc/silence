@@ -1,6 +1,19 @@
+import malloc(size uint) -> *()
+import free(mem *())
+import memcpy(dst *(), src *(), len uint)
+import puts(str *char)
+
 struct String
 	data *char
 	size uint
+	
+	action copy
+		.new = malloc(size + 1)
+		memcpy(new, force_cast data, size + 1)
+		data = force_cast new
+
+	action destroy
+		free(force_cast data)
 
 instance StringLiteral String
 	create(data *char, size uint)
@@ -23,10 +36,6 @@ test()
 	.var = "Hello"
 	return var ~ " world!"
 	
-import malloc(size uint) -> *()
-import memcpy(dst *(), src *(), len uint)
-import puts(str *char)
-
 export main() -> int
 	.var String = test()
 	puts(var.data)
