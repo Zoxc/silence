@@ -70,12 +70,6 @@ module Types
 		
 		def require_pruned
 		end
-		
-		def source_dup(source)
-			result = dup
-			result.source = source
-			result
-		end
 	end
 
 	class Variable < Type
@@ -128,10 +122,6 @@ module Types
 			else
 				@source
 			end
-		end
-		
-		def source_dup(source)
-			self
 		end
 	end
 

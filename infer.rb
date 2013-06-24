@@ -43,8 +43,16 @@
 	def unit_default(type)
 	end
 	
+	def self.unit_type(source)
+		Types::Complex.new(source, Core::Unit, {})
+	end
+	
+	def unit_type(source)
+		self.class.unit_type(source)
+	end
+	
 	def self.make_tuple(source, args)
-		args.reverse.inject(Core::Unit.ctype.type.source_dup(source)) { |m, p| Types::Complex.new(source, Core::Cell::Node, {Core::Cell::Val => p, Core::Cell::Next => m}) }
+		args.reverse.inject(unit_type(source)) { |m, p| Types::Complex.new(source, Core::Cell::Node, {Core::Cell::Val => p, Core::Cell::Next => m}) }
 	end
 	
 	def make_tuple(source, args)
@@ -120,7 +128,6 @@
 			map_type_params(source, parent_args, obj.type_params, args, type.text)
 			
 			result, inst_args = inst_ex(source, obj, parent_args, type)
-			result = result.source_dup(source)
 			
 			if type.type_class?
 				typeclass_limit(source, result.complex, result.args)
@@ -145,8 +152,7 @@
 			class_limit.eq_limit(source, result, obj)
 			inst_args = TypeContext::Map.new({}, {})
 		else
-			result, inst_args = type, TypeContext::Map.new({}, {})
-			result = result.source_dup(source)
+			result = @ctx.inst(source, obj)
 		end
 		
 		lvalue_check(source, obj, analyze_args.lvalue)
@@ -195,7 +201,7 @@
 			
 			when AST::VariableDecl
 				analyze_value(ast.value, args.next) if ast.value
-				[Core::Unit.ctype.type.source_dup(ast.source), true]
+				[unit_type(ast.source), true]
 			when AST::Return
 				result = analyze_value(ast.value, args.next)
 				prev = @result
@@ -207,7 +213,7 @@
 					@result = result
 				end
 				
-				[Core::Unit.ctype.type.source_dup(ast.source), true]
+				[unit_type(ast.source), true]
 			when AST::If
 				cond = analyze_value(ast.condition, args.next)
 				unify(cond, Types::BoolType)
@@ -215,7 +221,7 @@
 				unit_default analyze_value(ast.group, args.next)
 				analyze_value(ast.else_node, args.next) if ast.else_node
 				
-				[Core::Unit.ctype.type.source_dup(ast.source), true]
+				[unit_type(ast.source), true]
 			when AST::Call
 				type, value = analyze(ast.obj, args.next)
 				
@@ -256,11 +262,11 @@
 						type
 					else
 						raise "Unknown literal type #{ast.type}"
-				end.source_dup(ast.source), true]
+				end, true]
 			when AST::Scope
 				nodes = ast.nodes.compact
 				[if nodes.empty?
-					Core::Unit.ctype.type.source_dup(ast.source)
+					unit_type(ast.source)
 				else
 					nodes[0...-1].each do |node|
 						unit_default analyze_value(node, args.next)
@@ -492,7 +498,7 @@
 		analyze(func.scope, AnalyzeArgs.new)
 		
 		# TODO: make @result default to Unit, so the function can reference itself
-		func_result = Types::Complex.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result || Core::Unit.ctype.type.source_dup(func.source))})
+		func_result = Types::Complex.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result || unit_type(func.source))})
 
 		finalize(func_result, true)
 	end
