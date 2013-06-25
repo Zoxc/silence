@@ -226,11 +226,12 @@
 				unify(make_ptr(ast.source, ast.gen), type)
 				[unit_type(ast.source), true]
 			when AST::VariableDecl
+				ast.gen = @vars[ast.var]
+				
 				if ast.value
 					type = analyze_value(ast.value, args.next)
-					unify(@vars[ast.var], type)
+					unify(ast.gen, type)
 				else
-					ast.gen = @vars[ast.var]
 					typeclass_limit(ast.source, Core::Defaultable::Node, {Core::Defaultable::T => ast.gen})
 				end
 				[unit_type(ast.source), true]

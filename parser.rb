@@ -302,7 +302,7 @@ class Parser
 			if (eq(:sym, '[') || eq(:sym, '(')) && !@l.whitespace
 				function s, baseline, name, props, nil
 			else
-				AST::VariableDecl.new(s, nil, name, expression, nil, props)
+				AST::VariableDecl.new(s, name, expression, nil, props)
 			end
 		end
 	end
@@ -389,18 +389,14 @@ class Parser
 			
 			name = match :id
 			type = opt_type_specifier
-			ts = nil
 			value = nil
-			
-			source do |sts|
-				ts = sts
-				if matches(:sym, '=')
-					skip :line
-					value = expression
-				end
+		
+			if matches(:sym, '=')
+				skip :line
+				value = expression
 			end
-			
-			AST::VariableDecl.new(s, ts, name, type, value, [])
+		
+			AST::VariableDecl.new(s, name, type, value, [])
 		end
 	end
 	

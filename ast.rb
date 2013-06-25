@@ -509,15 +509,12 @@ module AST
 	class VariableDecl < ExpressionNode
 		attr_accessor :name, :value, :var, :gen
 		
-		def initialize(source, value_source, name, type, value, props)
+		def initialize(source, name, type, value, props)
 			@source = source
 			@name = name
 			@props = props
 			@var = Variable.new(@source, @name, nil, type, @props)
-			if value
-				@value = BinOp.new(value_source, Ref.new(@source, @var), '=', value)
-				@value.constructing = true
-			end
+			@value = value
 		end
 		
 		def declare_pass(scope)
