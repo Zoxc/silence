@@ -59,9 +59,7 @@ class FuncCodegen
 	end
 	
 	def process
-		var = new_var
-		convert(func.scope, var)
-		del_var var
+		convert(func.scope, nil)
 		
 		if @func.is_a?(AST::Function)
 			param_types = @func.ctype.type.args[Core::Func::Args].tuple_map.reverse
