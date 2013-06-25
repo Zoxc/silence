@@ -26,8 +26,6 @@ class Codegen
 				[]
 			when AST::TypeClassInstance
 				ast.type_params
-			when AST::Action
-				ast.type_params + ast_keys(ast.scope.parent.owner)
 			else
 				ast.type_params + ast_keys(ast.declared.owner)
 		end
@@ -127,19 +125,20 @@ class Codegen
 	end
 
 	def mangle_name(ast, map)
-		r = ast.name.to_s.gsub('_', '_u')
+		r = if ast.is_a?(AST::Function) && ast.action_type
+			"_A#{ast.action_type}"
+		else
+			ast.name.to_s.gsub('_', '_u')
+		end
 		return r if ast.is_a? AST::TypeClass
 		unless ast.type_params.empty?
 			r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_n")}_l"
 		end
-		#puts "mangling #{ast.name} #{ast.ctype.type_vars.map { |p| p.text }.join(",")} #{map}"
 		r
 	end
 
 	def mangle_impl(ast, map)
 		case ast
-			when AST::Action
-				"_A#{ast.action_type}_#{mangle_impl(ast.scope.parent.owner, map)}_l"
 			when AST::TypeClassInstance
 				id = @named[ast] ||= (@names += 1)
 				r = "_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}"
@@ -158,10 +157,11 @@ class Codegen
 				"_Q#{fields.map {|f| mangle_type(f, map) }.join("_n")}_l"
 			else
 				owner = ast.declared.owner
+				name = mangle_name(ast, map)
 				if owner.is_a?(AST::Program)
-					mangle_name(ast, map)
+					name
 				else
-					"#{mangle_impl(owner, map)}__#{mangle_name(ast, map)}"
+					"#{mangle_impl(owner, map)}__#{name}"
 				end
 		end
 	end
@@ -174,6 +174,7 @@ class Codegen
 		result = ast.ctype.type.args[Core::Func::Result]
 		result_type = "void"
 		result_type = c_type(result, map) if bare && result != Core::Unit.ctype.type
+		puts "function_proto #{ast.scoped_name}"
 		o = "#{bare ? 'extern "C" ' : "static "}#{result_type} #{bare ? ast.name : mangle(ast, map)}("
 		
 		param_types = ast.ctype.type.args[Core::Func::Args].tuple_map
@@ -181,7 +182,7 @@ class Codegen
 		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} v_#{p.name}" }
 		
 		unless bare
-			args.unshift("#{c_type(result, map)} *result")
+			args.unshift("#{c_type(result, map)} *result") if !ast.action_type
 			args.unshift("void *data") 
 		end
 		
@@ -246,21 +247,6 @@ class Codegen
 				o << fields.each_with_index.map { |f, i| "   #{c_type(f, map)} f_#{i};\n" }.join
 				o << "};\n\n"
 				@out[:struct] << o
-			when AST::Action
-				owner = ast.scope.parent.owner
-				o = "void #{mangle(ast, map)}(#{c_type(owner.ctype.type, map)} *self)"
-				@out[:func_forward] << o << ";\n"
-				o << "\n{\n"
-				
-				ast.scope.names.values.each do |value|
-					next if !value.is_a?(AST::Variable)
-					o << "    #{c_type(ast.ctype.vars[value], map)} v_#{value.name};\n"
-				end
-				
-				o << FuncCodegen.new(self, ast, map).process
-				
-				o << "\n}\n\n"
-				@out[:func] << o
 			when AST::Function
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

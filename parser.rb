@@ -212,7 +212,7 @@ class Parser
 			baseline = @l.indent
 			type = match :id
 			group = group(baseline)
-			AST::Action.new(s, group, type)
+			function(s, baseline, nil, {}, type)
 		end
 	end
 	
@@ -241,7 +241,7 @@ class Parser
 		r
 	end
 	
-	def function(s, baseline, name, props)
+	def function(s, baseline, name, props, action_type)
 		if matches(:sym, '[')
 			skip :line
 			tp = type_params
@@ -252,8 +252,13 @@ class Parser
 		
 		func = AST::Function.new
 		
-		match(:sym, '(')
-		params = function_params(func)
+		if action_type && !eq(:sym, '(')
+			params = []
+		else
+			action_type = "#{action_type}_args".to_sym if action_type
+			match(:sym, '(')
+			params = function_params(func)
+		end
 		
 		if matches :sym, '->'
 			skip :line
@@ -265,6 +270,7 @@ class Parser
 		
 		group = group(baseline)
 		
+		func.action_type = action_type
 		func.name = name
 		func.params = params
 		func.type_params = tp
@@ -295,7 +301,7 @@ class Parser
 			name = match :id
 			
 			if (eq(:sym, '[') || eq(:sym, '(')) && !@l.whitespace
-				function s, baseline, name, props
+				function s, baseline, name, props, nil
 			else
 				AST::VariableDecl.new(s, nil, name, expression, nil, props)
 			end

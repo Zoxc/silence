@@ -422,47 +422,9 @@ module AST
 	class LocalScope < Scope
 	end
 	
-	class Action < Node
-		attr_accessor :scope, :ctype, :action_type
-		
-		def initialize(source, scope, action_type)
-			super(source)
-			@scope = scope
-			@action_type = action_type
-		end
-		
-		def type_params
-			[]
-		end
-		
-		def scoped_name
-			name
-		end
-		
-		def props
-			{shared: false}
-		end
-		
-		def name
-			"action_#{action_type}_#{__id__}"
-		end
-		
-		def declare_pass(scope)
-			@scope.owner = self
-			@scope.parent = scope
-		end
-		
-		def apply_pass(scope)
-			@scope
-		end
-		
-		def visit
-			@scope = yield @scope if @scope
-		end
-	end
-	
 	class Function < Node
-		attr_accessor :name, :params, :result, :scope, :type, :ctype, :type_params, :props, :type_param_count
+		attr_accessor :params, :result, :scope, :type, :ctype, :type_params, :props, :type_param_count, :action_type
+		attr_writer :name
 		
 		class Param < Node
 			attr_accessor :name, :type, :var
@@ -487,8 +449,12 @@ module AST
 			end
 		end
 	
+		def name
+			@name ? @name : "action_#{action_type}"
+		end
+		
 		def declare_pass(scope)
-			@declared = scope.declare(@name, self)
+			@declared = @name ? scope.declare(@name, self) : scope
 			@scope.owner = self
 			@scope.parent = scope if @scope
 			@type_param_count = @type_params.size
