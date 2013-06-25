@@ -18,13 +18,6 @@ struct String
 	action destroy
 		free(force_cast data)
 
-instance StringLiteral *char
-	create(data *char, size) -> *char
-		.new = malloc(size + 1)
-		memcpy(new, force_cast data, size)
-		*force_cast[*char](force_cast new + size) = 0
-		return force_cast new
-
 instance StringLiteral String
 	create(data *char, size)
 		.new = malloc(size + 1)
