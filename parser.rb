@@ -211,7 +211,6 @@ class Parser
 			step
 			baseline = @l.indent
 			type = match :id
-			group = group(baseline)
 			function(s, baseline, nil, {}, type)
 		end
 	end
