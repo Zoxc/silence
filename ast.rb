@@ -449,6 +449,10 @@ module AST
 			end
 		end
 	
+		def ref_pass(scope)
+			@declared.owner.actions[@action_type] = self if @action_type
+		end
+		
 		def name
 			@name ? @name : "action_#{action_type}"
 		end
@@ -487,7 +491,7 @@ module AST
 	end
 	
 	class BinOp < ExpressionNode
-		attr_accessor :lhs, :op, :rhs
+		attr_accessor :lhs, :op, :rhs, :constructing
 		
 		def initialize(source, lhs, op, rhs)
 			super(source)
@@ -503,14 +507,17 @@ module AST
 	end
 	
 	class VariableDecl < ExpressionNode
-		attr_accessor :name, :value, :var
+		attr_accessor :name, :value, :var, :gen
 		
-		def initialize(source, right_source, name, type, value, props)
+		def initialize(source, value_source, name, type, value, props)
 			@source = source
 			@name = name
 			@props = props
 			@var = Variable.new(@source, @name, nil, type, @props)
-			@value = BinOp.new(right_source, Ref.new(@source, @var), '=', value) if value
+			if value
+				@value = BinOp.new(value_source, Ref.new(@source, @var), '=', value)
+				@value.constructing = true
+			end
 		end
 		
 		def declare_pass(scope)
@@ -639,6 +646,20 @@ module AST
 			@value = yield @value
 		end
 	end
+	
+	class ActionCall < ExpressionNode
+		attr_accessor :source, :obj, :action_type, :gen
+		
+		def initialize(source, obj, action_type)
+			@source = source
+			@obj = obj
+			@action_type = action_type
+		end
+		
+		def visit
+			@obj = yield @obj
+		end
+	end
 end
 
 class Core
@@ -750,6 +771,15 @@ class Core
 		ForceCast.type_params << ForceCastOut << ForceCastIn
 		Nodes << ForceCast
 	end.()
+
+	class Defaultable < Core
+		T = param(:T, ref(Sizeable::Node))
+		
+		Construct = func(:construct, {obj: ptr(ref(T))}, ref(Unit))
+		Construct.props[:shared] = true
+		
+		Node = complex(:Defaultable, [T], AST::TypeClass, [Construct])
+	end
 
 	class Constructor < Core
 		Constructed = AST::TypeFunction.new(src, :Constructed, nil)

@@ -90,12 +90,14 @@ class Codegen
 		[ast, map]
 	end
 	
-	def ref_action(type, map, action)
+	def ref_action(type, map, action_type, opt = true)
 		complex, map = fixed_type(type, map)
-		action = complex.actions[action]
+		action = complex.actions[action_type]
 		if action
 			gen(action, map)
 			mangle(action, map)
+		else
+			raise "Unable to find action #{action_type.inspect} in type #{type.text}" unless opt
 		end
 	end
 	
@@ -174,7 +176,6 @@ class Codegen
 		result = ast.ctype.type.args[Core::Func::Result]
 		result_type = "void"
 		result_type = c_type(result, map) if bare && result != Core::Unit.ctype.type
-		puts "function_proto #{ast.scoped_name}"
 		o = "#{bare ? 'extern "C" ' : "static "}#{result_type} #{bare ? ast.name : mangle(ast, map)}("
 		
 		param_types = ast.ctype.type.args[Core::Func::Args].tuple_map
@@ -256,10 +257,7 @@ class Codegen
 				
 				if owner.is_a?(AST::Complex) && !ast.props[:shared]
 					if owner.is_a?(AST::TypeClassInstance)
-						puts "typeclass first: #{owner.typeclass.obj.type_params.first.name}"
-						puts "inst_args: #{TypeContext.print_params(owner.ctype.typeclass)}"
 						self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.type_params.first], map)
-						puts "Self type of instance #{ast.name} is #{self_type.text}"
 					else
 						self_type = owner.ctype.type
 					end

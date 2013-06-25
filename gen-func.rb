@@ -20,6 +20,12 @@ class FuncCodegen
 		end
 	end
 	
+	RealVar = Struct.new(:name, :type) do
+		def ref
+			"#{name}"
+		end
+	end
+	
 	def new_var
 		var = Var.new(@var_name += 1, nil)
 		@vars << var
@@ -179,8 +185,19 @@ class FuncCodegen
 					end
 					convert(nodes.last, var)
 				end
+			when AST::ActionCall
+				ptr = new_var
+				convert(ast.obj, ptr)
+				ref = gen.ref_action(ast.gen, @map, ast.action_type, false)
+				o "#{ref}(#{ptr.ref});"
+				del_var ptr
+				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::VariableDecl
-				convert(ast.value, nil) if ast.value
+				if ast.value
+					convert(ast.value, RealVar.new("v_#{ast.var.name}", nil))
+				else
+					direct_call(nil, ref(Core::Defaultable::Construct, {Core::Defaultable::T => ast.gen}), nil, ["&v_#{ast.var.name}"], Core::Unit.ctype.type)
+				end
 				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::Literal
 				assign_var(var, ast.gtype, case ast.type

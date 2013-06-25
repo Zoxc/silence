@@ -260,7 +260,7 @@ class Parser
 			params = function_params(func)
 		end
 		
-		if matches :sym, '->'
+		if !action_type && matches(:sym, '->')
 			skip :line
 			result = expression
 		end

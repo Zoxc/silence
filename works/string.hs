@@ -7,6 +7,9 @@ struct String
 	data *char
 	size uint
 	
+	action create
+		size = 0
+	
 	action copy
 		.new = malloc(size + 1)
 		memcpy(new, force_cast data, size + 1)
@@ -15,15 +18,22 @@ struct String
 	action destroy
 		free(force_cast data)
 
+instance StringLiteral *char
+	create(data *char, size) -> *char
+		.new = malloc(size + 1)
+		memcpy(new, force_cast data, size)
+		*force_cast[*char](force_cast new + size) = 0
+		return force_cast new
+
 instance StringLiteral String
-	create(data *char, size uint)
+	create(data *char, size)
 		.new = malloc(size + 1)
 		memcpy(new, force_cast data, size)
 		*force_cast[*char](force_cast new + size) = 0
 		return String(force_cast new, size)
 
 instance Joinable String
-	join(lhs String, rhs String) -> String
+	join(lhs String, rhs String)
 		.new_size = lhs.size + rhs.size
 		.new = malloc(new_size + 1)
 		memcpy(new, force_cast lhs.data, lhs.size)
@@ -37,6 +47,7 @@ test()
 	return var ~ " world!"
 	
 export main() -> int
+	.var2 String
 	.var String = test()
 	puts(var.data)
 	return 0

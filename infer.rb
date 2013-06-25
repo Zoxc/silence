@@ -220,8 +220,19 @@
 		case ast
 			# Values only
 			
+			when AST::ActionCall
+				type = analyze_value(ast.obj, args.next)
+				ast.gen = new_var(ast.source)
+				unify(make_ptr(ast.source, ast.gen), type)
+				[unit_type(ast.source), true]
 			when AST::VariableDecl
-				analyze_value(ast.value, args.next) if ast.value
+				if ast.value
+					type = analyze_value(ast.value, args.next)
+					unify(@vars[ast.var], type)
+				else
+					ast.gen = @vars[ast.var]
+					typeclass_limit(ast.source, Core::Defaultable::Node, {Core::Defaultable::T => ast.gen})
+				end
 				[unit_type(ast.source), true]
 			when AST::Return
 				result = analyze_value(ast.value, args.next)
@@ -340,7 +351,7 @@
 				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
 				
 				if lvalue
-					req_level(ast.source, lhs) if ast.op == '='
+					req_level(ast.source, lhs) if (ast.op == '=' && !ast.constructing)
 					
 					typeclass = Core::OpMap[ast.op]
 					typeclass_limit(ast.source, typeclass[:ref], {typeclass[:param] => lhs}) if typeclass
@@ -521,8 +532,6 @@
 		func_result = Types::Complex.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result || unit_type(func.source))})
 
 		finalize(func_result, true)
-		
-		func.scope.parent.owner.actions[func.action_type] = func if func.action_type
 	end
 	
 	def parameterize(tvs)
@@ -688,6 +697,37 @@
 		#puts print_ast(instance)
 	end
 	
+	def create_def_action_constructor
+		src = proc do @obj.source
+			AST::NestedSource.new(@obj.source, Core.src(2))
+		end
+		
+		ref = proc do |node|
+			AST::Ref.new(src.(), node)
+		end
+		
+		type_params = @obj.type_params.map { |tp| AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, nil) }
+
+		type_ref = proc do AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) }) end
+
+		r = AST::Function.new
+		
+		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), type_params, [])
+	
+		r.source = src.()
+		r.name = :construct
+		r.params = [AST::Function::Param.new(src.(), r, :obj, AST::UnaryOp.new(src.(), '*', type_ref.()))]
+		r.type_params = []
+		r.result = ref.(Core::Unit)
+		r.scope = AST::LocalScope.new([AST::ActionCall.new(src.(), AST::NameRef.new(src.(), :obj), :create)])
+		r.props = {}
+		r
+	
+		instance.run_pass(:declare_pass)
+		instance.run_pass(:sema, true)
+		instance.run_pass(:ref_pass)
+	end
+	
 	def process
 		value = @obj
 		
@@ -707,7 +747,10 @@
 				
 				finalize(Types::Complex.new(value.source, value, Hash[value.type_params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
 				
-				create_constructor if value.is_a?(AST::Struct)
+				if value.is_a?(AST::Struct)
+					create_constructor
+					create_def_action_constructor if value.actions[:create]
+				end
 				
 				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
