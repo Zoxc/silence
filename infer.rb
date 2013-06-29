@@ -75,13 +75,12 @@
 	end
 	
 	class AnalyzeArgs
-		attr_accessor :scoped, :index, :lvalue, :tuple_lvalue, :typeof
+		attr_accessor :scoped, :lvalue, :tuple_lvalue, :typeof
 		def initialize
 			@scoped = nil
 			@lvalue = false
 			@tuple_lvalue = false
 			@typeof = false
-			@index = {}
 		end
 		
 		def next(opts = {})
@@ -90,12 +89,13 @@
 			new.typeof = opts[:typeof] || @typeof
 			new.lvalue = opts[:lvalue] || false
 			new.tuple_lvalue = opts[:tuple_lvalue] || false
-			new.index = opts[:index] || {}
 			new
 		end
 	end
 	
 	def map_type_params(source, parent_args, params, args, desc, limit = params.size)
+		args ||= []
+		
 		raise TypeError.new("Too many type parameter(s) for #{desc}, got #{args.size} but maximum is #{limit}\n#{source.format}") if limit < args.size
 		
 		args.each_with_index do |arg, i|
@@ -112,12 +112,7 @@
 		raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
 	end
 	
-	def analyze_ref(source, obj, analyze_args, parent_args, tc_limit)
-		scope = analyze_args.scoped
-		args = analyze_args.index
-		args[:used] = true
-		args = args[:args]
-		
+	def analyze_ref(source, obj, args, scope, lvalue, parent_args, tc_limit)
 		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{obj.scoped_name}\n#{source.format}") if args && !obj.is_a?(AST::Complex) 
 		
 		args ||= []
@@ -136,11 +131,7 @@
 				limit = typeclass_limit(source, obj, result.args)
 				
 				if scope
-					scope[:complex] = obj
-					scope[:limit] = limit
-					scope[:args] = limit.args
-					result = nil
-					inst_args = nil
+					full_result = TypeclassResult.new(limit)
 				else
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
 													   #       Generate an error when the view's type variable is unified with anything other than another type variable
@@ -151,13 +142,6 @@
 			when AST::Struct
 				map_type_params(source, parent_args, obj.type_params, args, obj.scoped_name)
 				result, inst_args = inst_ex(source, obj, parent_args)
-				
-				if scope
-					scope[:complex] = obj
-					scope[:args] = result.args
-					result = nil
-					inst_args = nil
-				end
 			when AST::TypeFunction
 				typeclass = obj.declared.owner
 				raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
@@ -176,14 +160,14 @@
 				raise "(unhandled #{obj.class})"
 		end
 		
-		lvalue_check(source, obj, analyze_args.lvalue)
+		lvalue_check(source, obj, lvalue)
 		
-		[Result.new(result, obj.ctype.value), inst_args]
+		[full_result ? full_result : Result.new(result, obj.ctype.value), inst_args]
 	end
 	
 	Result = Struct.new(:type, :value) do
 		def to_s
-			"Result{#{type}, #{type}}"
+			"Result{#{type}, #{value}}"
 		end
 	end
 	
@@ -199,14 +183,59 @@
 		end
 	end
 	
-	def coerce_typeval(result, kind = nil)
+	ValueFieldResult = Struct.new(:limit) do
+		def to_s
+			"ValueFieldResult{#{limit}}"
+		end
+	end
+	
+	FieldResult = Struct.new(:ast, :field, :args, :limit) do
+		def to_s
+			"FieldResult{#{parent}, #{field.scoped_name}}"
+		end
+	end
+	
+	def coerce_typeval(result, args, index = nil, scoped = false)
 		case result
 			when Result
 				[result.type, result.value]
+			when ValueFieldResult
+				limit = result.limit
+				limit.args = index
+				[limit.var, true]
 			when TypeclassResult
 				raise TypeError.new("Unexpected typeclass\n#{result.limit.source.format}")
 			when RefResult
-				raise TypeError.new("Unexpected reference\n#{result.ref.source.format}")
+				ast = result.ref
+		
+				type = infer(ast.obj)
+				if ast.obj.ctype.value
+					parent_args = {}
+					
+					if ast.obj.is_a?(AST::Function)
+						map_type_params(ast.source, parent_args, ast.obj.type_params, index, ast.obj.name, ast.obj.type_param_count)
+					end
+					
+					lvalue_check(ast.source, ast.obj, args.lvalue)
+					
+					ensure_shared(ast.obj, ast.source, args) if shared?
+					
+					ast.gen = inst_ex(ast.source, ast.obj, parent_args)
+					
+					[ast.gen.first, true]
+				else
+					result, inst_args = analyze_ref(ast.source, ast.obj, index, scoped, args.lvalue, {}, nil)
+					raise TypeError.new("Type '#{result.first.text}' is not a valid l-value\n#{ast.source.format}") if args.lvalue
+					ast.gen = [result.type, inst_args] if result.is_a?(Result)
+					coerce_typeval(result, args)
+				end
+			when FieldResult
+				ast = result.ast
+				
+				resultt, inst_args = analyze_ref(ast.source, result.field, nil, scoped, args.lvalue, result.args, result.limit)
+				
+				ast.gen = {result: resultt, type: :single, ref: result.field, args: inst_args}
+				coerce_typeval(resultt, args)
 			else
 				raise "(unhandled #{result.class.inspect})"
 		end
@@ -225,14 +254,14 @@
 	end
 	
 	def analyze(ast, args)
-		type, value = coerce_typeval(analyze_impl(ast, args))
+		type, value = coerce_typeval(analyze_impl(ast, args), args)
 		[type, value]
 	end
 	
 	def get_index_args(args)
-		if args.index[:args]
-			args.index[:used] = true
-			args.index[:args]
+		if args[:args]
+			args[:used] = true
+			args[:args]
 		else
 			[]
 		end
@@ -381,13 +410,18 @@
 					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false)
 				end
 			when AST::BinOp
-				lhs, lvalue = analyze(ast.lhs, args.next(lvalue: ast.op == '=', tuple_lvalue: ast.op == '='))
+				assign_op = ast.op == '='
+				next_args = args.next(lvalue: assign_op, tuple_lvalue: assign_op)
+				
+				lresult = analyze_impl(ast.lhs, next_args)
+				
+				lhs, lvalue = coerce_typeval(lresult, next_args)
 				rhs, rvalue = analyze(ast.rhs, args.next)
 				
 				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
 				
 				if lvalue
-					req_level(ast.source, lhs) if (ast.op == '=' && !ast.constructing)
+					req_level(ast.source, lhs) if (assign_op && !ast.constructing)
 					
 					typeclass = Core::OpMap[ast.op]
 					typeclass_limit(ast.source, typeclass[:ref], {typeclass[:param] => lhs}) if typeclass
@@ -418,57 +452,55 @@
 					ast.gen = result
 					Result.new(result, true)
 				else
-					type = infer(ast.obj)
-					if ast.obj.ctype.value
-						parent_args = {}
-						
-						if ast.obj.is_a?(AST::Function)
-							map_type_params(ast.source, parent_args, ast.obj.type_params, get_index_args(args), ast.obj.name, ast.obj.type_param_count)
-						end
-						
-						lvalue_check(ast.source, ast.obj, args.lvalue)
-						
-						ensure_shared(ast.obj, ast.source, args) if shared?
-						
-						ast.gen = inst_ex(ast.source, ast.obj, parent_args)
-						
-						Result.new(ast.gen.first, true)
-					else
-						result, inst_args = analyze_ref(ast.source, ast.obj, args, {}, nil)
-						raise TypeError.new("Type '#{result.first.text}' is not a valid l-value\n#{ast.source.format}") if args.lvalue
-						ast.gen = [result.first, inst_args]
-						result
-					end
+					RefResult.new(ast)
 				end
 			when AST::Field
-				scope = {}
-				type, value = analyze(ast.obj, args.next(scoped: scope, lvalue: args.lvalue))
+				next_args = args.next(lvalue: args.lvalue)
+				result = analyze_impl(ast.obj, next_args)
+				
+				case result
+					when TypeclassResult
+						complex = result.limit.typeclass
+						limit = result.limit
+						parent_args = result.limit.args
+						[nil, false]
+					else
+						type, value = coerce_typeval(result, next_args, {}, true)
+				end
 				
 				if value
 					result = new_var(ast.source)
-					@fields << FieldLimit.new(ast.source, result, type, ast.name, get_index_args(args), ast, args.lvalue)
-					Result.new(result, true)
+					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args.lvalue)
+					@fields << limit
+					ValueFieldResult.new(limit)
 				else
-					raise TypeError.new("Object doesn't have a scope\n#{ast.obj.source.format}") unless scope[:complex] 
+					unless complex
+						raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Complex)
+						
+						complex = type.complex
+						parent_args = type.args
+					end
 					
-					ref = scope[:complex].scope.names[ast.name]
+					ref = complex.scope.names[ast.name]
 					
-					raise TypeError.new("'#{ast.name}' is not a member of '#{scope[:complex].scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
+					raise TypeError.new("'#{ast.name}' is not a member of '#complex.scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
 					
 					ensure_shared(ref, ast.source, args)
 					
-					result, inst_args = analyze_ref(ast.source, ref, args, scope[:args], scope[:limit])
-					
-					ast.gen = {result: result, type: :single, ref: ref, args: inst_args}
-					
-					result
+					FieldResult.new(ast, ref, parent_args, limit)
 				end
 				
 			when AST::Index
-				index = {args: ast.args.map { |n| analyze_type(n, args.next) }, used: false}
-				type, value = analyze(ast.obj, args.next(index: index))
+				indices = ast.args.map { |n| analyze_type(n, args.next) }
 				
-				raise TypeError.new("[] operator unsupported for values\n#{ast.source.format}") if value && !index[:used]
+				result = analyze_impl(ast.obj, args.next)
+				
+				type, value = case result
+					when RefResult
+						coerce_typeval(result, args.next, indices)
+					else
+						raise TypeError.new("[] operator unsupported\n#{ast.source.format}")
+				end
 				
 				Result.new(type, value)
 			else
