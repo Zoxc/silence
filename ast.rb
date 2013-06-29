@@ -819,15 +819,23 @@ class Core
 		Node = complex(:IntLiteral, [T], AST::TypeClass, [Create])
 	end
 	
+	IntLiterals = {create: {}, default: {}}
+	
 	num_lit = proc do |type|
 		create = func(:create, {input: ref(Int)}, ref(type))
-		Nodes << AST::TypeClassInstance.new(src, ref(IntLiteral::Node), [ref(type)], AST::GlobalScope.new([create]), [], [])
-		create
+		create_inst = AST::TypeClassInstance.new(src, ref(IntLiteral::Node), [ref(type)], AST::GlobalScope.new([create]), [], [])
+		Nodes << create_inst
+		IntLiterals[:create][create_inst] = create_inst
+		
+		construct = func(:construct, {obj: ptr(ref(type))}, ref(Unit))
+		default_inst = AST::TypeClassInstance.new(src, ref(Defaultable::Node), [ref(type)], AST::GlobalScope.new([construct]), [], [])
+		Nodes << default_inst
+		IntLiterals[:default][default_inst] = default_inst
 	end
 	
-	CharLiteralCreate = num_lit.(Char)
-	IntLiteralCreate = num_lit.(Int)
-	UIntLiteralCreate = num_lit.(UInt)
+	num_lit.(Char)
+	num_lit.(Int)
+	num_lit.(UInt)
 	
 	class StringLiteral < Core
 		T = param(:T, ref(Sizeable::Node))

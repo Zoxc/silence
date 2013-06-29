@@ -197,7 +197,11 @@ class Codegen
 		puts "Generating #{ast.name}"
 		case ast
 			when AST::TypeClass
-			when Core::CharLiteralCreate, Core::IntLiteralCreate, Core::UIntLiteralCreate
+			when Core::IntLiterals[:default][ast]
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				@out[:func] << o << "\n{\n    *v_obj = 0;\n}\n\n"
+			when Core::IntLiterals[:create][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
 				@out[:func] << o << "\n{\n    *result = v_input;\n}\n\n"
