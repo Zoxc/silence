@@ -307,7 +307,6 @@ class Codegen
 			when AST::Variable
 				return if ast.declared.owner.is_a? AST::Function
 				return if ast.declared.owner.is_a?(AST::Struct) && !ast.props[:shared]
-				puts "var #{ast.name}"
 				o = "#{"static " unless ast.props[:export]}#{c_type(ast.ctype.type, map)} #{mangle(ast, map)};\n"
 				@out[:globals] << o
 			else
