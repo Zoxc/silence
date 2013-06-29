@@ -74,7 +74,7 @@ module AST
 	end
 	
 	class Node
-		attr_accessor :source, :declared, :gtype
+		attr_accessor :source, :declared
 		
 		def scoped_name
 			owner = declared.owner
@@ -477,7 +477,7 @@ module AST
 	end
 	
 	class UnaryOp < ExpressionNode
-		attr_accessor :op, :node
+		attr_accessor :op, :node, :gen
 		
 		def initialize(source, op, node)
 			super(source)
@@ -491,7 +491,7 @@ module AST
 	end
 	
 	class BinOp < ExpressionNode
-		attr_accessor :lhs, :op, :rhs, :constructing
+		attr_accessor :lhs, :op, :rhs, :constructing, :gen
 		
 		def initialize(source, lhs, op, rhs)
 			super(source)
@@ -566,7 +566,7 @@ module AST
 	end
 
 	class Literal < ExpressionNode
-		attr_accessor :type, :value
+		attr_accessor :type, :value, :gen
 		
 		def initialize(source, type, value)
 			super(source)

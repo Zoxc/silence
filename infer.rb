@@ -178,26 +178,54 @@
 		
 		lvalue_check(source, obj, analyze_args.lvalue)
 		
-		[[result, obj.ctype.value], inst_args]
+		[Result.new(result, obj.ctype.value), inst_args]
+	end
+	
+	Result = Struct.new(:type, :value) do
+		def to_s
+			"Result{#{type}, #{type}}"
+		end
+	end
+	
+	TypeclassResult = Struct.new(:limit) do
+		def to_s
+			"TypeclassResult{#{limit}}"
+		end
+	end
+	
+	RefResult = Struct.new(:ref) do
+		def to_s
+			"RefResult{#{ref.obj.scoped_name}}"
+		end
+	end
+	
+	def coerce_typeval(result, kind = nil)
+		case result
+			when Result
+				[result.type, result.value]
+			when TypeclassResult
+				raise TypeError.new("Unexpected typeclass\n#{result.limit.source.format}")
+			when RefResult
+				raise TypeError.new("Unexpected reference\n#{result.ref.source.format}")
+			else
+				raise "(unhandled #{result.class.inspect})"
+		end
 	end
 	
 	def analyze_value(ast, args)
 		type, value = analyze(ast, args)
-		ast.gtype = type
 		raise TypeError.new("Expected value, but got type '#{type.text}'\n#{type.source.format}") unless value
 		type
 	end
 	
 	def analyze_type(ast, args)
 		type, value = analyze(ast, args)
-		ast.gtype = type
 		raise TypeError.new("Expected type, but got value of type '#{type.text}'\n#{type.source.format}") if value
 		type
 	end
 	
 	def analyze(ast, args)
-		type, value = analyze_impl(ast, args)
-		ast.gtype = type
+		type, value = coerce_typeval(analyze_impl(ast, args))
 		[type, value]
 	end
 	
@@ -224,7 +252,8 @@
 				type = analyze_value(ast.obj, args.next)
 				ast.gen = new_var(ast.source)
 				unify(make_ptr(ast.source, ast.gen), type)
-				[unit_type(ast.source), true]
+				
+				Result.new(unit_type(ast.source), true)
 			when AST::VariableDecl
 				ast.gen = @vars[ast.var]
 				
@@ -234,7 +263,8 @@
 				else
 					typeclass_limit(ast.source, Core::Defaultable::Node, {Core::Defaultable::T => ast.gen})
 				end
-				[unit_type(ast.source), true]
+				
+				Result.new(unit_type(ast.source), true)
 			when AST::Return
 				result = analyze_value(ast.value, args.next)
 				prev = @result
@@ -246,7 +276,7 @@
 					@result = result
 				end
 				
-				[unit_type(ast.source), true]
+				Result.new(unit_type(ast.source), true)
 			when AST::If
 				cond = analyze_value(ast.condition, args.next)
 				unify(cond, Types::BoolType)
@@ -254,7 +284,7 @@
 				unit_default analyze_value(ast.group, args.next)
 				analyze_value(ast.else_node, args.next) if ast.else_node
 				
-				[unit_type(ast.source), true]
+				Result.new(unit_type(ast.source), true)
 			when AST::Call
 				type, value = analyze(ast.obj, args.next)
 				
@@ -262,17 +292,15 @@
 				
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
+				ast.gen = {call: value, args: callable_args, result: result, obj_type: type}
+				
 				if value
 					# It's a call
-					ast.gen = [true, callable_args]
-					
 					limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
 					limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
 					limit.eq_limit(ast.source, result, Core::Callable::Result)
 				else
 					# It's a constructor
-					ast.gen = [false, callable_args]
-					
 					limit = typeclass_limit(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
 					limit.eq_limit(ast.source, callable_args, Core::Constructor::Args)
 					limit.eq_limit(ast.source, result, Core::Constructor::Constructed)
@@ -280,9 +308,9 @@
 				
 				req_level(ast.source, result, :sizeable) # Constraint on Callable.Result / Types must be sizeable for constructor syntax
 				
-				[result, true]
+				Result.new(result, true)
 			when AST::Literal
-				[case ast.type
+				result = case ast.type
 					when :int
 						type = new_var(ast.source)
 						typeclass_limit(ast.source, Core::IntLiteral::Node, {Core::IntLiteral::T => type})
@@ -295,28 +323,32 @@
 						type
 					else
 						raise "Unknown literal type #{ast.type}"
-				end, true]
+				end
+				ast.gen = result
+				Result.new(result, true)
 			when AST::Scope
 				nodes = ast.nodes.compact
-				[if nodes.empty?
+				result = if nodes.empty?
 					unit_type(ast.source)
 				else
 					nodes[0...-1].each do |node|
 						unit_default analyze_value(node, args.next)
 					end
 					analyze_value(nodes.last, args.next)
-				end, true]
+				end
+				
+				Result.new(result, true)
 				
 			# Value to type
 			
 			when AST::TypeOf
 				type = analyze_value(ast.value, args.next(typeof: true))
-				[type, false]
+				Result.new(type, false)
 			
 			# The tricky mix of values and types
 			
 			when AST::Grouped
-				analyze(ast.node, args.next)
+				Result.new(*analyze(ast.node, args.next))
 			when AST::UnaryOp
 				raise TypeError.new("Invalid l-value\n#{ast.source.format}") if (ast.op != '*') && args.lvalue
 				
@@ -328,22 +360,25 @@
 							result = new_var(ast.source)
 							ptr = make_ptr(ast.source, result)
 							unify(ptr, type)
-							[result, true]
+							ast.gen = result
+							Result.new(result, true)
 						else
-							[make_ptr(ast.source, analyze_type(ast.node, args.next)), false]
+							Result.new(make_ptr(ast.source, analyze_type(ast.node, args.next)), false)
 						end
 					when '&'
 						raise TypeError.new("Can't get the address of types\n#{ast.source.format}") unless value
-						[make_ptr(ast.source, type), true]
+						result = make_ptr(ast.source, type)
+						ast.gen = result
+						Result.new(result, true)
 					else
 						raise TypeError.new("Invalid unary operator '#{ast.op}' allowed\n#{ast.source.format}")
 				end
 			when AST::Tuple
 				if args.lvalue
 					raise TypeError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
-					[make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next(lvalue: true, tuple_lvalue: true)) }), true]
+					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next(lvalue: true, tuple_lvalue: true)) }), true)
 				else
-					[make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false]
+					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false)
 				end
 			when AST::BinOp
 				lhs, lvalue = analyze(ast.lhs, args.next(lvalue: ast.op == '=', tuple_lvalue: ast.op == '='))
@@ -358,7 +393,8 @@
 					typeclass_limit(ast.source, typeclass[:ref], {typeclass[:param] => lhs}) if typeclass
 					
 					unify(lhs, rhs)
-					[lhs, true]
+					ast.gen = lhs
+					Result.new(lhs, true)
 				else
 					raise TypeError.new("Unknown type operator '#{ast.op}'\n#{ast.source.format}") if ast.op != '->'
 					
@@ -374,13 +410,13 @@
 							# DONE: Constraint to tuple type instances only! - TODO: Do this is a general way for all typeclass references?
 					end				
 					
-					[Types::Complex.new(ast.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => rhs}), false]
+					Result.new(Types::Complex.new(ast.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => rhs}), false)
 				end
 			when AST::Ref
 				result = @vars[ast.obj]
 				if result
-					ast.gen = [result, nil]
-					[result, true]
+					ast.gen = result
+					Result.new(result, true)
 				else
 					type = infer(ast.obj)
 					if ast.obj.ctype.value
@@ -396,7 +432,7 @@
 						
 						ast.gen = inst_ex(ast.source, ast.obj, parent_args)
 						
-						[ast.gen.first, true]
+						Result.new(ast.gen.first, true)
 					else
 						result, inst_args = analyze_ref(ast.source, ast.obj, args, {}, nil)
 						raise TypeError.new("Type '#{result.first.text}' is not a valid l-value\n#{ast.source.format}") if args.lvalue
@@ -411,7 +447,7 @@
 				if value
 					result = new_var(ast.source)
 					@fields << FieldLimit.new(ast.source, result, type, ast.name, get_index_args(args), ast, args.lvalue)
-					[result, true]
+					Result.new(result, true)
 				else
 					raise TypeError.new("Object doesn't have a scope\n#{ast.obj.source.format}") unless scope[:complex] 
 					
@@ -423,7 +459,7 @@
 					
 					result, inst_args = analyze_ref(ast.source, ref, args, scope[:args], scope[:limit])
 					
-					ast.gen = {type: :single, ref: ref, args: inst_args}
+					ast.gen = {result: result, type: :single, ref: ref, args: inst_args}
 					
 					result
 				end
@@ -434,7 +470,7 @@
 				
 				raise TypeError.new("[] operator unsupported for values\n#{ast.source.format}") if value && !index[:used]
 				
-				[type, value]
+				Result.new(type, value)
 			else
 				raise "Unknown AST #{ast.class}"
 		end
@@ -478,7 +514,7 @@
 					
 					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 					
-					c.ast.gen = {type: :field, ref: field, args: inst_args}
+					c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args}
 					
 					unify(field_type, var)
 					

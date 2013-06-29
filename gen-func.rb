@@ -228,14 +228,14 @@ class FuncCodegen
 				@current_vars.push(rvar)
 				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::Literal
-				assign_var(var, ast.gtype, case ast.type
+				assign_var(var, ast.gen, case ast.type
 					when :int
-						direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast.gtype}), nil, [ast.value.to_s], ast.gtype)
+						direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast.gen}), nil, [ast.value.to_s], ast.gen)
 						nil
 					when :bool
 						ast.value.to_s
 					when :string
-						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gtype}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"], ast.gtype)
+						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gen}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"], ast.gen)
 						nil
 					else
 						raise "Unknown literal type #{ast.type}"
@@ -245,24 +245,24 @@ class FuncCodegen
 					when '*'
 						ptr = new_var
 						convert(ast.node, ptr)
-						assign_var(var, ast.gtype, "*#{ptr.ref}", true)
+						assign_var(var, ast.gen, "*#{ptr.ref}", true)
 						del_var ptr
 					when '&'
 						single, lval, tvar = lvalue(ast.node)
-						assign_var(var, ast.gtype, "&(#{lval})", true)
+						assign_var(var, ast.gen, "&(#{lval})", true)
 						del_var tvar
 				end
 			when AST::Field
 				case ast.gen[:type]
 					when :single
-						assign_f(var, ast.gtype, ast.gen[:ref], ast.gen[:args].params)
+						assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
 					when :field
 						single, lval, lvar = lvalue(ast.obj)
 						if ast.gen[:ref].is_a?(AST::Function)
 							assign_func(var, lval, ref(ast.gen[:ref], ast.gen[:args].params))
-							assign_var(var, ast.gtype, nil, true)
+							assign_var(var, ast.gen[:result], nil, true)
 						else
-							assign_var(var, ast.gtype, "(#{lval}).f_#{ast.gen[:ref].name}", true)
+							assign_var(var, ast.gen[:result], "(#{lval}).f_#{ast.gen[:ref].name}", true)
 						end
 						del_var lvar
 				end
@@ -270,11 +270,11 @@ class FuncCodegen
 				convert(ast.obj, var)
 			when AST::Ref
 				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner == @func
-					assign_var(var, ast.gtype, "v_#{ast.obj.name}", true)
+					assign_var(var, ast.gen, "v_#{ast.obj.name}", true)
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-					assign_var(var, ast.gtype, "self->f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
+					assign_var(var, ast.gen.first, "self->f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
 				else
-					assign_f(var, ast.gtype, ast.obj, ast.gen.last.params)
+					assign_f(var, ast.gen.first, ast.obj, ast.gen.last.params)
 				end
 			when AST::Return # TODO: Ensure all variables in scope get's destroyed on return
 				convert(ast.value, RealVar.new("(*result)", nil))
@@ -285,7 +285,7 @@ class FuncCodegen
 				rhs = new_var
 				convert(ast.rhs, rhs)
 				if ast.op == '='
-					assign(var, ast.gtype, lvalue(ast.lhs), rhs.ref)
+					assign(var, ast.gen, lvalue(ast.lhs), rhs.ref)
 				else
 					lhs = new_var
 					convert(ast.lhs, lhs)
@@ -295,15 +295,15 @@ class FuncCodegen
 					if typeclass
 						lhs_arg = new_var
 						rhs_arg = new_var
-						copy_var(lhs.ref, lhs_arg.ref, ast.gtype)
-						copy_var(rhs.ref, rhs_arg.ref, ast.gtype)
-						assign_var(lhs_arg, ast.gtype, nil)
-						assign_var(rhs_arg, ast.gtype, nil)
-						direct_call(var, ref(typeclass[:func], {typeclass[:param] => ast.gtype}), nil, [lhs_arg.ref, rhs_arg.ref], ast.gtype)
+						copy_var(lhs.ref, lhs_arg.ref, ast.gen)
+						copy_var(rhs.ref, rhs_arg.ref, ast.gen)
+						assign_var(lhs_arg, ast.gen, nil)
+						assign_var(rhs_arg, ast.gen, nil)
+						direct_call(var, ref(typeclass[:func], {typeclass[:param] => ast.gen}), nil, [lhs_arg.ref, rhs_arg.ref], ast.gen)
 						del_var rhs_arg, false
 						del_var lhs_arg, false
 					else
-						assign_var(var, ast.gtype, lhs.ref + " #{ast.op} " + rhs.ref)
+						assign_var(var, ast.gen, lhs.ref + " #{ast.op} " + rhs.ref)
 					end
 					
 					del_var lhs
@@ -315,7 +315,7 @@ class FuncCodegen
 			when AST::Grouped
 				convert(ast.node, var)
 			when AST::Call
-				if ast.gen.first
+				if ast.gen[:call]
 					obj = new_var
 					convert(ast.obj, obj) 
 				end
@@ -323,24 +323,23 @@ class FuncCodegen
 				args = new_var
 				ast.args.each_with_index do |a, i|
 					arg = new_var
-					arg_type = a.gtype
 					convert(a, arg)
 					o "#{args.ref}.f_#{i} = #{arg.ref};"
 					del_var arg, false
 				end
-				assign_var(args, ast.gen.last, nil)
+				assign_var(args, ast.gen[:args], nil)
 				
-				if ast.gen.first
-					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.obj.gtype}), obj, [args.ref], ast.gtype)
+				if ast.gen[:call]
+					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), obj, [args.ref], ast.gen[:result])
 				else
 					rvar = var ? var : new_var
-					assign_var(rvar, ast.gtype, nil)
-					direct_call(nil, ref(Core::Constructor::Construct, {Core::Constructor::T => ast.obj.gtype}), nil, ["&#{rvar.ref}", args.ref], Core::Unit.ctype.type)
+					assign_var(rvar, ast.gen[:result], nil)
+					direct_call(nil, ref(Core::Constructor::Construct, {Core::Constructor::T => ast.gen[:obj_type]}), nil, ["&#{rvar.ref}", args.ref], Core::Unit.ctype.type)
 					del_var rvar unless var
 				end
 				del_var args, false
 				
-				del_var obj if ast.gen.first
+				del_var obj if ast.gen[:call]
 			else
 				raise "(unhandled #{ast.class})"
 		end
