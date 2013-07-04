@@ -99,8 +99,8 @@ class FuncCodegen
 		if owner.is_a?(AST::TypeClass)	
 			ref, new_map = @gen.find_instance(owner.ctype.type, TypeContext::Map.new({}, map), obj)
 			
-			ref.type_params.each_with_index do |p, i|
-				param = obj.type_params[i]
+			ref.kind.params.each_with_index do |p, i|
+				param = obj.kind.params[i]
 				raise "Didn't find matching param for '#{p.name}'" unless param
 				param_mapped = map.params[param]
 				raise "Param '#{p.name}' type not provided" unless param_mapped

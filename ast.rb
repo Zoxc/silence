@@ -130,7 +130,7 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type, :ctype, :props
+		attr_accessor :name, :type, :ctype, :props, :kind
 		
 		def initialize(source, name, declared, type, props)
 			super(source)
@@ -138,14 +138,12 @@ module AST
 			@declared = declared
 			@type = type
 			@props = props
-		end
-		
-		def type_params
-			[]
+			@kind = Kind.new(source, [])
 		end
 		
 		def visit
 			@type = yield @type
+			@kind = yield @kind
 		end
 	end
 	
@@ -302,13 +300,55 @@ module AST
 		end
 	end
 
-	class TypeParam < Node
-		attr_accessor :name, :type, :ctype
+	class RegularKind < Node
+	end
+	
+	class HigherKind < Node
+		attr_accessor :scope, :params, :result, :type
+	
+		def initialize(source, scope, params, result)
+			super(source)
+			@scope = scope
+			@params = params
+			@result = result
+		end
 		
-		def initialize(source, name, type)
+		def declare_pass(scope)
+			@scope.parent = scope
+			@scope.owner = self
+		end
+		
+		def apply_pass(scope)
+			@scope
+		end
+		
+		def visit
+			@params.map! { |n| yield n }
+			@result = yield @result
+		end
+	end
+	
+	class Kind < Node
+		attr_accessor :params
+	
+		def initialize(source, params)
+			super(source)
+			@params = params
+		end
+		
+		def visit
+			@params.map! { |n| yield n }
+		end
+	end
+	
+	class TypeParam < Node
+		attr_accessor :name, :type, :kind, :ctype
+		
+		def initialize(source, name, kind, type)
 			super(source)
 			@name = name
 			@type = type
+			@kind = kind
 		end
 		
 		def declare_pass(scope)
@@ -317,17 +357,18 @@ module AST
 		
 		def visit
 			@type = yield @type if @type
+			@kind = yield @kind
 		end
 	end
 	
 	class TypeAlias < Node
-		attr_accessor :name, :type, :ctype, :type_params
+		attr_accessor :name, :type, :ctype, :kind
 		
 		def initialize(source, name, type)
 			super(source)
 			@name = name
 			@type = type
-			@type_params = []
+			@kind = Kind.new(source, [])
 		end
 		
 		def declare_pass(scope)
@@ -336,22 +377,23 @@ module AST
 		
 		def visit
 			@type = yield @type
+			@kind = yield @kind
 		end
 	end
 	
 	class Complex < Node
-		attr_accessor :name, :scope, :ctype, :type_params, :ctx, :c_prefix
+		attr_accessor :name, :scope, :ctype, :kind, :ctx, :c_prefix
 		
 		def parent
 			ast = @scope.parent.owner
 			ast.is_a?(Program) ? nil : ast
 		end
 		
-		def initialize(source, name, scope, type_params, ctx)
+		def initialize(source, name, scope, kind, ctx)
 			super(source)
 			@name = name
 			@scope = scope
-			@type_params = type_params
+			@kind = kind
 			@ctx = ctx
 			@c_prefix = true
 		end
@@ -367,7 +409,7 @@ module AST
 		end
 		
 		def visit
-			@type_params.map! { |n| yield n }
+			@kind = yield @kind
 			@scope = yield scope
 		end
 	end
@@ -384,8 +426,8 @@ module AST
 	class TypeClassInstance < Complex
 		attr_accessor :typeclass, :args
 		
-		def initialize(source, typeclass, args, scope, type_params, ctx)
-			super(source, nil, scope, type_params, ctx)
+		def initialize(source, typeclass, args, scope, kind, ctx)
+			super(source, nil, scope, kind, ctx)
 			@typeclass = typeclass
 			@args = args
 		end
@@ -423,7 +465,7 @@ module AST
 	end
 	
 	class Function < Node
-		attr_accessor :params, :result, :scope, :type, :ctype, :type_params, :props, :type_param_count, :action_type
+		attr_accessor :params, :result, :scope, :type, :ctype, :kind, :props, :type_param_count, :action_type
 		attr_writer :name
 		
 		class Param < Node
@@ -449,6 +491,13 @@ module AST
 			end
 		end
 	
+		def initialize(source, name)
+			super(source)
+			@props = {}
+			@name = name
+			@kind = Kind.new(source, [])
+		end
+		
 		def ref_pass(scope)
 			@declared.owner.actions[@action_type] = self if @action_type
 		end
@@ -461,7 +510,7 @@ module AST
 			@declared = @name ? scope.declare(@name, self) : scope
 			@scope.owner = self
 			@scope.parent = scope if @scope
-			@type_param_count = @type_params.size
+			@type_param_count = @kind.params.size
 		end
 		
 		def apply_pass(scope)
@@ -470,7 +519,7 @@ module AST
 		
 		def visit
 			@params.map! { |n| yield n }
-			@type_params.map! { |n| yield n }
+			@kind = yield @kind
 			@result = yield @result
 			@scope = yield @scope if @scope
 		end
@@ -665,9 +714,13 @@ class Core
 	
 	class << self
 		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
-			r = klass.new(src(2), name, AST::GlobalScope.new(scope), args, ctx)
+			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST::Kind.new(src(2), args), ctx)
 			Nodes << r
 			r
+		end
+		
+		def tci(tc, args, params = [], group = [])
+			AST::TypeClassInstance.new(src(2), ref(tc), args, AST::GlobalScope.new(group), AST::Kind.new(src(2), params), [])
 		end
 		
 		def src(lvl = 1)
@@ -683,18 +736,14 @@ class Core
 		end
 		
 		def param(name, tp = nil)
-			AST::TypeParam.new(src(2), name, tp)
+			AST::TypeParam.new(src(2), name, AST::RegularKind.new(src(2)), tp)
 		end
 		
 		def func(fname, args, result)
-			r = AST::Function.new
-			r.source = src(2)
-			r.name = fname
+			r = AST::Function.new(src(2), fname)
 			r.params = args.each.map { |name, type| AST::Function::Param.new(src(2), r, name, type) }
-			r.type_params = []
 			r.result = result
 			r.scope = AST::LocalScope.new([])
-			r.props = {}
 			r
 		end
 	end
@@ -706,7 +755,7 @@ class Core
 		Node = complex(:Sizeable, [T], AST::TypeClass)
 		
 		t = param :T
-		Instance = AST::TypeClassInstance.new(src, ref(Sizeable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
+		Instance = tci(Sizeable::Node, [ref(t)], [t])
 		Nodes << Instance
 	end
 	
@@ -715,7 +764,7 @@ class Core
 		Node = complex(:Copyable, [T], AST::TypeClass)
 		
 		t = param :T
-		Instance = AST::TypeClassInstance.new(src, ref(Copyable::Node), [ref(t)], AST::GlobalScope.new([]), [t], [])
+		Instance = tci(Copyable::Node, [ref(t)], [t])
 		Nodes << Instance
 	end
 	
@@ -729,19 +778,16 @@ class Core
 	
 	class Cell < Core
 		Val = param(:Val, ref(Copyable::Node))
-		#Val = param(:Val)
 		Next = param(:Next, ref(Tuple::Node))
 		Node = complex(:Cell, [Val, Next])
 	end
 	
-	proc do
-		Nodes << AST::TypeClassInstance.new(src, ref(Tuple::Node), [ref(Unit)], AST::GlobalScope.new([]), [], [])
-	end.()
+	Nodes << tci(Tuple::Node, [ref(Unit)])
 
 	proc do
 		val = param :Val
 		_next = param :Next
-		Nodes << AST::TypeClassInstance.new(src, ref(Tuple::Node), [AST::Index.new(src, ref(Cell::Node), [ref(val), ref(_next)])], AST::GlobalScope.new([]), [val, _next], [])
+		Nodes << tci(Tuple::Node, [AST::Index.new(src, ref(Cell::Node), [ref(val), ref(_next)])], [val, _next])
 	end.()
 
 	class Func < Core
@@ -765,7 +811,7 @@ class Core
 		ForceCastIn = param :In
 		ForceCastOut = param :Out
 		ForceCast = func(:force_cast, {in: ref(ForceCastIn)}, ref(ForceCastOut))
-		ForceCast.type_params << ForceCastOut << ForceCastIn
+		ForceCast.kind = AST::Kind.new(src, [ForceCastOut, ForceCastIn])
 		Nodes << ForceCast
 	end.()
 
@@ -808,7 +854,7 @@ class Core
 		CallableFuncArgs = args
 		CallableFuncApply = apply
 		
-		Nodes << AST::TypeClassInstance.new(src, ref(Callable::Node), [AST::BinOp.new(src, ref(args), '->', ref(result))], AST::GlobalScope.new([apply]), [args, result], [])
+		Nodes << tci(Callable::Node, [AST::BinOp.new(src, ref(args), '->', ref(result))], [args, result], [apply])
 	end.()
 
 	class IntLiteral < Core
@@ -823,12 +869,12 @@ class Core
 	
 	num_lit = proc do |type|
 		create = func(:create, {input: ref(Int)}, ref(type))
-		create_inst = AST::TypeClassInstance.new(src, ref(IntLiteral::Node), [ref(type)], AST::GlobalScope.new([create]), [], [])
+		create_inst = tci(IntLiteral::Node, [ref(type)], [], [create])
 		Nodes << create_inst
 		IntLiterals[:create][create_inst] = create_inst
 		
 		construct = func(:construct, {obj: ptr(ref(type))}, ref(Unit))
-		default_inst = AST::TypeClassInstance.new(src, ref(Defaultable::Node), [ref(type)], AST::GlobalScope.new([construct]), [], [])
+		default_inst = tci(Defaultable::Node, [ref(type)], [], [construct])
 		Nodes << default_inst
 		IntLiterals[:default][default_inst] = default_inst
 	end

@@ -25,9 +25,9 @@ class Codegen
 			when AST::Program
 				[]
 			when AST::TypeClassInstance
-				ast.type_params
+				ast.kind.params
 			else
-				ast.type_params + ast_keys(ast.declared.owner)
+				ast.kind.params + ast_keys(ast.declared.owner)
 		end
 	end
 	
@@ -133,8 +133,8 @@ class Codegen
 			ast.name.to_s.gsub('_', '_u')
 		end
 		return r if ast.is_a? AST::TypeClass
-		unless ast.type_params.empty?
-			r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_n")}_l"
+		unless ast.kind.params.empty?
+			r << "_T#{ast.kind.params.map { |p| mangle_type(map.params[p], map) }.join("_n")}_l"
 		end
 		r
 	end
@@ -144,8 +144,8 @@ class Codegen
 			when AST::TypeClassInstance
 				id = @named[ast] ||= (@names += 1)
 				r = "_C#{mangle_impl(ast.typeclass.obj, map)}_I#{id}"
-				unless ast.type_params.empty?
-					r << "_T#{ast.type_params.map { |p| mangle_type(map.params[p], map) }.join("_n")}"
+				unless ast.kind.params.empty?
+					r << "_T#{ast.kind.params.map { |p| mangle_type(map.params[p], map) }.join("_n")}"
 				end
 				r << "_l"
 			when Core::Ptr::Node
@@ -225,7 +225,7 @@ class Codegen
 				
 				args = map.params[Core::CallableFuncArgs].tuple_map
 				
-				self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.type_params.first], map)
+				self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.kind.params.first], map)
 				
 				o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
 				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.f_#{i}" }.join});\n}\n\n"
@@ -261,7 +261,7 @@ class Codegen
 				
 				if owner.is_a?(AST::Complex) && !ast.props[:shared]
 					if owner.is_a?(AST::TypeClassInstance)
-						self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.type_params.first], map)
+						self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.kind.params.first], map)
 					else
 						self_type = owner.ctype.type
 					end
@@ -323,7 +323,7 @@ class Codegen
 			when AST::GlobalScope
 				apply.(ast.nodes)
 			when AST::Function
-				return if !ast.type_params.empty? || !ast.ctype.type.fixed_type? || !ast.props[:export]
+				return if !ast.kind.params.empty? || !ast.ctype.type.fixed_type? || !ast.props[:export]
 				gen(ast, TypeContext::Map.new({}, {}))
 		end
 	end
