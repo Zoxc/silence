@@ -313,6 +313,14 @@ module AST
 			@result = result
 		end
 		
+		def scoped_name
+			name
+		end
+		
+		def name
+			"##Kind_#{__id__}"
+		end
+		
 		def declare_pass(scope)
 			@scope.parent = scope
 			@scope.owner = self

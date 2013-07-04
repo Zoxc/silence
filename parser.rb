@@ -142,16 +142,22 @@ class Parser
 		end
 	end
 	
+	def kind_result(s)
+		if matches(:sym, '[')
+			skip :line
+			params = type_params_list
+			kind = type_params
+			match(:sym, ']')
+			result = kind_result(s)
+			kind = AST::HigherKind.new(s, AST::GlobalScope.new([]), params, result)
+		else
+			kind = AST::RegularKind.new(s)
+		end
+	end
+	
 	def type_param
 		source do |s|
-			name = match(:id)
-			if matches(:sym, '[')
-				kind = type_params
-				match(:sym, ']')
-			else
-				kind = AST::RegularKind.new(s)
-			end
-			AST::TypeParam.new(s, match(:id), kind, opt_type_specifier)
+			AST::TypeParam.new(s, match(:id), kind_result(s), opt_type_specifier)
 		end
 	end
 	
@@ -160,7 +166,7 @@ class Parser
 		return r unless tok == :id
 		
 		loop do
-			r << source { |s| AST::TypeParam.new(s, match(:id), AST::RegularKind.new(s), opt_type_specifier) }
+			r << type_param
 			if matches(:sym, ',')
 				skip :line
 			else
@@ -172,7 +178,7 @@ class Parser
 	def type_params
 		source do |s|
 			r = type_params_list
-			r.empty? ? AST::Kind.new(s, []) : AST::Kind.new(s, r)
+			AST::Kind.new(s, r)
 		end
 	end
 	

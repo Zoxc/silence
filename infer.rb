@@ -113,7 +113,7 @@
 	end
 	
 	def analyze_ref(source, obj, args, scope, lvalue, parent_args, tc_limit)
-		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{obj.scoped_name}\n#{source.format}") if args && !obj.is_a?(AST::Complex) 
+		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{obj.scoped_name}\n#{source.format}") if args && obj.kind.params.empty?
 		
 		args ||= []
 		
@@ -796,7 +796,14 @@
 			when AST::TypeClassInstance
 				process_instance
 			when AST::TypeParam
-				finalize(Types::Param.new(value.source, value), false)
+				case value.kind
+					when AST::RegularKind
+						finalize(Types::Param.new(value.source, value), false)
+					when AST::HigherKind
+						finalize(Types::Complex.new(value.source, value, Hash[value.kind.params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
+					else
+						raise "unhandled"
+				end
 			when AST::Complex
 				parent = value.scope.parent.owner
 				if parent.is_a? AST::Complex
