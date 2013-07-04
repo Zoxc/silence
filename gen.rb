@@ -7,7 +7,6 @@ class Codegen
 		
 		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
 			@gen[type] = [TypeContext::Map.new({}, {})]
-			type.c_prefix = false
 			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
 		end
 	end
@@ -42,6 +41,14 @@ class Codegen
 		return ref, inst_map
 	end
 	
+	def map_ref(ref, map)
+		if ref.param
+			r = map.params[ref.param]
+			raise "Unable to find instance of #{ref.scoped_name} #{map}" unless r
+			r.prune
+		end
+	end
+	
 	def inst_type(type, map)
 		type = type.prune
 		case type
@@ -49,12 +56,14 @@ class Codegen
 				r = map.vars[type]
 				raise "Unable to find type for #{type.text}" unless r
 				r.prune
-			when Types::Param
-				r = map.params[type.param]
-				raise "Unable to find instance of #{type.text} #{map}" unless r
-				r.prune
 			when Types::Complex
-				Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
+				ref = map_ref(type, map)
+				if type.args.empty?
+					ref || type
+				else
+					ref = ref ? ref.complex : type.complex
+					Types::Complex.new(type.source, ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
+				end
 			else
 				raise "(inst_type unknown #{type.class.inspect})"
 		end

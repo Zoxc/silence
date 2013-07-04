@@ -465,7 +465,7 @@
 						parent_args = result.limit.args
 						[nil, false]
 					else
-						type, value = coerce_typeval(result, next_args, {}, true)
+						type, value = coerce_typeval(result, next_args, nil, true)
 				end
 				
 				if value
@@ -570,7 +570,7 @@
 	
 	def process_type_params
 		@obj.kind.params.map do |p|
-			process_type_constraint(p.type, Types::Param.new(p.source, p))
+			process_type_constraint(p.type, Types::Complex.new(p.source, p))
 		end
 	end
 	
@@ -607,7 +607,7 @@
 		t = tvs.map do |tv|
 			p = AST::TypeParam.new(tv.source, "%#{tv.text}", AST::RegularKind.new(tv.source), nil)
 			p.declare_pass(@obj.scope)
-			unify(tv, Types::Param.new(tv.source, p))
+			unify(tv, Types::Complex.new(tv.source, p))
 			p
 		end
 		@obj.kind.params.concat t
@@ -688,11 +688,11 @@
 		case @obj
 			when Core::Sizeable::Instance
 				p = @obj.kind.params.first
-				p = Types::Param.new(p.source, p)
+				p = Types::Complex.new(p.source, p)
 				req_level(Core.src, p, :sizeable)
 			when Core::Copyable::Instance
 				p = @obj.kind.params.first
-				p = Types::Param.new(p.source, p)
+				p = Types::Complex.new(p.source, p)
 				req_level(Core.src, p, :copyable)
 		end
 		
@@ -700,7 +700,7 @@
 		analyze_args = AnalyzeArgs.new
 		raise TypeError, "Expected #{typeclass.kind.params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.kind.params.size
 		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.kind.params[i], analyze_type(arg, analyze_args)] }]
-		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
+		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Complex.new(p.source, p)] }]), false)
 		
 		InferContext.infer_scope(@obj.scope, @infer_args)
 		
@@ -740,14 +740,20 @@
 		type_params = @obj.kind.params.map { |tp| AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil) }
 		fields = @obj.scope.names.values.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
 		
-		type_ref = proc do AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) }) end
+		type_ref = proc do
+			if type_params.empty?
+				ref.(@obj)
+			else
+				AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) })
+			end
+		end
 
 		r = AST::Function.new(src.(), :construct)
 		
 		args = AST::TypeAlias.new(src.(), :Args, AST::Tuple.new(src.(), fields.map { |f| AST::TypeOf.new(src.(), AST::Field.new(src.(), type_ref.(), f.name)) }))
 		constructed = AST::TypeAlias.new(src.(), :Constructed, type_ref.())
 			
-		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::Kind.new(src.(), type_params), [])
+		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST.kind_params(src.(), type_params), [])
 	
 		r.params = [AST::Function::Param.new(src.(), r, :obj, AST::UnaryOp.new(src.(), '*', ref.(constructed))), AST::Function::Param.new(src.(), r, :args, ref.(args))]
 		r.result = ref.(Core::Unit)
@@ -773,11 +779,17 @@
 		
 		type_params = @obj.kind.params.map { |tp| AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil) }
 
-		type_ref = proc do AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) }) end
+		type_ref = proc do
+			if type_params.empty?
+				ref.(@obj)
+			else
+				AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) })
+			end
+		end
 
 		r = AST::Function.new(src.(), :construct)
 		
-		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::Kind.new(src.(), type_params), [])
+		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST.kind_params(src.(), type_params), [])
 	
 		r.params = [AST::Function::Param.new(src.(), r, :obj, AST::UnaryOp.new(src.(), '*', type_ref.()))]
 		r.result = ref.(Core::Unit)
@@ -789,6 +801,11 @@
 		instance.run_pass(:ref_pass)
 	end
 	
+	def create_type(parent)
+		value = @obj
+		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Complex.new(p.source, p)] } + parent]), false)
+	end
+	
 	def process
 		value = @obj
 		
@@ -796,14 +813,7 @@
 			when AST::TypeClassInstance
 				process_instance
 			when AST::TypeParam
-				case value.kind
-					when AST::RegularKind
-						finalize(Types::Param.new(value.source, value), false)
-					when AST::HigherKind
-						finalize(Types::Complex.new(value.source, value, Hash[value.kind.params.map { |p| [p, Types::Param.new(p.source, p)] }]), false)
-					else
-						raise "unhandled"
-				end
+				create_type([])
 			when AST::Complex
 				parent = value.scope.parent.owner
 				if parent.is_a? AST::Complex
@@ -813,7 +823,7 @@
 				end
 				process_type_params
 				
-				finalize(Types::Complex.new(value.source, value, Hash[value.kind.params.map { |p| [p, Types::Param.new(p.source, p)] } + parent]), false)
+				create_type(parent)
 				
 				if value.is_a?(AST::Struct)
 					create_constructor

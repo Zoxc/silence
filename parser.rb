@@ -178,7 +178,7 @@ class Parser
 	def type_params
 		source do |s|
 			r = type_params_list
-			AST::Kind.new(s, r)
+			AST.kind_params(s, r)
 		end
 	end
 	
@@ -217,19 +217,19 @@ class Parser
 		s.extend(@l.last_ended)
 		
 		scope = global_scope(baseline)
-		AST::TypeClassInstance.new(s, type_class, args, scope, tp || AST::Kind.new(s, []), ctx)
+		AST::TypeClassInstance.new(s, type_class, args, scope, tp || AST.kind_params(s, []), ctx)
 	end
 	
 	def struct
-		source do |s|
-			baseline = @l.indent
-			step
-			name = match :id
-			tp = type_params
-			ctx = type_context
-			scope = global_scope(baseline)
-			AST::Struct.new(s, name, scope, tp, ctx)
-		end
+		s = @l.source
+		baseline = @l.indent
+		step
+		name = match :id
+		tp = type_params
+		ctx = type_context
+		s.extend(@l.last_ended)
+		scope = global_scope(baseline)
+		AST::Struct.new(s, name, scope, tp, ctx)
 	end
 	
 	def action

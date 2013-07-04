@@ -68,8 +68,6 @@ def print_ast(ast)
 			format.(ast, [])
 		when AST::HigherKind
 			format.(ast, [[:params, ast.params], [:result, :single], [:scope, :single]])
-		when AST::Kind
-			format.(ast, [[:params, ast.params]])
 		when AST::Complex
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:kind, :single]])
 		when AST::TypeParam

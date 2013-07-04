@@ -138,7 +138,7 @@ module AST
 			@declared = declared
 			@type = type
 			@props = props
-			@kind = Kind.new(source, [])
+			@kind = AST.kind_params(source, [])
 		end
 		
 		def visit
@@ -299,8 +299,24 @@ module AST
 			@type = yield @type if @type
 		end
 	end
-
+	
+	def self.kind_params(source, params)
+		if params.empty?
+			RegularKind.new(source)
+		else
+			HigherKind.new(source, nil, params, RegularKind.new(source))
+		end
+	end
+	
+	# Functions may append "hidden" type parameters even though none is visible in the source.
+	# TODO: How does this interact with everything? Require type parameters to be explicit?
 	class RegularKind < Node
+		attr_accessor :params
+		
+		def initialize(source)
+			super(source)
+			@params = []
+		end
 	end
 	
 	class HigherKind < Node
@@ -322,30 +338,20 @@ module AST
 		end
 		
 		def declare_pass(scope)
-			@scope.parent = scope
-			@scope.owner = self
+			if @scope
+				@scope.parent = scope
+				@scope.owner = self
+			end
 		end
 		
 		def apply_pass(scope)
-			@scope
+			@scope ? @scope : scope
 		end
 		
 		def visit
 			@params.map! { |n| yield n }
 			@result = yield @result
-		end
-	end
-	
-	class Kind < Node
-		attr_accessor :params
-	
-		def initialize(source, params)
-			super(source)
-			@params = params
-		end
-		
-		def visit
-			@params.map! { |n| yield n }
+			@scope = yield @scope if @scope
 		end
 	end
 	
@@ -376,7 +382,7 @@ module AST
 			super(source)
 			@name = name
 			@type = type
-			@kind = Kind.new(source, [])
+			@kind = AST.kind_params(source, [])
 		end
 		
 		def declare_pass(scope)
@@ -390,7 +396,7 @@ module AST
 	end
 	
 	class Complex < Node
-		attr_accessor :name, :scope, :ctype, :kind, :ctx, :c_prefix
+		attr_accessor :name, :scope, :ctype, :kind, :ctx
 		
 		def parent
 			ast = @scope.parent.owner
@@ -403,7 +409,6 @@ module AST
 			@scope = scope
 			@kind = kind
 			@ctx = ctx
-			@c_prefix = true
 		end
 		
 		def declare_pass(scope)
@@ -503,7 +508,7 @@ module AST
 			super(source)
 			@props = {}
 			@name = name
-			@kind = Kind.new(source, [])
+			@kind = AST.kind_params(source, [])
 		end
 		
 		def ref_pass(scope)
@@ -722,13 +727,13 @@ class Core
 	
 	class << self
 		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
-			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST::Kind.new(src(2), args), ctx)
+			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST.kind_params(src(2), args), ctx)
 			Nodes << r
 			r
 		end
 		
 		def tci(tc, args, params = [], group = [])
-			AST::TypeClassInstance.new(src(2), ref(tc), args, AST::GlobalScope.new(group), AST::Kind.new(src(2), params), [])
+			AST::TypeClassInstance.new(src(2), ref(tc), args, AST::GlobalScope.new(group), AST.kind_params(src(2), params), [])
 		end
 		
 		def src(lvl = 1)
@@ -819,7 +824,7 @@ class Core
 		ForceCastIn = param :In
 		ForceCastOut = param :Out
 		ForceCast = func(:force_cast, {in: ref(ForceCastIn)}, ref(ForceCastOut))
-		ForceCast.kind = AST::Kind.new(src, [ForceCastOut, ForceCastIn])
+		ForceCast.kind = AST.kind_params(src, [ForceCastOut, ForceCastIn])
 		Nodes << ForceCast
 	end.()
 

@@ -14,8 +14,6 @@ module Types
 				a.equal?(b)
 			when Types::Complex
 				a.complex == b.complex
-			when Types::Param
-				a.param == b.param
 		end
 		
 		return cmp_types_args(a.type_args, b.type_args, &cmp)
@@ -48,8 +46,8 @@ module Types
 			self
 		end
 		
-		def template?
-			false
+		def param
+			nil
 		end
 		
 		def fixed_type?
@@ -128,14 +126,19 @@ module Types
 	class Complex < Type
 		attr_accessor :complex, :args
 		
-		def initialize(source, complex, args)
+		def initialize(source, complex, args = {})
 			@source = source
 			@complex = complex
 			@args = args
 			
+			raise "Regular type with args" if complex.kind.is_a?(AST::RegularKind) && !@args.empty?
 			raise "Expected hash" unless @args.is_a? Hash
 			raise "Expected param" unless @args.keys.all? { |k| k.is_a? AST::TypeParam }
 			raise "Expected type" unless @args.values.all? { |v| v.is_a? Type }
+		end
+		
+		def param
+			@complex if @complex.is_a?(AST::TypeParam)
 		end
 		
 		def type_args
@@ -143,7 +146,7 @@ module Types
 		end
 		
 		def fixed_type?
-			@args.values.all? { |v| v.fixed_type? }
+			!param && @args.values.all? { |v| v.fixed_type? }
 		end
 		
 		def tuple_map
@@ -152,8 +155,10 @@ module Types
 					[]
 				when Core::Cell::Node
 					[@args[Core::Cell::Val], *@args[Core::Cell::Next].tuple_map]
+				when param
+					[self]
 				else
-					raise "Expected tuple type"
+					raise "Expected tuple type (got #{self})"
 			end
 		end
 		
@@ -168,27 +173,6 @@ module Types
 				else
 					"#{@complex.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end
-		end
-	end
-	
-	class Param < Type
-		attr_accessor :param
-		
-		def initialize(source, param)
-			@source = source
-			@param = param
-		end
-		
-		def tuple_map
-			[self]
-		end
-		
-		def fixed_type?
-			false
-		end
-
-		def text
-			"#{@param.scoped_name}"
 		end
 	end
 end

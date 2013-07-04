@@ -158,10 +158,14 @@
 		case type
 			when Types::Variable
 				args.vars[type] ||= new_var(src_wrap(type.source, args), type.name)
-			when Types::Param
-				args.params[type.param] || type
 			when Types::Complex
-				Types::Complex.new(src_wrap(type.source, args), type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+				ref = args.params[type.complex]
+				if type.args.empty?
+					ref || Types::Complex.new(src_wrap(type.source, args), type.complex)
+				else
+					ref = ref ? ref.complex : type.complex
+					Types::Complex.new(src_wrap(type.source, args), ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+				end
 			else
 				raise "Unknown type #{type.class}"
 		end
@@ -175,6 +179,7 @@
 	def inst_map(src, obj, params)
 		infer(obj)
 		inst_args = Map.new({}, params, src)
+		puts "inst #{obj.scoped_name} with #{inst_args}"
 		inst_limits(obj, inst_args)
 		inst_levels(obj, inst_args)
 		inst_args
@@ -208,8 +213,6 @@
 		error.() unless case a
 			when Types::Complex
 				a.complex == b.complex
-			when Types::Param
-				a.param == b.param
 			else
 				raise "Unhandled"
 		end
@@ -246,7 +249,7 @@
 		map = {}
 		
 		result = Types.cmp_types_args(input, inst) do |input, inst|
-			if inst.is_a? Types::Param
+			if inst.param # TODO: See how higher-order kinds impacts this
 				if map.key? inst.param
 					[true, map[inst.param] == input]
 				else
