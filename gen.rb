@@ -46,7 +46,8 @@ class Codegen
 				raise "Unable to find type for #{type}\n#{type.stack}\n#{type.source.format}" unless r
 				r.prune
 			when Types::RefHigher
-				Types::RefHigher.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
+				ref = map_ref(type, map)
+				ref || Types::RefHigher.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
 			when Types::Complex
 				ref = map_ref(type, map)
 				

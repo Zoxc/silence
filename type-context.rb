@@ -159,7 +159,12 @@
 			when Types::Variable
 				args.vars[type] ||= new_var(src_wrap(type.source, args), type.name)
 			when Types::RefHigher
-				Types::RefHigher.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+				ref = args.params[type.ref]
+				if ref
+					Types::RefHigher.new(src_wrap(type.source, args), ref.ref, ref.args)
+				else
+					Types::RefHigher.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+				end
 			when Types::Complex
 				ref = args.params[type.complex]
 				if type.args.empty?
