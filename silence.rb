@@ -2,6 +2,7 @@ class CompileError < Exception
 end
 
 require_relative 'ast'
+require_relative 'core'
 require_relative 'gen'
 require_relative 'gen-func'
 require_relative 'print'
