@@ -45,7 +45,7 @@
 	end
 	
 	def self.unit_type(source)
-		Types::Complex.new(source, Core::Unit, {})
+		Types::Ref.new(source, Core::Unit, {})
 	end
 	
 	def unit_type(source)
@@ -53,7 +53,7 @@
 	end
 	
 	def self.make_tuple(source, args)
-		args.reverse.inject(unit_type(source)) { |m, p| Types::Complex.new(source, Core::Cell::Node, {Core::Cell::Val => p, Core::Cell::Next => m}) }
+		args.reverse.inject(unit_type(source)) { |m, p| Types::Ref.new(source, Core::Cell::Node, {Core::Cell::Val => p, Core::Cell::Next => m}) }
 	end
 	
 	def make_tuple(source, args)
@@ -61,7 +61,7 @@
 	end
 	
 	def make_ptr(source, type)
-		Types::Complex.new(source, Core::Ptr::Node, {Core::Ptr::Type => type})
+		Types::Ref.new(source, Core::Ptr::Node, {Core::Ptr::Type => type})
 	end
 	
 	def typeclass_limit(source, typeclass, args)
@@ -132,7 +132,7 @@
 				
 				unless tc_limit
 					typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
-					tc_limit = typeclass_limit(source, typeclass_type.complex, typeclass_type.args)
+					tc_limit = typeclass_limit(source, typeclass_type.ref, typeclass_type.args)
 				end
 		end
 		
@@ -486,7 +486,7 @@
 							# DONE: Constraint to tuple type instances only! - TODO: Do this is a general way for all typeclass references?
 					end				
 					
-					Result.new(Types::Complex.new(ast.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => rhs}), false)
+					Result.new(Types::Ref.new(ast.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => rhs}), false)
 				end
 			when AST::Ref
 				result = @vars[ast.obj]
@@ -517,9 +517,9 @@
 					ValueFieldResult.new(limit)
 				else
 					unless complex
-						raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Complex)
+						raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Ref)
 						
-						complex = type.complex
+						complex = type.ref
 						parent_args = type.args
 					end
 					
@@ -572,8 +572,8 @@
 			type = view(type) if type.is_a? Types::Variable
 			raise TypeError.new(recmsg(var, type)) if @ctx.occurs_in?(var, type)
 			case type
-				when Types::Complex
-					field = type.complex.scope.names[c.name]
+				when Types::Ref
+					field = type.ref.scope.names[c.name]
 					
 					raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 					
@@ -608,7 +608,7 @@
 	
 	def process_type_params
 		@obj.kind.params.map do |p|
-			process_type_constraint(p.type, Types::Complex.new(p.source, p)) if p.kind.params.empty?
+			process_type_constraint(p.type, Types::Ref.new(p.source, p)) if p.kind.params.empty?
 		end
 	end
 	
@@ -636,7 +636,7 @@
 		analyze(func.scope, AnalyzeArgs.new)
 		
 		# TODO: make @result default to Unit, so the function can reference itself
-		func_result = Types::Complex.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result || unit_type(func.source))})
+		func_result = Types::Ref.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result || unit_type(func.source))})
 
 		finalize(func_result, true)
 	end
@@ -645,7 +645,7 @@
 		t = tvs.map do |tv|
 			p = AST::TypeParam.new(tv.source, "%#{tv.text}", AST::RegularKind.new(tv.source), nil)
 			p.declare_pass(@obj.scope)
-			unify(tv, Types::Complex.new(tv.source, p))
+			unify(tv, Types::Ref.new(tv.source, p))
 			p
 		end
 		@obj.kind.params.concat t
@@ -726,11 +726,11 @@
 		case @obj
 			when Core::Sizeable::Instance
 				p = @obj.kind.params.first
-				p = Types::Complex.new(p.source, p)
+				p = Types::Ref.new(p.source, p)
 				req_level(Core.src, p, :sizeable)
 			when Core::Copyable::Instance
 				p = @obj.kind.params.first
-				p = Types::Complex.new(p.source, p)
+				p = Types::Ref.new(p.source, p)
 				req_level(Core.src, p, :copyable)
 		end
 		
@@ -738,7 +738,7 @@
 		analyze_args = AnalyzeArgs.new
 		raise TypeError, "Expected #{typeclass.kind.params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.kind.params.size
 		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.kind.params[i], analyze_type(arg, analyze_args)] }]
-		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Complex.new(p.source, p)] }]), false)
+		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Ref.new(p.source, p)] }]), false)
 		
 		InferContext.infer_scope(@obj.scope, @infer_args)
 		
@@ -841,7 +841,7 @@
 	
 	def create_type(parent)
 		value = @obj
-		finalize(Types::Complex.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Complex.new(p.source, p)] } + parent]), false)
+		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Ref.new(p.source, p)] } + parent]), false)
 	end
 	
 	def process

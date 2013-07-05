@@ -12,9 +12,7 @@ module Types
 		return false unless case a
 			when Types::Variable
 				a.equal?(b)
-			when Types::Complex
-				a.complex == b.complex
-			when Types::RefHigher
+			when Types::Ref, Types::RefHigher
 				a.ref == b.ref
 		end
 		
@@ -172,19 +170,19 @@ module Types
 		end
 	end
 	
-	class Complex < Type
-		attr_accessor :complex, :args
+	class Ref < Type
+		attr_accessor :ref, :args
 		
-		def initialize(source, complex, args = {})
+		def initialize(source, ref, args = {})
 			@source = source
-			@complex = complex
+			@ref = ref
 			@args = args
 			
-			Types.verify_args(complex, args)
+			Types.verify_args(ref, args)
 		end
 		
 		def param
-			@complex if @complex.is_a?(AST::TypeParam)
+			@ref if @ref.is_a?(AST::TypeParam)
 		end
 		
 		def type_args
@@ -196,7 +194,7 @@ module Types
 		end
 		
 		def tuple_map
-			case complex
+			case @ref
 				when Core::Unit
 					[]
 				when Core::Cell::Node
@@ -209,7 +207,7 @@ module Types
 		end
 		
 		def text
-			case complex
+			case @ref
 				when Core::Func::Node
 					"#{@args[Core::Func::Args].text} -> #{@args[Core::Func::Result].text}"
 				when Core::Ptr::Node
@@ -217,7 +215,7 @@ module Types
 				when Core::Unit, Core::Cell::Node
 					"(#{tuple_map.map(&:text).join(', ')})"
 				else
-					"#{@complex.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
+					"#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end
 		end
 	end

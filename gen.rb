@@ -21,7 +21,7 @@ class Codegen
 	
 	def find_instance(tc, map, ast)
 		typeclass = inst_type(tc, map)
-		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass.complex, typeclass.args)
+		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass.ref, typeclass.args)
 		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text} for #{ast.name}\n#{ast.source.format}") unless inst
 
 		ref = inst.scope.names[ast.name]
@@ -48,20 +48,21 @@ class Codegen
 			when Types::RefHigher
 				ref = map_ref(type, map)
 				ref || Types::RefHigher.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
-			when Types::Complex
+			when Types::Ref
 				ref = map_ref(type, map)
 				
 				if type.args.empty?
 					ref || type
 				else
 					if ref
+						raise unless ref.is_a?(Types::RefHigher)
 						type_args = type.args.map do |k, v|
-							[ref.ref.kind.params[type.complex.kind.params.index(k)], inst_type(v, map)]
+							[ref.ref.kind.params[type.ref.kind.params.index(k)], inst_type(v, map)]
 						end
 						parent_args = ref.args.select { |k, v| !ref.ref.kind.params.index(k) }.to_a
-						Types::Complex.new(type.source, ref.ref, Hash[type_args + parent_args])
+						Types::Ref.new(type.source, ref.ref, Hash[type_args + parent_args])
 					else
-						Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
+						Types::Ref.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
 					end
 				end
 			else
@@ -120,7 +121,7 @@ class Codegen
 		if type.is_a?(Types::RefHigher)
 			[type.ref, type.args, true] # TODO: Handle the case with a struct inside another with type arguments. 'map' still needs to contain the type argument for the parent
 		else
-			do_ref(type.complex, type.args)
+			do_ref(type.ref, type.args)
 		end
 	end
 

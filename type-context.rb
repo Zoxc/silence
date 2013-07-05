@@ -8,13 +8,13 @@
 	end
 	
 	def ensure_level(src, type, level)
-		raise TypeError.new("#{level.to_s.capitalize} type required. Type '#{type.text}' is a #{type.complex.level} type\n#{src.format}" ) if LevelMap[level] > LevelMap[type.complex.level]
+		raise TypeError.new("#{level.to_s.capitalize} type required. Type '#{type.text}' is a #{type.ref.level} type\n#{src.format}" ) if LevelMap[level] > LevelMap[type.ref.level]
 	end
 	
 	def reduce_level(src, type, level)
 		type = type.prune
 		
-		if type.is_a?(Types::Complex) && type.complex.is_a?(AST::Struct)
+		if type.is_a?(Types::Ref) && type.ref.is_a?(AST::Struct)
 			ensure_level(src, type, level)
 			true
 		end
@@ -165,19 +165,20 @@
 				else
 					Types::RefHigher.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
 				end
-			when Types::Complex
-				ref = args.params[type.complex]
+			when Types::Ref
+				ref = args.params[type.ref]
 				if type.args.empty?
-					ref || Types::Complex.new(src_wrap(type.source, args), type.complex)
+					ref || Types::Ref.new(src_wrap(type.source, args), type.ref)
 				else
 					if ref
+						raise unless ref.is_a?(Types::RefHigher)
 						type_args = type.args.map do |k, v|
-							[ref.ref.kind.params[type.complex.kind.params.index(k)], inst_type(args, v)]
+							[ref.ref.kind.params[type.ref.kind.params.index(k)], inst_type(args, v)]
 						end
 						parent_args = ref.args.select { |k, v| !ref.ref.kind.params.index(k) }.to_a
-						Types::Complex.new(src_wrap(type.source, args), ref.ref, Hash[type_args + parent_args])
+						Types::Ref.new(src_wrap(type.source, args), ref.ref, Hash[type_args + parent_args])
 					else
-						Types::Complex.new(src_wrap(type.source, args), type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+						Types::Ref.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
 					end
 				end
 			else
@@ -224,9 +225,7 @@
 		error.() if (a.class != b.class)
 		
 		error.() unless case a
-			when Types::Complex
-				a.complex == b.complex
-			when Types::RefHigher
+			when Types::Ref, Types::RefHigher
 				a.ref == b.ref
 			else
 				raise "Unhandled"
@@ -364,7 +363,7 @@
 				
 				# Resolve the type functions
 				c.eqs.each do |eq| 
-					ast = instance.complex.scope.names[eq.type_ast.name]
+					ast = instance.ref.scope.names[eq.type_ast.name]
 					result = inst(eq.source, ast, instance.args)
 					unify(result, eq.var)
 				end
