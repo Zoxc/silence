@@ -186,7 +186,7 @@ class Parser
 		source do |s|
 			step
 			name = match :id
-			AST::TypeFunction.new(s, name, AST.kind_params(src, []), nil)
+			AST::TypeFunction.new(s, name, AST.kind_params(s, []), nil)
 		end
 	end
 	
