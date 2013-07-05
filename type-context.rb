@@ -158,13 +158,22 @@
 		case type
 			when Types::Variable
 				args.vars[type] ||= new_var(src_wrap(type.source, args), type.name)
+			when Types::RefHigher
+				Types::RefHigher.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
 			when Types::Complex
 				ref = args.params[type.complex]
 				if type.args.empty?
 					ref || Types::Complex.new(src_wrap(type.source, args), type.complex)
 				else
-					ref = ref ? ref.complex : type.complex
-					Types::Complex.new(src_wrap(type.source, args), ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+					if ref
+						type_args = type.args.map do |k, v|
+							[ref.ref.kind.params[type.complex.kind.params.index(k)], inst_type(args, v)]
+						end
+						parent_args = ref.args.select { |k, v| !ref.ref.kind.params.index(k) }.to_a
+						Types::Complex.new(src_wrap(type.source, args), ref.ref, Hash[type_args + parent_args])
+					else
+						Types::Complex.new(src_wrap(type.source, args), type.complex, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+					end
 				end
 			else
 				raise "Unknown type #{type.class}"
@@ -179,7 +188,6 @@
 	def inst_map(src, obj, params)
 		infer(obj)
 		inst_args = Map.new({}, params, src)
-		puts "inst #{obj.scoped_name} with #{inst_args}"
 		inst_limits(obj, inst_args)
 		inst_levels(obj, inst_args)
 		inst_args
@@ -213,6 +221,8 @@
 		error.() unless case a
 			when Types::Complex
 				a.complex == b.complex
+			when Types::RefHigher
+				a.ref == b.ref
 			else
 				raise "Unhandled"
 		end

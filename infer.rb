@@ -93,13 +93,19 @@
 		end
 	end
 	
-	def map_type_params(source, parent_args, params, args, desc, limit = params.size)
+	def map_type_params(source, ref, parent_args, args)
+		params = ref.kind.params
+		limit = ref.is_a?(AST::Function) ? ref.type_param_count : params.size
+		
+		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{ref.scoped_name}\n#{source.format}") if args && params.empty?
+		
 		args ||= []
 		
-		raise TypeError.new("Too many type parameter(s) for #{desc}, got #{args.size} but maximum is #{limit}\n#{source.format}") if limit < args.size
+		raise TypeError.new("Too many type parameter(s) for #{ref.scoped_name}, got #{args.size} but maximum is #{limit}\n#{source.format}") if limit < args.size
 		
 		args.each_with_index do |arg, i|
-			parent_args[params[i]] = arg
+			param = params[i]
+			parent_args[param] = coerce_typeparam(param, arg)
 		end
 		
 		params.each do |param|
@@ -113,21 +119,29 @@
 	end
 	
 	def analyze_ref(source, obj, args, scope, lvalue, parent_args, tc_limit)
-		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{obj.scoped_name}\n#{source.format}") if args && obj.kind.params.empty?
-		
-		args ||= []
-		
 		case obj
 			when AST::TypeClass
 				if !scope
 					type_class_result = new_var(source)
-					args.unshift(type_class_result)
+					args ||= []
+					args.unshift(Result.new(type_class_result, false))
 				end
+			when AST::TypeFunction
+				typeclass = obj.declared.owner
+				raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
 				
-				map_type_params(source, parent_args, obj.kind.params, args, obj.scoped_name)
-				
-				result, inst_args = inst_ex(source, obj, parent_args)
-			
+				unless tc_limit
+					typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
+					tc_limit = typeclass_limit(source, typeclass_type.complex, typeclass_type.args)
+				end
+		end
+		
+		map_type_params(source, obj, parent_args, args)
+		
+		result, inst_args = inst_ex(source, obj, parent_args)
+		
+		case obj
+			when AST::TypeClass
 				limit = typeclass_limit(source, obj, result.args)
 				
 				if scope
@@ -139,25 +153,10 @@
 													   #       Have the view bind to the variable name instead?
 					result = type_class_result
 				end
-			when AST::Struct
-				map_type_params(source, parent_args, obj.kind.params, args, obj.scoped_name)
-				result, inst_args = inst_ex(source, obj, parent_args)
+		
 			when AST::TypeFunction
-				typeclass = obj.declared.owner
-				raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
-				
-				unless tc_limit
-					typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
-					tc_limit = typeclass_limit(source, typeclass_type.complex, typeclass_type.args)
-				end
-				
-				result, inst_args = inst_ex(source, obj, parent_args)
 				tc_limit.eq_limit(source, result, obj)
 				inst_args = TypeContext::Map.new({}, {})
-			when AST::Variable, AST::TypeParam, AST::Function, AST::TypeAlias
-				result, inst_args = inst_ex(source, obj, parent_args)
-			else
-				raise "(unhandled #{obj.class})"
 		end
 		
 		lvalue_check(source, obj, lvalue)
@@ -165,33 +164,78 @@
 		[full_result ? full_result : Result.new(result, obj.ctype.value), inst_args]
 	end
 	
-	Result = Struct.new(:type, :value) do
+	Result = Struct.new(:type, :value) do # TODO: Split into Type and Value results
+		def src
+			type.source
+		end
+		
 		def to_s
 			"Result{#{type}, #{value}}"
 		end
 	end
 	
-	TypeclassResult = Struct.new(:limit) do
+	TypeclassResult = Struct.new(:limit) do # TODO: Try to merge this with RefResult
+		def src
+			limit.source
+		end
+		
 		def to_s
 			"TypeclassResult{#{limit}}"
 		end
 	end
 	
 	RefResult = Struct.new(:ref) do
+		def src
+			ref.source
+		end
+		
 		def to_s
 			"RefResult{#{ref.obj.scoped_name}}"
 		end
 	end
 	
-	ValueFieldResult = Struct.new(:limit) do
+	ValueFieldResult = Struct.new(:limit) do # TODO: Try to merge this with FieldResult
+		def src
+			limit.source
+		end
+		
 		def to_s
 			"ValueFieldResult{#{limit}}"
 		end
 	end
 	
 	FieldResult = Struct.new(:ast, :field, :args, :limit) do
+		def src
+			limit.source
+		end
+		
 		def to_s
 			"FieldResult{#{parent}, #{field.scoped_name}}"
+		end
+	end
+	
+	def coerce_typeparam(tp, result)
+		case result
+			when Result
+				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{result.type.source.format}") if result.value
+				[result.type, result.value]
+				raise TypeError.new("Type parameter #{tp.scoped_name} is not of kind *\n#{result.type.source.format}") if !tp.kind.is_a?(AST::RegularKind)
+				result.type
+			when RefResult
+				if tp.kind.is_a?(AST::RegularKind)
+					coerce_typeparam(tp, Result.new(*coerce_typeval(result, AnalyzeArgs.new, nil, false)))
+				else
+					# TODO: Check if kinds match
+					ast = result.ref
+					type = infer(ast.obj)
+					Types::RefHigher.new(ast.source, ast.obj) # TODO: Pass parent args. Perhaps that's only the case for FieldResult?
+				end
+			when FieldResult
+				ast = result.ast
+				resultt, inst_args = analyze_ref(ast.source, result.field, nil, false, false, result.args, result.limit)
+				coerce_typeparam(tp, resultt)
+			else
+				raise TypeError.new("Invalid argument for type parameter #{tp.scoped_name}\n#{result.src.format}")
 		end
 	end
 	
@@ -212,9 +256,7 @@
 				if ast.obj.ctype.value
 					parent_args = {}
 					
-					if ast.obj.is_a?(AST::Function)
-						map_type_params(ast.source, parent_args, ast.obj.kind.params, index, ast.obj.name, ast.obj.type_param_count)
-					end
+					map_type_params(ast.source, ast.obj, parent_args, index)
 					
 					lvalue_check(ast.source, ast.obj, args.lvalue)
 					
@@ -491,7 +533,7 @@
 				end
 				
 			when AST::Index
-				indices = ast.args.map { |n| analyze_type(n, args.next) }
+				indices = ast.args.map { |n| analyze_impl(n, args.next) }
 				
 				result = analyze_impl(ast.obj, args.next)
 				
@@ -537,12 +579,8 @@
 					
 					lvalue_check(c.ast.source, field, c.lvalue)
 				
-					if field.is_a?(AST::Function)
-						parent_args = type.args.dup
-						map_type_params(c.source, parent_args, field.kind.params, c.args, field.name, field.type_param_count)
-					else
-						parent_args = type.args
-					end
+					parent_args = type.args.dup
+					map_type_params(c.source, field, parent_args, c.args)
 					
 					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 					
@@ -570,7 +608,7 @@
 	
 	def process_type_params
 		@obj.kind.params.map do |p|
-			process_type_constraint(p.type, Types::Complex.new(p.source, p))
+			process_type_constraint(p.type, Types::Complex.new(p.source, p)) if p.kind.params.empty?
 		end
 	end
 	

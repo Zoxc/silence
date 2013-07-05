@@ -14,6 +14,8 @@ module Types
 				a.equal?(b)
 			when Types::Complex
 				a.complex == b.complex
+			when Types::RefHigher
+				a.ref == b.ref
 		end
 		
 		return cmp_types_args(a.type_args, b.type_args, &cmp)
@@ -79,6 +81,10 @@ module Types
 			@name = name
 		end
 		
+		def stack
+			@ctx.var_allocs[self][0..3].join("\n")
+		end
+		
 		def require_pruned
 			raise "Unpruned" if @instance
 		end
@@ -122,7 +128,50 @@ module Types
 			end
 		end
 	end
+	
+	def self.verify_args(ref, args)
+		raise "Expected hash" unless args.is_a? Hash
+		raise "Expected type" unless args.values.all? { |v| v.is_a? Type }
+		params = AST.type_params(ref)
+		args.keys.all? do |k|
+			raise "Expected param" unless k.is_a?(AST::TypeParam)
+			raise "Unexpected param #{k.scoped_name} for #{ref.scoped_name}, (#{params.map(&:scoped_name).join(', ')}) allowed" unless params.index(k)
+		end
+		params.each do |p|
+			raise "Missing param #{p.scoped_name} for #{ref.scoped_name}, got (#{args.keys.map(&:scoped_name).join(', ')})" unless args[p]
+		end
+	end
 
+	class RefHigher < Type
+		attr_accessor :ref, :args
+		
+		def initialize(source, ref, args = {})
+			@source = source
+			@ref = ref
+			@args = args
+			
+			raise "Not a higher-kind #{ref.scoped_name}" unless ref.kind.is_a?(AST::HigherKind)
+			
+			Types.verify_args(ref.declared.owner, args)
+		end
+		
+		def param
+			@ref if @ref.is_a?(AST::TypeParam)
+		end
+		
+		def type_args
+			@args.values
+		end
+		
+		def fixed_type?
+			!param && @args.values.all? { |v| v.fixed_type? }
+		end
+		
+		def text
+			"!#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
+		end
+	end
+	
 	class Complex < Type
 		attr_accessor :complex, :args
 		
@@ -131,10 +180,7 @@ module Types
 			@complex = complex
 			@args = args
 			
-			raise "Regular type with args" if complex.kind.is_a?(AST::RegularKind) && !@args.empty?
-			raise "Expected hash" unless @args.is_a? Hash
-			raise "Expected param" unless @args.keys.all? { |k| k.is_a? AST::TypeParam }
-			raise "Expected type" unless @args.values.all? { |v| v.is_a? Type }
+			Types.verify_args(complex, args)
 		end
 		
 		def param

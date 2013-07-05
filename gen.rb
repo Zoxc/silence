@@ -19,17 +19,6 @@ class Codegen
 		@output << args.join('')
 	end
 	
-	def ast_keys(ast)
-		case ast
-			when AST::Program
-				[]
-			when AST::TypeClassInstance
-				ast.kind.params
-			else
-				ast.kind.params + ast_keys(ast.declared.owner)
-		end
-	end
-	
 	def find_instance(tc, map, ast)
 		typeclass = inst_type(tc, map)
 		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass.complex, typeclass.args)
@@ -54,15 +43,25 @@ class Codegen
 		case type
 			when Types::Variable
 				r = map.vars[type]
-				raise "Unable to find type for #{type.text}" unless r
+				raise "Unable to find type for #{type}\n#{type.stack}\n#{type.source.format}" unless r
 				r.prune
+			when Types::RefHigher
+				Types::RefHigher.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
 			when Types::Complex
 				ref = map_ref(type, map)
+				
 				if type.args.empty?
 					ref || type
 				else
-					ref = ref ? ref.complex : type.complex
-					Types::Complex.new(type.source, ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
+					if ref
+						type_args = type.args.map do |k, v|
+							[ref.ref.kind.params[type.complex.kind.params.index(k)], inst_type(v, map)]
+						end
+						parent_args = ref.args.select { |k, v| !ref.ref.kind.params.index(k) }.to_a
+						Types::Complex.new(type.source, ref.ref, Hash[type_args + parent_args])
+					else
+						Types::Complex.new(type.source, type.complex, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
+					end
 				end
 			else
 				raise "(inst_type unknown #{type.class.inspect})"
@@ -85,9 +84,9 @@ class Codegen
 	def do_ref(ast, new_params, q = true)
 		map = TypeContext::Map.new({}, {})
 		
-		ast_keys(ast).each do |p|
+		AST.type_params(ast).each do |p|
 			type = new_params[p]
-			raise "missing key #{p.name} in [#{format_params(new_params)}]" unless type
+			raise "missing key #{p.name} in [#{format_params(new_params)}] for #{ast.scoped_name}" unless type
 			map.params[p] = type
 		end
 		
@@ -96,7 +95,7 @@ class Codegen
 		puts "ref:#{ast.scoped_name} params:(#{format_params(new_params)}) new:#{map}" unless q
 			
 		gen(ast, map)
-		[ast, map]
+		[ast, map, false]
 	end
 	
 	def ref_action(type, map, action_type, opt = true)
@@ -117,12 +116,26 @@ class Codegen
 	
 	def fixed_type(type, map)
 		type = inst_type(type, map)
-		do_ref(type.complex, type.args)
+		if type.is_a?(Types::RefHigher)
+			[type.ref, type.args, true] # TODO: Handle the case with a struct inside another with type arguments. 'map' still needs to contain the type argument for the parent
+		else
+			do_ref(type.complex, type.args)
+		end
 	end
 
 	def mangle_type(type, map)
-		complex, map = fixed_type(type, map)
-		mangle_impl(complex, map)
+		ast, map, plain = fixed_type(type, map)
+		if plain
+			owner = ast.declared.owner
+			name = mangle_name(ast, nil)
+			return (if owner.is_a?(AST::Program)
+				"_R#{name}_l"
+			else
+				"_R#{mangle_impl(owner, map)}__#{name}_l"
+			end)
+		else
+			mangle_impl(ast, map)
+		end
 	end
 
 	def c_type(type, map)
@@ -141,7 +154,7 @@ class Codegen
 		else
 			ast.name.to_s.gsub('_', '_u')
 		end
-		return r if ast.is_a? AST::TypeClass
+		return r if (ast.is_a?(AST::TypeClass) || !map)
 		unless ast.kind.params.empty?
 			r << "_T#{ast.kind.params.map { |p| mangle_type(map.params[p], map) }.join("_n")}_l"
 		end

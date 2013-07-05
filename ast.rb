@@ -283,11 +283,12 @@ module AST
 	end
 	
 	class TypeFunction < Node
-		attr_accessor :name, :ctype, :type
+		attr_accessor :name, :kind, :ctype, :type
 	
-		def initialize(source, name, type)
+		def initialize(source, name, kind, type)
 			super(source)
 			@name = name
+			@kind = kind
 			@type = type
 		end
 		
@@ -296,7 +297,19 @@ module AST
 		end
 		
 		def visit
+			@kind = yield @kind
 			@type = yield @type if @type
+		end
+	end
+	
+	def self.type_params(ast)
+		case ast
+			when AST::Program
+				[]
+			when AST::TypeParam, AST::TypeClassInstance
+				ast.kind.params
+			else
+				ast.kind.params + type_params(ast.declared.owner)
 		end
 	end
 	
@@ -838,8 +851,8 @@ class Core
 	end
 
 	class Constructor < Core
-		Constructed = AST::TypeFunction.new(src, :Constructed, nil)
-		Args = AST::TypeFunction.new(src, :Args, ref(Tuple::Node))
+		Constructed = AST::TypeFunction.new(src, :Constructed, AST.kind_params(src, []), nil)
+		Args = AST::TypeFunction.new(src, :Args, AST.kind_params(src, []), ref(Tuple::Node))
 		
 		Construct = func(:construct, {obj: ptr(ref(Constructed)), args: ref(Args)}, ref(Unit))
 		Construct.props[:shared] = true
@@ -849,8 +862,8 @@ class Core
 	end
 
 	class Callable < Core
-		Args = AST::TypeFunction.new(src, :Args, ref(Tuple::Node))
-		Result = AST::TypeFunction.new(src, :Result, ref(Sizeable::Node))
+		Args = AST::TypeFunction.new(src, :Args, AST.kind_params(src, []), ref(Tuple::Node))
+		Result = AST::TypeFunction.new(src, :Result, AST.kind_params(src, []), ref(Sizeable::Node))
 		
 		Apply = func(:apply, {args: ref(Args)}, ref(Result))
 		
