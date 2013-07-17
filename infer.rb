@@ -1,5 +1,5 @@
 ﻿class InferContext
-	attr_accessor :obj, :type, :ctx, :fields, :typeclass, :value, :vars, :infer_args, :dependent_vars
+	attr_accessor :obj, :type, :ctx, :fields, :typeclass, :vars, :infer_args, :dependent_vars, :higher_type
 	
 	# TODO: How to deal with type specifiers which have limits inside expressions?
 	#            Return a list of limits in analyze_impl and use that to check types?
@@ -227,13 +227,20 @@
 				else
 					# TODO: Check if kinds match
 					ast = result.ref
-					type = infer(ast.obj)
+					infer(ast.obj)
 					Types::RefHigher.new(ast.source, ast.obj) # TODO: Pass parent args. Perhaps that's only the case for FieldResult?
 				end
 			when FieldResult
-				ast = result.ast
-				resultt, inst_args = analyze_ref(ast.source, result.field, nil, false, false, result.args, result.limit)
-				coerce_typeparam(tp, resultt)
+				if tp.kind.is_a?(AST::RegularKind)
+					ast = result.ast
+					resultt, inst_args = analyze_ref(ast.source, result.field, nil, false, false, result.args, result.limit)
+					coerce_typeparam(tp, resultt)
+				else
+					# TODO: Check if kinds match
+					ref = result.field
+					infer(ref)
+					Types::RefHigher.new(result.source, ref, result.args) # TODO: Pass parent args. Perhaps that's only the case for FieldResult?
+				end
 			else
 				raise TypeError.new("Invalid argument for type parameter #{tp.scoped_name}\n#{result.src.format}")
 		end
@@ -648,7 +655,12 @@
 			unify(tv, Types::Ref.new(tv.source, p))
 			p
 		end
-		@obj.kind.params.concat t
+		
+		if @obj.kind.params.empty? && !t.empty?
+			@obj.kind = AST::HigherKind.new(@obj.source, nil, t, AST::RegularKind.new(@obj.source))
+		else
+			@obj.kind.params.concat t
+		end
 	end
 	
 	def report_unresolved_vars(vars)
@@ -657,7 +669,9 @@
 	
 	def finalize(type, value)
 		type = type.prune
-		@value = value
+		higher_type = if @obj.kind.is_a?(AST::HigherKind)
+			Types::RefHigher.new(@obj.source, @obj, Hash[parent_args])
+		end
 		
 		solve_fields
 		
@@ -666,6 +680,7 @@
 		# If we are a complex, we can allow to give less strict constraints in case @ctx.reduce refers back to it
 		if @obj.is_a? AST::Complex
 			@type = type
+			@higher_type = higher_type
 			@obj.ctype = self
 		end
 		
@@ -704,8 +719,6 @@
 		
 		parameterize(type_vars) if @obj.is_a?(AST::Function)
 		
-		# TODO: Remove type function constraints which contains type variables. We can't have those in the public set of constraints
-		
 		puts "" unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
 		
 		puts "#{@obj.scoped_name}  ::  #{type.text}"
@@ -717,6 +730,7 @@
 		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
 		
 		@type = type
+		@higher_type = higher_type
 		@obj.ctype = self
 	end
 	
@@ -761,10 +775,6 @@
 			#TODO: Figure out how this should work for type parameters in members
 			#TODO: Compare the limits of the expected and actual member
 		end
-	end
-	
-	def process_fixed(obj)
-		finalize(analyze_value(@obj, AnalyzeArgs.new), true)
 	end
 	
 	def create_constructor
@@ -839,9 +849,21 @@
 		instance.run_pass(:ref_pass)
 	end
 	
+	def parent_args
+		parent = @obj.scope.parent.owner
+		if parent.is_a? AST::Complex
+			parent.ctype.type.args.each.to_a
+		else
+			[]
+		end
+	end
+	
+	def map_type(obj, parent = [])
+		(obj.kind.params ? Types::RefHigher : Types::Ref).new(obj.source, obj, Hash[parent])
+	end
+	
 	def create_type(parent)
-		value = @obj
-		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Ref.new(p.source, p)] } + parent]), false)
+		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, map_type(p)] } + parent]), false)
 	end
 	
 	def process
@@ -853,15 +875,9 @@
 			when AST::TypeParam
 				create_type([])
 			when AST::Complex
-				parent = value.scope.parent.owner
-				if parent.is_a? AST::Complex
-					parent = parent.ctype.type.args.each.to_a
-				else
-					parent = []
-				end
 				process_type_params
 				
-				create_type(parent)
+				create_type(parent_args)
 				
 				if value.is_a?(AST::Struct)
 					create_constructor
@@ -870,16 +886,16 @@
 				
 				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
-				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source), true)
+				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source))
 			when AST::Function
 				# TODO: Require a fixed type for imports/exports
 				process_function
 			when AST::TypeAlias
-				finalize(analyze_type(value.type, AnalyzeArgs.new), false)
+				finalize(analyze_type(value.type, AnalyzeArgs.new))
 			when AST::TypeFunction
 				type = new_var(value.source)
 				process_type_constraint(value.type, type)
-				finalize(type, false)
+				finalize(type)
 			else
 				raise "Unknown value #{value.class}"
 		end

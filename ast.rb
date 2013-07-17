@@ -130,19 +130,17 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type, :ctype, :props, :kind
+		attr_accessor :name, :ctype, :props, :kind
 		
 		def initialize(source, name, declared, type, props)
 			super(source)
 			@name = name
 			@declared = declared
-			@type = type
 			@props = props
-			@kind = AST.kind_params(source, [])
+			@kind = AST.kind_params(source, [], AST::ValueKind.new(source, type))
 		end
 		
 		def visit
-			@type = yield @type
 			@kind = yield @kind
 		end
 	end
@@ -313,16 +311,27 @@ module AST
 		end
 	end
 	
-	def self.kind_params(source, params)
+	def self.kind_params(source, params, result = RegularKind.new(source))
 		if params.empty?
-			RegularKind.new(source)
+			result
 		else
-			HigherKind.new(source, nil, params, RegularKind.new(source))
+			HigherKind.new(source, nil, params, result)
 		end
 	end
 	
-	# Functions may append "hidden" type parameters even though none is visible in the source.
-	# TODO: How does this interact with everything? Require type parameters to be explicit?
+	class ValueKind < Node
+		attr_accessor :type, :ctype
+		
+		def initialize(source, type)
+			super(source)
+			@type = type
+		end
+		
+		def visit
+			@type = yield @type
+		end
+	end
+	
 	class RegularKind < Node
 		attr_accessor :params
 		
