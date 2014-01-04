@@ -1,5 +1,5 @@
 ﻿class InferContext
-	attr_accessor :obj, :type, :ctx, :fields, :typeclass, :vars, :infer_args, :dependent_vars, :higher_type
+	attr_accessor :obj, :type, :ctx, :fields, :typeclass, :vars, :infer_args, :dependent_vars, :value
 	
 	# TODO: How to deal with type specifiers which have limits inside expressions?
 	#            Return a list of limits in analyze_impl and use that to check types?
@@ -118,7 +118,7 @@
 		raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
 	end
 	
-	def analyze_ref(source, obj, args, scope, lvalue, parent_args, tc_limit)
+	def analyze_ref(source, obj, args, scope, lvalue, parent_args)
 		case obj
 			when AST::TypeClass
 				if !scope
@@ -130,10 +130,8 @@
 				typeclass = obj.declared.owner
 				raise "Expected typeclass as owner for type function" unless typeclass.is_a?(AST::TypeClass)
 				
-				unless tc_limit
-					typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
-					tc_limit = typeclass_limit(source, typeclass_type.ref, typeclass_type.args)
-				end
+				typeclass_type, inst_args = inst_ex(source, typeclass, parent_args)
+				tc_limit = typeclass_limit(source, typeclass_type.ref, typeclass_type.args)
 		end
 		
 		map_type_params(source, obj, parent_args, args)
@@ -145,7 +143,8 @@
 				limit = typeclass_limit(source, obj, result.args)
 				
 				if scope
-					full_result = TypeclassResult.new(limit)
+					# Put a typeclass in Result. It will only be used by AST::Field anyway
+					#full_result = TypeclassResult.new(limit)
 				else
 					@views[type_class_result] = result # TODO: Views won't work nice since type_class_result can be unified with anything
 													   #       Generate an error when the view's type variable is unified with anything other than another type variable
@@ -160,8 +159,8 @@
 		end
 		
 		lvalue_check(source, obj, lvalue)
-		
-		[full_result ? full_result : Result.new(result, obj.ctype.value), inst_args]
+		#full_result ? full_result : 
+		[Result.new(result, obj.ctype.value), inst_args]
 	end
 	
 	Result = Struct.new(:type, :value) do # TODO: Split into Type and Value results
@@ -175,6 +174,7 @@
 	end
 	
 	TypeclassResult = Struct.new(:limit) do # TODO: Try to merge this with RefResult
+											# Create the limits on demand from a RefResult?
 		def src
 			limit.source
 		end
@@ -184,13 +184,13 @@
 		end
 	end
 	
-	RefResult = Struct.new(:ref) do
+	RefResult = Struct.new(:ast, :obj, :args) do
 		def src
-			ref.source
+			ast.source
 		end
 		
 		def to_s
-			"RefResult{#{ref.obj.scoped_name}}"
+			"RefResult{#{obj.scoped_name}}"
 		end
 	end
 	
@@ -204,21 +204,10 @@
 		end
 	end
 	
-	FieldResult = Struct.new(:ast, :field, :args, :limit) do
-		def src
-			limit.source
-		end
-		
-		def to_s
-			"FieldResult{#{parent}, #{field.scoped_name}}"
-		end
-	end
-	
 	def coerce_typeparam(tp, result)
 		case result
 			when Result
 				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{result.type.source.format}") if result.value
-				[result.type, result.value]
 				raise TypeError.new("Type parameter #{tp.scoped_name} is not of kind *\n#{result.type.source.format}") if !tp.kind.is_a?(AST::RegularKind)
 				result.type
 			when RefResult
@@ -226,20 +215,9 @@
 					coerce_typeparam(tp, Result.new(*coerce_typeval(result, AnalyzeArgs.new, nil, false)))
 				else
 					# TODO: Check if kinds match
-					ast = result.ref
-					infer(ast.obj)
-					Types::RefHigher.new(ast.source, ast.obj) # TODO: Pass parent args. Perhaps that's only the case for FieldResult?
-				end
-			when FieldResult
-				if tp.kind.is_a?(AST::RegularKind)
-					ast = result.ast
-					resultt, inst_args = analyze_ref(ast.source, result.field, nil, false, false, result.args, result.limit)
-					coerce_typeparam(tp, resultt)
-				else
-					# TODO: Check if kinds match
-					ref = result.field
-					infer(ref)
-					Types::RefHigher.new(result.source, ref, result.args) # TODO: Pass parent args. Perhaps that's only the case for FieldResult?
+					obj = result.obj
+					infer(obj)
+					Types::Ref.new(result.ast.source, obj, result.args, false)
 				end
 			else
 				raise TypeError.new("Invalid argument for type parameter #{tp.scoped_name}\n#{result.src.format}")
@@ -257,33 +235,17 @@
 			when TypeclassResult
 				raise TypeError.new("Unexpected typeclass\n#{result.limit.source.format}")
 			when RefResult
-				ast = result.ref
-		
-				type = infer(ast.obj)
-				if ast.obj.ctype.value
-					parent_args = {}
-					
-					map_type_params(ast.source, ast.obj, parent_args, index)
-					
-					lvalue_check(ast.source, ast.obj, args.lvalue)
-					
-					ensure_shared(ast.obj, ast.source, args) if shared?
-					
-					ast.gen = inst_ex(ast.source, ast.obj, parent_args)
-					
-					[ast.gen.first, true]
-				else
-					result, inst_args = analyze_ref(ast.source, ast.obj, index, scoped, args.lvalue, {}, nil)
-					raise TypeError.new("Type '#{result.first.text}' is not a valid l-value\n#{ast.source.format}") if args.lvalue
-					ast.gen = [result.type, inst_args] if result.is_a?(Result)
-					coerce_typeval(result, args)
+				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, scoped, args.lvalue, result.args)
+				# TODO: Find out where this check should go
+				#raise TypeError.new("Type '#{result.first.text}' is not a valid l-value\n#{ast.source.format}") if args.lvalue
+				
+				case result.ast
+					when AST::Ref
+						result.ast.gen = [resultt.type, inst_args] if resultt.is_a?(Result)
+					when AST::Field
+						result.ast.gen = {result: resultt, type: :single, ref: result.obj, args: inst_args}
 				end
-			when FieldResult
-				ast = result.ast
-				
-				resultt, inst_args = analyze_ref(ast.source, result.field, nil, scoped, args.lvalue, result.args, result.limit)
-				
-				ast.gen = {result: resultt, type: :single, ref: result.field, args: inst_args}
+					
 				coerce_typeval(resultt, args)
 			else
 				raise "(unhandled #{result.class.inspect})"
@@ -501,21 +463,14 @@
 					ast.gen = result
 					Result.new(result, true)
 				else
-					RefResult.new(ast)
+					ensure_shared(ast.obj, ast.source, args) if shared?
+					RefResult.new(ast, ast.obj, {})
 				end
 			when AST::Field
 				next_args = args.next(lvalue: args.lvalue)
 				result = analyze_impl(ast.obj, next_args)
 				
-				case result
-					when TypeclassResult
-						complex = result.limit.typeclass
-						limit = result.limit
-						parent_args = result.limit.args
-						[nil, false]
-					else
-						type, value = coerce_typeval(result, next_args, nil, true)
-				end
+				type, value = coerce_typeval(result, next_args, nil, true)
 				
 				if value
 					result = new_var(ast.source)
@@ -523,20 +478,15 @@
 					@fields << limit
 					ValueFieldResult.new(limit)
 				else
-					unless complex
-						raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Ref)
-						
-						complex = type.ref
-						parent_args = type.args
-					end
+					raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Ref)
 					
-					ref = complex.scope.names[ast.name]
+					ref = type.ref.scope.names[ast.name]
 					
-					raise TypeError.new("'#{ast.name}' is not a member of '#complex.scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
+					raise TypeError.new("'#{ast.name}' is not a member of '#{type.ref.scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
 					
 					ensure_shared(ref, ast.source, args)
 					
-					FieldResult.new(ast, ref, parent_args, limit)
+					RefResult.new(ast, ref, type.args)
 				end
 				
 			when AST::Index
@@ -669,9 +619,7 @@
 	
 	def finalize(type, value)
 		type = type.prune
-		higher_type = if @obj.kind.is_a?(AST::HigherKind)
-			Types::RefHigher.new(@obj.source, @obj, Hash[parent_args])
-		end
+		@value = value
 		
 		solve_fields
 		
@@ -680,7 +628,6 @@
 		# If we are a complex, we can allow to give less strict constraints in case @ctx.reduce refers back to it
 		if @obj.is_a? AST::Complex
 			@type = type
-			@higher_type = higher_type
 			@obj.ctype = self
 		end
 		
@@ -730,7 +677,6 @@
 		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
 		
 		@type = type
-		@higher_type = higher_type
 		@obj.ctype = self
 	end
 	
@@ -859,7 +805,7 @@
 	end
 	
 	def map_type(obj, parent = [])
-		(obj.kind.params ? Types::RefHigher : Types::Ref).new(obj.source, obj, Hash[parent])
+		Types::Ref.new(obj.source, obj, Hash[parent], obj.kind.params.empty?)
 	end
 	
 	def create_type(parent)
@@ -873,7 +819,7 @@
 			when AST::TypeClassInstance
 				process_instance
 			when AST::TypeParam
-				create_type([])
+				finalize(map_type(@obj), false)
 			when AST::Complex
 				process_type_params
 				
@@ -886,16 +832,16 @@
 				
 				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
-				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source))
+				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source), true)
 			when AST::Function
 				# TODO: Require a fixed type for imports/exports
 				process_function
 			when AST::TypeAlias
-				finalize(analyze_type(value.type, AnalyzeArgs.new))
+				finalize(analyze_type(value.type, AnalyzeArgs.new), false)
 			when AST::TypeFunction
 				type = new_var(value.source)
 				process_type_constraint(value.type, type)
-				finalize(type)
+				finalize(type, false)
 			else
 				raise "Unknown value #{value.class}"
 		end

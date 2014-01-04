@@ -45,25 +45,22 @@ class Codegen
 				r = map.vars[type]
 				raise "Unable to find type for #{type}\n#{type.stack}\n#{type.source.format}" unless r
 				r.prune
-			when Types::RefHigher
-				ref = map_ref(type, map)
-				ref || Types::RefHigher.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
 			when Types::Ref
 				ref = map_ref(type, map)
 				
-				if type.args.empty?
-					ref || type
-				else
-					if ref
-						raise unless ref.is_a?(Types::RefHigher)
+				if ref
+					if type.plain
+						ref
+					else
+						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
 						type_args = type.args.map do |k, v|
 							[ref.ref.kind.params[type.ref.kind.params.index(k)], inst_type(v, map)]
 						end
 						parent_args = ref.args.select { |k, v| !ref.ref.kind.params.index(k) }.to_a
-						Types::Ref.new(type.source, ref.ref, Hash[type_args + parent_args])
-					else
-						Types::Ref.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }])
+						Types::Ref.new(type.source, ref.ref, Hash[type_args + parent_args], type.plain)
 					end
+				else
+					Types::Ref.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }], type.plain)
 				end
 			else
 				raise "(inst_type unknown #{type.class.inspect})"
@@ -118,7 +115,7 @@ class Codegen
 	
 	def fixed_type(type, map)
 		type = inst_type(type, map)
-		if type.is_a?(Types::RefHigher)
+		if !type.plain
 			[type.ref, type.args, true] # TODO: Handle the case with a struct inside another with type arguments. 'map' still needs to contain the type argument for the parent
 		else
 			do_ref(type.ref, type.args)

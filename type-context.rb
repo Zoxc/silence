@@ -158,28 +158,22 @@
 		case type
 			when Types::Variable
 				args.vars[type] ||= new_var(src_wrap(type.source, args), type.name)
-			when Types::RefHigher
-				ref = args.params[type.ref]
-				if ref
-					Types::RefHigher.new(src_wrap(type.source, args), ref.ref, ref.args)
-				else
-					Types::RefHigher.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
-				end
 			when Types::Ref
 				ref = args.params[type.ref]
-				if type.args.empty?
-					ref || Types::Ref.new(src_wrap(type.source, args), type.ref)
-				else
-					if ref
-						raise unless ref.is_a?(Types::RefHigher)
+
+				if ref
+					if type.plain
+						ref
+					else
+						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
 						type_args = type.args.map do |k, v|
 							[ref.ref.kind.params[type.ref.kind.params.index(k)], inst_type(args, v)]
 						end
 						parent_args = ref.args.select { |k, v| !ref.ref.kind.params.index(k) }.to_a
-						Types::Ref.new(src_wrap(type.source, args), ref.ref, Hash[type_args + parent_args])
-					else
-						Types::Ref.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }])
+						Types::Ref.new(src_wrap(type.source, args), ref.ref, Hash[type_args + parent_args], type.plain)
 					end
+				else
+					Types::Ref.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }], type.plain)
 				end
 			else
 				raise "Unknown type #{type.class}"
@@ -225,8 +219,8 @@
 		error.() if (a.class != b.class)
 		
 		error.() unless case a
-			when Types::Ref, Types::RefHigher
-				a.ref == b.ref
+			when Types::Ref
+				a.ref == b.ref && a.plain == b.plain
 			else
 				raise "Unhandled"
 		end

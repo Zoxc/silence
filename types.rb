@@ -12,8 +12,8 @@ module Types
 		return false unless case a
 			when Types::Variable
 				a.equal?(b)
-			when Types::Ref, Types::RefHigher
-				a.ref == b.ref
+			when Types::Ref
+				a.ref == b.ref and a.plain == b.plain
 		end
 		
 		return cmp_types_args(a.type_args, b.type_args, &cmp)
@@ -171,14 +171,17 @@ module Types
 	end
 	
 	class Ref < Type
-		attr_accessor :ref, :args
+		attr_accessor :ref, :args, :plain
 		
-		def initialize(source, ref, args = {})
+		def initialize(source, ref, args = {}, plain = true)
 			@source = source
 			@ref = ref
 			@args = args
+			@plain = plain
 			
-			Types.verify_args(ref, args)
+			raise "Not a higher-kind #{ref.scoped_name}" if (!@plain && !ref.kind.is_a?(AST::HigherKind))
+
+			Types.verify_args(@plain ? ref : ref.declared.owner, args)
 		end
 		
 		def param
@@ -215,7 +218,7 @@ module Types
 				when Core::Unit, Core::Cell::Node
 					"(#{tuple_map.map(&:text).join(', ')})"
 				else
-					"#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
+					"#{"!" unless @plain}#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end
 		end
 	end
