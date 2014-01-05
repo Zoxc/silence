@@ -9,6 +9,8 @@ struct String
 	
 	action create
 		size = 0
+		data = force_cast malloc(1)
+		*data = 0
 	
 	action copy
 		.new = malloc(size + 1)
@@ -39,7 +41,7 @@ test()
 	.var = "Hello"
 	return var ~ " world!"
 	
-export main() -> int
+export main() -> c_int
 	.var2 String
 	.var String = test()
 	puts(var.data)

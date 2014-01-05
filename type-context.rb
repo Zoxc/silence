@@ -162,9 +162,11 @@
 				ref = args.params[type.ref]
 
 				if ref
-					if type.plain
+					if type.args.empty?
+						# TypeParameter of RegularKind
 						ref
 					else
+						# A higher-order type parameter
 						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
 						type_args = type.args.map do |k, v|
 							[ref.ref.kind.params[type.ref.kind.params.index(k)], inst_type(args, v)]

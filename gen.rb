@@ -5,9 +5,9 @@ class Codegen
 		@named = {}
 		@names = 0
 		
-		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
+		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::CInt => 'int', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
 			@gen[type] = [TypeContext::Map.new({}, {})]
-			@out[:prelude] << "typedef #{name} #{mangle(type, {})};\n"
+			@out[:prelude] << "typedef #{name} #{mangle(type, TypeContext::Map.new({}, {}))};\n"
 		end
 	end
 	
@@ -33,7 +33,7 @@ class Codegen
 	def map_ref(ref, map)
 		if ref.param
 			r = map.params[ref.param]
-			raise "Unable to find instance of #{ref.scoped_name} #{map}" unless r
+			raise "Unable to find instance of #{ref.ref.scoped_name} #{map}" unless r
 			r.prune
 		end
 	end
@@ -49,7 +49,7 @@ class Codegen
 				ref = map_ref(type, map)
 				
 				if ref
-					if type.plain
+					if type.args.empty?
 						ref
 					else
 						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
@@ -91,7 +91,7 @@ class Codegen
 		
 		map_vars(ast, map)
 		
-		puts "ref:#{ast.scoped_name} params:(#{format_params(new_params)}) new:#{map}" unless q
+		#puts "ref:#{ast.scoped_name} params:(#{format_params(new_params)}) new:#{map}" unless q
 			
 		gen(ast, map)
 		[ast, map, false]
@@ -116,7 +116,7 @@ class Codegen
 	def fixed_type(type, map)
 		type = inst_type(type, map)
 		if !type.plain
-			[type.ref, type.args, true] # TODO: Handle the case with a struct inside another with type arguments. 'map' still needs to contain the type argument for the parent
+			[type.ref, TypeContext::Map.new({}, type.args), true] # TODO: Handle the case with a struct inside another with type arguments. 'map' still needs to contain the type argument for the parent
 		else
 			do_ref(type.ref, type.args)
 		end
@@ -124,6 +124,7 @@ class Codegen
 
 	def mangle_type(type, map)
 		ast, map, plain = fixed_type(type, map)
+		check_map map
 		if plain
 			owner = ast.declared.owner
 			name = mangle_name(ast, nil)
@@ -160,7 +161,13 @@ class Codegen
 		r
 	end
 
+	def check_map(map)
+		raise "Got #{map.class} as map" unless map.kind_of?(TypeContext::Map)
+	end
+
 	def mangle_impl(ast, map)
+		check_map map
+
 		case ast
 			when AST::TypeClassInstance
 				id = @named[ast] ||= (@names += 1)
@@ -215,7 +222,7 @@ class Codegen
 		list = (@gen[ast] ||= [])
 		return if list.find { |i| map == i }
 		list << map
-		puts "Generating #{ast.name}"
+		puts "Generating #{ast.scoped_name} - #{map}"
 		case ast
 			when AST::TypeClass
 			when Core::IntLiterals[:default][ast]

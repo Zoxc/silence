@@ -127,49 +127,23 @@ module Types
 		end
 	end
 	
-	def self.verify_args(ref, args)
+	def self.verify_args(ref, args, plain)
 		raise "Expected hash" unless args.is_a? Hash
 		raise "Expected type" unless args.values.all? { |v| v.is_a? Type }
-		params = AST.type_params(ref)
+
+		raise "Not a higher-kind #{ref.scoped_name}" if (!plain && !ref.kind.is_a?(AST::HigherKind))
+
+		params = AST.type_params(ref, plain)
+
 		args.keys.all? do |k|
 			raise "Expected param" unless k.is_a?(AST::TypeParam)
 			raise "Unexpected param #{k.scoped_name} for #{ref.scoped_name}, (#{params.map(&:scoped_name).join(', ')}) allowed" unless params.index(k)
 		end
 		params.each do |p|
-			raise "Missing param #{p.scoped_name} for #{ref.scoped_name}, got (#{args.keys.map(&:scoped_name).join(', ')})" unless args[p]
+			raise "Missing param #{p.scoped_name} for #{ref.scoped_name}, got (#{args.keys.map(&:scoped_name).join(', ')}) plain:#{plain}" unless args[p]
 		end
 	end
 
-	class RefHigher < Type
-		attr_accessor :ref, :args
-		
-		def initialize(source, ref, args = {})
-			@source = source
-			@ref = ref
-			@args = args
-			
-			raise "Not a higher-kind #{ref.scoped_name}" unless ref.kind.is_a?(AST::HigherKind)
-			
-			Types.verify_args(ref.declared.owner, args)
-		end
-		
-		def param
-			@ref if @ref.is_a?(AST::TypeParam)
-		end
-		
-		def type_args
-			@args.values
-		end
-		
-		def fixed_type?
-			!param && @args.values.all? { |v| v.fixed_type? }
-		end
-		
-		def text
-			"!#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
-		end
-	end
-	
 	class Ref < Type
 		attr_accessor :ref, :args, :plain
 		
@@ -178,10 +152,14 @@ module Types
 			@ref = ref
 			@args = args
 			@plain = plain
-			
-			raise "Not a higher-kind #{ref.scoped_name}" if (!@plain && !ref.kind.is_a?(AST::HigherKind))
 
-			Types.verify_args(@plain ? ref : ref.declared.owner, args)
+			case ref
+				when AST::TypeParam, AST::Complex
+				else
+					raise "Invalid type #{ref.class}"
+			end
+			
+			Types.verify_args(ref, args, plain)
 		end
 		
 		def param

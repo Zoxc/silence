@@ -130,17 +130,19 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :ctype, :props, :kind
+		attr_accessor :name, :type, :ctype, :props, :kind
 		
 		def initialize(source, name, declared, type, props)
 			super(source)
 			@name = name
 			@declared = declared
+			@type = type
 			@props = props
-			@kind = AST.kind_params(source, [], AST::ValueKind.new(source, type))
+			@kind = AST.kind_params(source, [])
 		end
 		
 		def visit
+			@type = yield @type
 			@kind = yield @kind
 		end
 	end
@@ -300,14 +302,16 @@ module AST
 		end
 	end
 	
-	def self.type_params(ast)
+	def self.type_params(ast, plain = true)
 		case ast
 			when AST::Program
 				[]
 			when AST::TypeParam, AST::TypeClassInstance
-				ast.kind.params
+				plain ? ast.kind.params : []
 			else
-				ast.kind.params + type_params(ast.declared.owner)
+				result = type_params(ast.declared.owner)
+				result += ast.kind.params if plain
+				result
 		end
 	end
 	

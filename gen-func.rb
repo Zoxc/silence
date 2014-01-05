@@ -57,7 +57,7 @@ class FuncCodegen
 	end
 	
 	def assign_var(var, type, str, copy = false)
-		raise "Expected type" unless type.is_a?(Types::Type)
+		raise "Expected type, got #{type.class}" unless type.is_a?(Types::Type)
 		
 		if var
 			var.type = type

@@ -36,6 +36,93 @@ class Core
 			r.scope = AST::LocalScope.new([])
 			r
 		end
+
+		def type_params_impl(obj, child, prefix, list)
+			list = ast.declared.owner
+			type_params = obj.kind.params.map { |tp| AST::TypeParam.new(tp.source, "P_#{prefix}#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil) }
+	
+			ref = if obj.kind.params.empty?
+				ref(obj)
+			else
+				AST::Index.new(src, ref(obj), type_params.map { |tp| ref(tp) })
+			end
+
+			if ast.declared.owner.kind_of?(AST::Program)
+				ref
+			else
+				AST::Field.new(src, ref, )
+			end
+		end
+
+		def type_params(obj)
+			# TODO: Handle all kinds here
+			params = Hash[AST.type_params(obj).map { |tp| [tp, AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil)] }]
+		
+			list = [obj]
+			current = obj.declared.owner
+			while !current.kind_of?(AST::Program)
+				list.unshift current
+				current = current.declared.owner
+			end 
+			puts list.map{|n|n.scoped_name}
+			wrap_ref = proc do |result, n|
+				if n.kind.params.empty?
+					result
+				else	
+					AST::Index.new(src, result, n.kind.params.map { |tp| ref(params[tp]) })
+				end
+			end
+
+			first = list.shift
+
+			type_ref = proc do
+				list.inject(wrap_ref.(ref(first), first)) do |sum, n|
+					wrap_ref.(AST::Field.new(src, sum, n.name), n)
+				end
+			end
+
+			return params.values, type_ref
+		end
+
+		def create_constructor(obj)
+			type_params, type_ref = type_params(obj)
+			fields = obj.scope.names.values.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
+			
+			r = AST::Function.new(src, :construct)
+			
+			args = AST::TypeAlias.new(src, :Args, AST::Tuple.new(src, fields.map { |f| AST::TypeOf.new(src, AST::Field.new(src, type_ref.(), f.name)) }))
+			constructed = AST::TypeAlias.new(src, :Constructed, type_ref.())
+				
+			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST.kind_params(src, type_params), [])
+		
+			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', ref(constructed))), AST::Function::Param.new(src, r, :args, ref(args))]
+			r.result = ref(Core::Unit)
+			fields = fields.map { |field| AST::Field.new(src, AST::UnaryOp.new(src, '*', AST::NameRef.new(src, :obj)), field.name) }
+			r.scope = AST::LocalScope.new([AST::BinOp.new(src, AST::Tuple.new(src, fields), '=', AST::NameRef.new(src, :args))])
+			r
+		
+			instance.run_pass(:declare_pass)
+			instance.run_pass(:sema, true)
+			instance.run_pass(:ref_pass)
+		end
+
+		def create_def_action_constructor(obj)
+			type_params, type_ref = type_params(obj)
+
+			r = AST::Function.new(src, :construct)
+
+			instance = AST::TypeClassInstance.new(src, ref(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST.kind_params(src, type_params), [])
+		
+			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', type_ref.()))]
+			r.result = ref(Core::Unit)
+			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, AST::NameRef.new(src, :obj), :create)])
+			r
+		
+			instance.run_pass(:declare_pass)
+			instance.run_pass(:sema, true)
+			instance.run_pass(:ref_pass)
+		end
+		
 	end
 	
 	# Typeclasses which allows you to increase required levels in type parameters
@@ -93,6 +180,7 @@ class Core
 	
 	Int = complex :int
 	UInt = complex :uint
+	CInt = complex :c_int
 	Bool = complex :bool
 	String = complex :string
 	Char = complex :char
@@ -161,15 +249,16 @@ class Core
 		create = func(:create, {input: ref(Int)}, ref(type))
 		create_inst = tci(IntLiteral::Node, [ref(type)], [], [create])
 		Nodes << create_inst
-		IntLiterals[:create][create_inst] = create_inst
+		IntLiterals[:create][create] = create
 		
 		construct = func(:construct, {obj: ptr(ref(type))}, ref(Unit))
 		default_inst = tci(Defaultable::Node, [ref(type)], [], [construct])
 		Nodes << default_inst
-		IntLiterals[:default][default_inst] = default_inst
+		IntLiterals[:default][construct] = construct
 	end
 	
 	num_lit.(Char)
+	num_lit.(CInt)
 	num_lit.(Int)
 	num_lit.(UInt)
 	

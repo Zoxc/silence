@@ -32,7 +32,7 @@
 		return if args.typeof
 		case obj
 			when AST::Function, AST::Variable
-				return if @obj.declared.owner.is_a?(AST::Program)
+				return if obj.declared.owner.is_a?(AST::Program)
 				raise TypeError.new("Can't access member '#{obj.name}' without an instance\n#{source.format}") unless obj.props[:shared]
 		end
 	end
@@ -173,17 +173,6 @@
 		end
 	end
 	
-	TypeclassResult = Struct.new(:limit) do # TODO: Try to merge this with RefResult
-											# Create the limits on demand from a RefResult?
-		def src
-			limit.source
-		end
-		
-		def to_s
-			"TypeclassResult{#{limit}}"
-		end
-	end
-	
 	RefResult = Struct.new(:ast, :obj, :args) do
 		def src
 			ast.source
@@ -211,10 +200,12 @@
 				raise TypeError.new("Type parameter #{tp.scoped_name} is not of kind *\n#{result.type.source.format}") if !tp.kind.is_a?(AST::RegularKind)
 				result.type
 			when RefResult
+				args = AnalyzeArgs.new
 				if tp.kind.is_a?(AST::RegularKind)
 					coerce_typeparam(tp, Result.new(*coerce_typeval(result, AnalyzeArgs.new, nil, false)))
 				else
 					# TODO: Check if kinds match
+					# TODO: Ensure all parent arguments are passed on (create them at AST::Ref)
 					obj = result.obj
 					infer(obj)
 					Types::Ref.new(result.ast.source, obj, result.args, false)
@@ -232,8 +223,6 @@
 				limit = result.limit
 				limit.args = index
 				[limit.var, true]
-			when TypeclassResult
-				raise TypeError.new("Unexpected typeclass\n#{result.limit.source.format}")
 			when RefResult
 				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, scoped, args.lvalue, result.args)
 				# TODO: Find out where this check should go
@@ -241,11 +230,11 @@
 				
 				case result.ast
 					when AST::Ref
-						result.ast.gen = [resultt.type, inst_args] if resultt.is_a?(Result)
+						result.ast.gen = [resultt.type, inst_args] 
 					when AST::Field
-						result.ast.gen = {result: resultt, type: :single, ref: result.obj, args: inst_args}
-				end
-					
+						result.ast.gen = {result: resultt.type, type: :single, ref: result.obj, args: inst_args}
+				end if resultt.is_a?(Result)
+
 				coerce_typeval(resultt, args)
 			else
 				raise "(unhandled #{result.class.inspect})"
@@ -464,7 +453,8 @@
 					Result.new(result, true)
 				else
 					ensure_shared(ast.obj, ast.source, args) if shared?
-					RefResult.new(ast, ast.obj, {})
+					parent_args = Hash[AST.type_params(ast.obj, false).map { |p| [p, map_type(p)] }]
+					RefResult.new(ast, ast.obj, parent_args)
 				end
 			when AST::Field
 				next_args = args.next(lvalue: args.lvalue)
@@ -723,78 +713,6 @@
 		end
 	end
 	
-	def create_constructor
-		src = proc do @obj.source
-			AST::NestedSource.new(@obj.source, Core.src(2))
-		end
-		
-		ref = proc do |node|
-			AST::Ref.new(src.(), node)
-		end
-		type_params = @obj.kind.params.map { |tp| AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil) }
-		fields = @obj.scope.names.values.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
-		
-		type_ref = proc do
-			if type_params.empty?
-				ref.(@obj)
-			else
-				AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) })
-			end
-		end
-
-		r = AST::Function.new(src.(), :construct)
-		
-		args = AST::TypeAlias.new(src.(), :Args, AST::Tuple.new(src.(), fields.map { |f| AST::TypeOf.new(src.(), AST::Field.new(src.(), type_ref.(), f.name)) }))
-		constructed = AST::TypeAlias.new(src.(), :Constructed, type_ref.())
-			
-		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST.kind_params(src.(), type_params), [])
-	
-		r.params = [AST::Function::Param.new(src.(), r, :obj, AST::UnaryOp.new(src.(), '*', ref.(constructed))), AST::Function::Param.new(src.(), r, :args, ref.(args))]
-		r.result = ref.(Core::Unit)
-		fields = fields.map { |field| AST::Field.new(src.(), AST::UnaryOp.new(src.(), '*', AST::NameRef.new(src.(), :obj)), field.name) }
-		r.scope = AST::LocalScope.new([AST::BinOp.new(src.(), AST::Tuple.new(src.(), fields), '=', AST::NameRef.new(src.(), :args))])
-		r
-	
-		instance.run_pass(:declare_pass)
-		instance.run_pass(:sema, true)
-		instance.run_pass(:ref_pass)
-		
-		#puts print_ast(instance)
-	end
-	
-	def create_def_action_constructor
-		src = proc do @obj.source
-			AST::NestedSource.new(@obj.source, Core.src(2))
-		end
-		
-		ref = proc do |node|
-			AST::Ref.new(src.(), node)
-		end
-		
-		type_params = @obj.kind.params.map { |tp| AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil) }
-
-		type_ref = proc do
-			if type_params.empty?
-				ref.(@obj)
-			else
-				AST::Index.new(src.(), ref.(@obj), type_params.map { |tp| ref.(tp) })
-			end
-		end
-
-		r = AST::Function.new(src.(), :construct)
-		
-		instance = AST::TypeClassInstance.new(src.(), ref.(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST.kind_params(src.(), type_params), [])
-	
-		r.params = [AST::Function::Param.new(src.(), r, :obj, AST::UnaryOp.new(src.(), '*', type_ref.()))]
-		r.result = ref.(Core::Unit)
-		r.scope = AST::LocalScope.new([AST::ActionCall.new(src.(), AST::NameRef.new(src.(), :obj), :create)])
-		r
-	
-		instance.run_pass(:declare_pass)
-		instance.run_pass(:sema, true)
-		instance.run_pass(:ref_pass)
-	end
-	
 	def parent_args
 		parent = @obj.scope.parent.owner
 		if parent.is_a? AST::Complex
@@ -819,15 +737,15 @@
 			when AST::TypeClassInstance
 				process_instance
 			when AST::TypeParam
-				finalize(map_type(@obj), false)
+				create_type([])
 			when AST::Complex
 				process_type_params
 				
 				create_type(parent_args)
 				
 				if value.is_a?(AST::Struct)
-					create_constructor
-					create_def_action_constructor if value.actions[:create]
+					Core.create_constructor(value)
+					Core.create_def_action_constructor(value) if value.actions[:create]
 				end
 				
 				InferContext.infer_scope(value.scope, @infer_args)

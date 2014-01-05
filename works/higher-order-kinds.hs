@@ -10,7 +10,7 @@ struct Test T
 	shared test()
 		a[Nested]()
 	
-a[S[T]]()
+a[S[ST]]()
 	.var S[int]
 	return var
 

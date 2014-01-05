@@ -35,7 +35,7 @@ def process(file, parent)
 	end
 	
 	output = File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
-	`g++ -std=gnu++0x -Wall -Wno-unused-value -Wno-unused-variable output.cpp -o output`
+	`g++ -std=gnu++0x -g -Wall -Wno-unused-value -Wno-self-assign -Wno-unused-variable output.cpp -o output`
 	`output.exe`
 	
 	ast
