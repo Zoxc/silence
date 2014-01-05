@@ -1,3 +1,6 @@
+require 'rbconfig'
+IsWindows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw/)
+
 class CompileError < Exception
 end
 
@@ -34,9 +37,12 @@ def process(file, parent)
 		exit
 	end
 	
-	output = File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
-	`g++ -std=gnu++0x -g -Wall -Wno-unused-value -Wno-self-assign -Wno-unused-variable output.cpp -o output`
-	`output.exe`
+	File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
+	
+	system 'g++ -std=gnu++0x -g -Wall -Wno-unused-value -Wno-self-assign -Wno-unused-variable output.cpp -o output'
+	
+	puts "Running..."
+	system(IsWindows ? 'output.exe' : './output')
 	
 	ast
 end
