@@ -1,12 +1,12 @@
-struct A X
+struct A[X]
 	a X
 	
-	struct B Y
+	struct B[Y]
 		a X
 		b Y
 		t1 B[X]
 		
-		struct C Z
+		struct C[Z]
 			a X
 			b Y
 			c Z
@@ -28,7 +28,7 @@ test(func, a)
 test2()
 	return test(callable, 2)
 
-class Cool T, A
+class Cool[T, A]
 	test (A) -> int
 	hello()
 		return test
@@ -42,7 +42,7 @@ a2(v Cool[bool])
 	.r = v.hello()
 	return r(true)
 
-struct A2 H
+struct A2[H]
 	field H
 
 hello[T]()
@@ -52,7 +52,7 @@ hello[T]()
 test_hello()
 	return hello[int]()
 	
-class TCool T
+class TCool[T]
 	type Hi
 
 instance[T] TCool T
@@ -73,14 +73,14 @@ export itest_e()
 	.f () -> bool
 	itest(f)
 	
-class RecursiveClass T
+class RecursiveClass[T]
 	shared test(v T) -> int
 
 instance RecursiveClass bool
 	shared test(v bool) -> int
 		return 1
 
-struct List T
+struct List[T]
 	field T
 
 instance[T RecursiveClass] RecursiveClass List[T]
@@ -91,7 +91,7 @@ RecursiveClass_a()
 	.h List[bool]
 	RecursiveClass.test h
 
-class TypeFuncCool T
+class TypeFuncCool[T]
 	type R
 
 instance TypeFuncCool bool

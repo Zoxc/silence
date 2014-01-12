@@ -1,7 +1,7 @@
-struct A T
+struct A[T]
 	shared t T
 	
-	k bool
+	k int
 	
 	tmpl[A](t)
 		.a A
@@ -13,7 +13,7 @@ struct A T
 h A[int]
 
 b(y A)
-	return y.tmpl[bool](1)
+	return y.tmpl[int](1)
 
 a()
 	return b(h)

@@ -2,11 +2,11 @@
 a(v Callable, args Tuple)
 	return v.apply(args)
 
-import printf(str *char)
+test(a int)
 
 export main()
-	.args Cell[*char ,Unit]
+	.args Cell[int, Unit] = Cell(1, Unit())
 	
-	a(printf, args)
+	a(test, args)
 	
 	return 0

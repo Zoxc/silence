@@ -77,6 +77,7 @@ module AST
 		attr_accessor :source, :declared
 		
 		def scoped_name
+			raise "declared not set on #{inspect}" unless declared
 			owner = declared.owner
 			"#{"#{owner.scoped_name}." unless owner.is_a?(Program)}#{name}"
 		end
@@ -130,7 +131,7 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type, :ctype, :props, :kind
+		attr_accessor :name, :type, :ctype, :props, :type_params
 		
 		def initialize(source, name, declared, type, props)
 			super(source)
@@ -138,12 +139,11 @@ module AST
 			@declared = declared
 			@type = type
 			@props = props
-			@kind = AST.kind_params(source, [])
+			@type_params = []
 		end
 		
 		def visit
 			@type = yield @type
-			@kind = yield @kind
 		end
 	end
 	
@@ -281,86 +281,34 @@ module AST
 			@nodes.map! { |n| yield n }
 		end
 	end
+
+	class KindParams < Node
+		attr_accessor :params, :ctx
 	
-	class TypeFunction < Node
-		attr_accessor :name, :kind, :ctype, :type
+		def initialize(source, params, ctx)
+			super(source)
+			@params = params
+			@ctx = ctx
+		end
+		
+		def visit
+			@ctx.map! { |n| yield n }
+			@params.map! { |n| yield n }
+		end
+	end
 	
-		def initialize(source, name, kind, type)
+	class HigherKinded < Node
+		attr_accessor :type_params, :scope, :kind_params
+		
+		def initialize(source, kind_params)
 			super(source)
 			@name = name
-			@kind = kind
-			@type = type
+			@kind_params = kind_params
+			@scope = LocalScope.new([]) if !type_params.empty? and !@scope
 		end
-		
-		def declare_pass(scope)
-			@declared = scope.declare(@name, self)
-		end
-		
-		def visit
-			@kind = yield @kind
-			@type = yield @type if @type
-		end
-	end
-	
-	def self.type_params(ast, plain = true)
-		case ast
-			when AST::Program
-				[]
-			when AST::TypeParam, AST::TypeClassInstance
-				plain ? ast.kind.params : []
-			else
-				result = type_params(ast.declared.owner)
-				result += ast.kind.params if plain
-				result
-		end
-	end
-	
-	def self.kind_params(source, params, result = RegularKind.new(source))
-		if params.empty?
-			result
-		else
-			HigherKind.new(source, nil, params, result)
-		end
-	end
-	
-	class ValueKind < Node
-		attr_accessor :type, :ctype
-		
-		def initialize(source, type)
-			super(source)
-			@type = type
-		end
-		
-		def visit
-			@type = yield @type
-		end
-	end
-	
-	class RegularKind < Node
-		attr_accessor :params
-		
-		def initialize(source)
-			super(source)
-			@params = []
-		end
-	end
-	
-	class HigherKind < Node
-		attr_accessor :scope, :params, :result, :type
-	
-		def initialize(source, scope, params, result)
-			super(source)
-			@scope = scope
-			@params = params
-			@result = result
-		end
-		
-		def scoped_name
-			name
-		end
-		
-		def name
-			"##Kind_#{__id__}"
+
+		def type_params
+			@kind_params.params
 		end
 		
 		def declare_pass(scope)
@@ -375,40 +323,72 @@ module AST
 		end
 		
 		def visit
-			@params.map! { |n| yield n }
-			@result = yield @result
+			@kind_params = yield @kind_params
 			@scope = yield @scope if @scope
 		end
 	end
 	
-	class TypeParam < Node
-		attr_accessor :name, :type, :kind, :ctype
-		
-		def initialize(source, name, kind, type)
-			super(source)
+	class TypeFunction < HigherKinded
+		attr_accessor :name, :ctype, :type
+	
+		def initialize(source, name, kind_params, type)
+			super(source, kind_params)
 			@name = name
 			@type = type
-			@kind = kind
 		end
 		
 		def declare_pass(scope)
+			super
 			@declared = scope.declare(@name, self)
 		end
 		
 		def visit
+			super
 			@type = yield @type if @type
-			@kind = yield @kind
 		end
 	end
 	
-	class TypeAlias < Node
-		attr_accessor :name, :type, :ctype, :kind
+	def self.type_params(ast, plain = true)
+		case ast
+			when AST::Program
+				[]
+			when AST::TypeParam, AST::TypeClassInstance
+				plain ? ast.type_params : []
+			else
+				result = type_params(ast.declared.owner)
+				result += ast.type_params if plain
+				result
+		end
+	end
+	
+	class TypeParam < HigherKinded
+		attr_accessor :name, :type, :ctype, :value
 		
-		def initialize(source, name, type)
-			super(source)
+		def initialize(source, name, kind_params, type, value)
+			super(source, kind_params)
 			@name = name
 			@type = type
-			@kind = AST.kind_params(source, [])
+			@value = value
+		end
+		
+		def declare_pass(scope)
+			super
+			@declared = scope.declare(@name, self)
+		end
+		
+		def visit
+			super
+			@type = yield @type if @type
+		end
+	end
+	
+	class TypeAlias < HigherKinded
+		attr_accessor :name, :type, :ctype
+		
+		def initialize(source, name, type)
+			super(source, AST::KindParams.new(source, [], []))
+			@name = name
+			@type = type
 		end
 		
 		def declare_pass(scope)
@@ -417,39 +397,26 @@ module AST
 		
 		def visit
 			@type = yield @type
-			@kind = yield @kind
 		end
 	end
 	
-	class Complex < Node
-		attr_accessor :name, :scope, :ctype, :kind, :ctx
+	class Complex < HigherKinded
+		attr_accessor :name, :scope, :ctype
 		
 		def parent
 			ast = @scope.parent.owner
 			ast.is_a?(Program) ? nil : ast
 		end
 		
-		def initialize(source, name, scope, kind, ctx)
-			super(source)
+		def initialize(source, name, scope, kind_params)
+			super(source, kind_params)
 			@name = name
 			@scope = scope
-			@kind = kind
-			@ctx = ctx
 		end
 		
 		def declare_pass(scope)
+			super
 			(@declared = scope.declare(@name, self)) if @name
-			@scope.parent = scope
-			@scope.owner = self
-		end
-		
-		def apply_pass(scope)
-			@scope
-		end
-		
-		def visit
-			@kind = yield @kind
-			@scope = yield scope
 		end
 	end
 	
@@ -465,8 +432,8 @@ module AST
 	class TypeClassInstance < Complex
 		attr_accessor :typeclass, :args
 		
-		def initialize(source, typeclass, args, scope, kind, ctx)
-			super(source, nil, scope, kind, ctx)
+		def initialize(source, typeclass, args, scope, kind_params)
+			super(source, nil, scope, kind_params)
 			@typeclass = typeclass
 			@args = args
 		end
@@ -480,7 +447,12 @@ module AST
 		end
 		
 		def name
-			"##{@typeclass.obj.name}_#{__id__}"
+			case @typeclass
+				when AST::Ref
+					"##{@typeclass.obj.name}_#{__id__}"
+				else
+					"#TCI_#{@typeclass.__id__}_#{__id__}"
+			end
 		end
 		
 		def visit
@@ -503,8 +475,8 @@ module AST
 	class LocalScope < Scope
 	end
 	
-	class Function < Node
-		attr_accessor :params, :result, :scope, :type, :ctype, :kind, :props, :type_param_count, :action_type
+	class Function < HigherKinded
+		attr_accessor :params, :result, :scope, :type, :ctype, :props, :type_param_count, :action_type
 		attr_writer :name
 		
 		class Param < Node
@@ -530,11 +502,10 @@ module AST
 			end
 		end
 	
-		def initialize(source, name)
-			super(source)
+		def initialize(source, name, kind_params)
+			super(source, kind_params)
 			@props = {}
 			@name = name
-			@kind = AST.kind_params(source, [])
 		end
 		
 		def ref_pass(scope)
@@ -546,21 +517,15 @@ module AST
 		end
 		
 		def declare_pass(scope)
+			super
 			@declared = @name ? scope.declare(@name, self) : scope
-			@scope.owner = self
-			@scope.parent = scope if @scope
-			@type_param_count = @kind.params.size
-		end
-		
-		def apply_pass(scope)
-			@scope
+			@type_param_count = type_params.size
 		end
 		
 		def visit
+			super
 			@params.map! { |n| yield n }
-			@kind = yield @kind
 			@result = yield @result
-			@scope = yield @scope if @scope
 		end
 	end
 	

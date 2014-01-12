@@ -169,9 +169,9 @@
 						# A higher-order type parameter
 						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
 						type_args = type.args.map do |k, v|
-							[ref.ref.kind.params[type.ref.kind.params.index(k)], inst_type(args, v)]
+							[ref.ref.type_params[type.ref.type_params.index(k)], inst_type(args, v)]
 						end
-						parent_args = ref.args.select { |k, v| !ref.ref.kind.params.index(k) }.to_a
+						parent_args = ref.args.select { |k, v| !ref.ref.type_params.index(k) }.to_a
 						Types::Ref.new(src_wrap(type.source, args), ref.ref, Hash[type_args + parent_args], type.plain)
 					end
 				else

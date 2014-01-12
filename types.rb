@@ -131,7 +131,7 @@ module Types
 		raise "Expected hash" unless args.is_a? Hash
 		raise "Expected type" unless args.values.all? { |v| v.is_a? Type }
 
-		raise "Not a higher-kind #{ref.scoped_name}" if (!plain && !ref.kind.is_a?(AST::HigherKind))
+		raise "Not a higher-kind #{ref.scoped_name}" if (!plain && ref.type_params.empty?)
 
 		params = AST.type_params(ref, plain)
 
@@ -193,8 +193,8 @@ module Types
 					"#{@args[Core::Func::Args].text} -> #{@args[Core::Func::Result].text}"
 				when Core::Ptr::Node
 					"*#{@args[Core::Ptr::Type].text}"
-				when Core::Unit, Core::Cell::Node
-					"(#{tuple_map.map(&:text).join(', ')})"
+				#when Core::Unit, Core::Cell::Node
+				#	"(#{tuple_map.map(&:text).join(', ')})"
 				else
 					"#{"!" unless @plain}#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end

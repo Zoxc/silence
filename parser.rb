@@ -141,27 +141,27 @@ class Parser
 			[]
 		end
 	end
-	
-	def kind_result(s)
-		if matches(:sym, '[')
-			skip :line
-			params = type_params_list
-			kind = type_params
-			match(:sym, ']')
-			result = kind_result(s)
-			kind = AST::HigherKind.new(s, AST::GlobalScope.new([]), params, result)
-		else
-			kind = AST::RegularKind.new(s)
+
+	def kind_params
+		source do |s|
+			if matches(:sym, '[')
+				skip :line
+				params = type_params
+				match(:sym, ']')
+				AST::KindParams.new(s, params, type_context)
+			else
+				AST::KindParams.new(s, [], [])
+			end
 		end
 	end
 	
 	def type_param
 		source do |s|
-			AST::TypeParam.new(s, match(:id), kind_result(s), opt_type_specifier)
+			AST::TypeParam.new(s, match(:id), kind_params, opt_type_specifier, false)
 		end
 	end
 	
-	def type_params_list
+	def type_params
 		r = []
 		return r unless tok == :id
 		
@@ -175,18 +175,11 @@ class Parser
 		end
 	end
 	
-	def type_params
-		source do |s|
-			r = type_params_list
-			AST.kind_params(s, r)
-		end
-	end
-	
 	def type_function
 		source do |s|
 			step
 			name = match :id
-			AST::TypeFunction.new(s, name, AST.kind_params(s, []), nil)
+			AST::TypeFunction.new(s, name, AST::KindParams.new(s, [], []), nil)
 		end
 	end
 	
@@ -195,10 +188,9 @@ class Parser
 			baseline = @l.indent
 			step
 			name = match :id
-			tp = type_params
-			ctx = type_context
+			tp = kind_params
 			scope = global_scope(baseline)
-			AST::TypeClass.new(s, name, scope, tp, ctx)
+			AST::TypeClass.new(s, name, scope, tp)
 		end
 	end
 	
@@ -206,18 +198,13 @@ class Parser
 		s = @l.source
 		baseline = @l.indent
 		step
-		if matches(:sym, '[')
-			skip :line
-			tp = type_params
-			match(:sym, ']')
-		end
+		tp = kind_params
 		type_class = source { |s| AST::NameRef.new(s, match(:id)) }
 		args = type_parameters(false)
-		ctx = type_context
 		s.extend(@l.last_ended)
 		
 		scope = global_scope(baseline)
-		AST::TypeClassInstance.new(s, type_class, args, scope, tp || AST.kind_params(s, []), ctx)
+		AST::TypeClassInstance.new(s, type_class, args, scope, tp)
 	end
 	
 	def struct
@@ -225,11 +212,10 @@ class Parser
 		baseline = @l.indent
 		step
 		name = match :id
-		tp = type_params
-		ctx = type_context
+		tp = kind_params
 		s.extend(@l.last_ended)
 		scope = global_scope(baseline)
-		AST::Struct.new(s, name, scope, tp, ctx)
+		AST::Struct.new(s, name, scope, tp)
 	end
 	
 	def action
@@ -267,13 +253,9 @@ class Parser
 	end
 	
 	def function(s, baseline, name, props, action_type)
-		if matches(:sym, '[')
-			skip :line
-			tp = type_params
-			match(:sym, ']')
-		end
+		tp = kind_params
 		
-		func = AST::Function.new(AST::Source.new(s.input, s.range), name)
+		func = AST::Function.new(AST::Source.new(s.input, s.range), name, tp)
 		
 		if action_type && !eq(:sym, '(')
 			params = []
@@ -294,7 +276,6 @@ class Parser
 		
 		func.action_type = action_type
 		func.params = params
-		func.kind = tp if tp
 		func.result = result
 		func.scope = group
 		func.props = props

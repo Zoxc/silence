@@ -75,26 +75,26 @@
 	end
 	
 	class AnalyzeArgs
-		attr_accessor :scoped, :lvalue, :tuple_lvalue, :typeof
+		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass
 		def initialize
-			@scoped = nil
 			@lvalue = false
 			@tuple_lvalue = false
 			@typeof = false
+			@typeclass = false
 		end
 		
 		def next(opts = {})
 			new = dup
-			new.scoped = opts[:scoped] || @scoped
 			new.typeof = opts[:typeof] || @typeof
 			new.lvalue = opts[:lvalue] || false
+			new.typeclass = opts[:typeclass] || false
 			new.tuple_lvalue = opts[:tuple_lvalue] || false
 			new
 		end
 	end
 	
 	def map_type_params(source, ref, parent_args, args)
-		params = ref.kind.params
+		params = ref.type_params
 		limit = ref.is_a?(AST::Function) ? ref.type_param_count : params.size
 		
 		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{ref.scoped_name}\n#{source.format}") if args && params.empty?
@@ -117,14 +117,26 @@
 		return unless lvalue && obj.is_a?(AST::Function)
 		raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
 	end
+
+	class ASTWrap
+		attr_accessor :type
+		
+		def initialize(type)
+			@type = type
+		end
+	end
 	
-	def analyze_ref(source, obj, args, scope, lvalue, parent_args)
+	def analyze_ref(source, obj, indices, scope, args, parent_args)
 		case obj
 			when AST::TypeClass
 				if !scope
-					type_class_result = new_var(source)
-					args ||= []
-					args.unshift(Result.new(type_class_result, false))
+					if args.typeclass
+						type_class_result = new_var(source)
+						indices ||= []
+						indices.unshift(ASTWrap.new(type_class_result))
+					else
+						raise TypeError.new("Unexpected typeclass\n#{source.format}")
+					end
 				end
 			when AST::TypeFunction
 				typeclass = obj.declared.owner
@@ -134,7 +146,7 @@
 				tc_limit = typeclass_limit(source, typeclass_type.ref, typeclass_type.args)
 		end
 		
-		map_type_params(source, obj, parent_args, args)
+		map_type_params(source, obj, parent_args, indices)
 		
 		result, inst_args = inst_ex(source, obj, parent_args)
 		
@@ -158,7 +170,7 @@
 				inst_args = TypeContext::Map.new({}, {})
 		end
 		
-		lvalue_check(source, obj, lvalue)
+		lvalue_check(source, obj, args.lvalue)
 		#full_result ? full_result : 
 		[Result.new(result, obj.ctype.value), inst_args]
 	end
@@ -192,26 +204,36 @@
 			"ValueFieldResult{#{limit}}"
 		end
 	end
-	
-	def coerce_typeparam(tp, result)
+
+	def coerce_typeparam(tp, ast)
+		unexpected_value = proc do |source|
+			raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{source.format}")
+		end
+
+		result = analyze_impl(ast, AnalyzeArgs.new)
 		case result
 			when Result
-				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{result.type.source.format}") if result.value
-				raise TypeError.new("Type parameter #{tp.scoped_name} is not of kind *\n#{result.type.source.format}") if !tp.kind.is_a?(AST::RegularKind)
+				unexpected_value.(result.type.source) if result.value
+				raise TypeError.new("Type parameter #{tp.scoped_name} is not of kind *\n#{result.type.source.format}") if !tp.type_params.empty?
 				result.type
 			when RefResult
 				args = AnalyzeArgs.new
-				if tp.kind.is_a?(AST::RegularKind)
-					coerce_typeparam(tp, Result.new(*coerce_typeval(result, AnalyzeArgs.new, nil, false)))
+				if tp.type_params.empty?
+					type, value = coerce_typeval(result, AnalyzeArgs.new, nil, false)
+					unexpected_value.(result.type.source) if value
+					type
 				else
+					# TODO: Check for typeclasses!
 					# TODO: Check if kinds match
-					# TODO: Ensure all parent arguments are passed on (create them at AST::Ref)
+
 					obj = result.obj
 					infer(obj)
 					Types::Ref.new(result.ast.source, obj, result.args, false)
 				end
+			when ValueFieldResult
+				unexpected_value.(result.src)
 			else
-				raise TypeError.new("Invalid argument for type parameter #{tp.scoped_name}\n#{result.src.format}")
+				raise "(unhandled #{result.class.inspect})"
 		end
 	end
 	
@@ -224,9 +246,7 @@
 				limit.args = index
 				[limit.var, true]
 			when RefResult
-				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, scoped, args.lvalue, result.args)
-				# TODO: Find out where this check should go
-				#raise TypeError.new("Type '#{result.first.text}' is not a valid l-value\n#{ast.source.format}") if args.lvalue
+				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, scoped, args, result.args)
 				
 				case result.ast
 					when AST::Ref
@@ -275,6 +295,9 @@
 		end if args.lvalue
 		
 		case ast
+			when ASTWrap
+				Result.new(ast.type, false)
+
 			# Values only
 			
 			when AST::ActionCall
@@ -480,12 +503,12 @@
 				end
 				
 			when AST::Index
-				indices = ast.args.map { |n| analyze_impl(n, args.next) }
+				indices = ast.args
 				
-				result = analyze_impl(ast.obj, args.next)
+				result = analyze_impl(ast.obj, args.next(typeclass: args.typeclass))
 				
 				type, value = case result
-					when RefResult
+					when RefResult, ValueFieldResult
 						coerce_typeval(result, args.next, indices)
 					else
 						raise TypeError.new("[] operator unsupported\n#{ast.source.format}")
@@ -517,7 +540,7 @@
 			var = c.var.prune
 			type = c.type.prune
 			type = view(type) if type.is_a? Types::Variable
-			raise TypeError.new(recmsg(var, type)) if @ctx.occurs_in?(var, type)
+			raise TypeError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
 			case type
 				when Types::Ref
 					field = type.ref.scope.names[c.name]
@@ -544,7 +567,7 @@
 	end
 	
 	def process_type_constraint(ast_type, unify_type)
-		analyze_args = AnalyzeArgs.new
+		analyze_args = AnalyzeArgs.new.next(typeclass: true)
 		
 		if ast_type
 			type = analyze_type(ast_type, analyze_args)
@@ -554,8 +577,8 @@
 	end
 	
 	def process_type_params
-		@obj.kind.params.map do |p|
-			process_type_constraint(p.type, Types::Ref.new(p.source, p)) if p.kind.params.empty?
+		@obj.type_params.map do |p|
+			process_type_constraint(p.type, Types::Ref.new(p.source, p)) if p.type_params.empty?
 		end
 	end
 	
@@ -567,12 +590,14 @@
 		process_type_params
 		
 		@result = (analyze_type(func.result, analyze_args) if func.result)
+
+		var_params = func.params.map(&:var)
 		
 		func.scope.names.each_value do |var|
 			next if var.is_a? AST::TypeParam
 			
 			@vars[var] = if var.type
-					analyze_type(var.type, analyze_args)
+					analyze_type(var.type, analyze_args.next(typeclass: var_params.include?(var)))
 				else
 					new_var(var.source)
 				end
@@ -590,17 +615,13 @@
 	
 	def parameterize(tvs)
 		t = tvs.map do |tv|
-			p = AST::TypeParam.new(tv.source, "%#{tv.text}", AST::RegularKind.new(tv.source), nil)
+			p = AST::TypeParam.new(tv.source, "%#{tv.text}", AST::KindParams.new(tv.source, [], []), nil, false)
 			p.declare_pass(@obj.scope)
 			unify(tv, Types::Ref.new(tv.source, p))
 			p
 		end
-		
-		if @obj.kind.params.empty? && !t.empty?
-			@obj.kind = AST::HigherKind.new(@obj.source, nil, t, AST::RegularKind.new(@obj.source))
-		else
-			@obj.kind.params.concat t
-		end
+
+		@obj.type_params.concat t
 	end
 	
 	def report_unresolved_vars(vars)
@@ -675,20 +696,20 @@
 
 		case @obj
 			when Core::Sizeable::Instance
-				p = @obj.kind.params.first
+				p = @obj.type_params.first
 				p = Types::Ref.new(p.source, p)
 				req_level(Core.src, p, :sizeable)
 			when Core::Copyable::Instance
-				p = @obj.kind.params.first
+				p = @obj.type_params.first
 				p = Types::Ref.new(p.source, p)
 				req_level(Core.src, p, :copyable)
 		end
 		
 		typeclass = @obj.typeclass.obj
 		analyze_args = AnalyzeArgs.new
-		raise TypeError, "Expected #{typeclass.kind.params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.kind.params.size
-		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.kind.params[i], analyze_type(arg, analyze_args)] }]
-		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, Types::Ref.new(p.source, p)] }]), false)
+		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
+		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, analyze_args)] }]
+		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Ref.new(p.source, p)] }]), false)
 		
 		InferContext.infer_scope(@obj.scope, @infer_args)
 		
@@ -723,11 +744,11 @@
 	end
 	
 	def map_type(obj, parent = [])
-		Types::Ref.new(obj.source, obj, Hash[parent], obj.kind.params.empty?)
+		Types::Ref.new(obj.source, obj, Hash[parent], obj.type_params.empty?)
 	end
 	
 	def create_type(parent)
-		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.kind.params.map { |p| [p, map_type(p)] } + parent]), false)
+		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, map_type(p)] } + parent]), false)
 	end
 	
 	def process

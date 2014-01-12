@@ -4,13 +4,13 @@ class Core
 	
 	class << self
 		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
-			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST.kind_params(src(2), args), ctx)
+			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST::KindParams.new(src(2), args, ctx))
 			Nodes << r
 			r
 		end
 		
 		def tci(tc, args, params = [], group = [])
-			AST::TypeClassInstance.new(src(2), ref(tc), args, AST::GlobalScope.new(group), AST.kind_params(src(2), params), [])
+			AST::TypeClassInstance.new(src(2), ref(tc), args, AST::GlobalScope.new(group), AST::KindParams.new(src(2), params, []))
 		end
 		
 		def src(lvl = 1)
@@ -26,37 +26,24 @@ class Core
 		end
 		
 		def param(name, tp = nil)
-			AST::TypeParam.new(src(2), name, AST::RegularKind.new(src(2)), tp)
+			AST::TypeParam.new(src(2), name, AST::KindParams.new(src(2), [], []), tp, false)
 		end
 		
-		def func(fname, args, result)
-			r = AST::Function.new(src(2), fname)
+		def func(fname, args, result, params = [])
+			r = AST::Function.new(src(2), fname, AST::KindParams.new(src(2), params, []))
 			r.params = args.each.map { |name, type| AST::Function::Param.new(src(2), r, name, type) }
 			r.result = result
 			r.scope = AST::LocalScope.new([])
 			r
 		end
 
-		def type_params_impl(obj, child, prefix, list)
-			list = ast.declared.owner
-			type_params = obj.kind.params.map { |tp| AST::TypeParam.new(tp.source, "P_#{prefix}#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil) }
-	
-			ref = if obj.kind.params.empty?
-				ref(obj)
-			else
-				AST::Index.new(src, ref(obj), type_params.map { |tp| ref(tp) })
-			end
-
-			if ast.declared.owner.kind_of?(AST::Program)
-				ref
-			else
-				AST::Field.new(src, ref, )
-			end
+		def type_func(name, type = nil)
+			AST::TypeFunction.new(src(2), name, AST::KindParams.new(src(2), [], []), type ? ref(type) : nil)
 		end
 
 		def type_params(obj)
 			# TODO: Handle all kinds here
-			params = Hash[AST.type_params(obj).map { |tp| [tp, AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::RegularKind.new(tp.source), nil)] }]
+			params = Hash[AST.type_params(obj).map { |tp| [tp, AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::KindParams.new(tp.source, [], []), nil, false)] }]
 		
 			list = [obj]
 			current = obj.declared.owner
@@ -66,10 +53,10 @@ class Core
 			end 
 			puts list.map{|n|n.scoped_name}
 			wrap_ref = proc do |result, n|
-				if n.kind.params.empty?
+				if n.type_params.empty?
 					result
 				else	
-					AST::Index.new(src, result, n.kind.params.map { |tp| ref(params[tp]) })
+					AST::Index.new(src, result, n.type_params.map { |tp| ref(params[tp]) })
 				end
 			end
 
@@ -88,17 +75,20 @@ class Core
 			type_params, type_ref = type_params(obj)
 			fields = obj.scope.names.values.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
 			
-			r = AST::Function.new(src, :construct)
+			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
 			
-			args = AST::TypeAlias.new(src, :Args, AST::Tuple.new(src, fields.map { |f| AST::TypeOf.new(src, AST::Field.new(src, type_ref.(), f.name)) }))
+			args = AST::Tuple.new(src, fields.map { |f| AST::TypeOf.new(src, AST::Field.new(src, type_ref.(), f.name)) })
+			args = AST::TypeAlias.new(src, :Args, args)
+
 			constructed = AST::TypeAlias.new(src, :Constructed, type_ref.())
 				
-			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST.kind_params(src, type_params), [])
+			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
 		
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', ref(constructed))), AST::Function::Param.new(src, r, :args, ref(args))]
 			r.result = ref(Core::Unit)
 			fields = fields.map { |field| AST::Field.new(src, AST::UnaryOp.new(src, '*', AST::NameRef.new(src, :obj)), field.name) }
-			r.scope = AST::LocalScope.new([AST::BinOp.new(src, AST::Tuple.new(src, fields), '=', AST::NameRef.new(src, :args))])
+			assign = AST::BinOp.new(src, AST::Tuple.new(src, fields), '=', AST::NameRef.new(src, :args))
+			r.scope = AST::LocalScope.new([assign])
 			r
 		
 			instance.run_pass(:declare_pass)
@@ -109,9 +99,9 @@ class Core
 		def create_def_action_constructor(obj)
 			type_params, type_ref = type_params(obj)
 
-			r = AST::Function.new(src, :construct)
+			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
 
-			instance = AST::TypeClassInstance.new(src, ref(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST.kind_params(src, type_params), [])
+			instance = AST::TypeClassInstance.new(src, ref(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::KindParams.new(src, type_params, []))
 		
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', type_ref.()))]
 			r.result = ref(Core::Unit)
@@ -156,7 +146,9 @@ class Core
 	class Cell < Core
 		Val = param(:Val, ref(Copyable::Node))
 		Next = param(:Next, ref(Tuple::Node))
-		Node = complex(:Cell, [Val, Next])
+		fval = AST::VariableDecl.new(src, :val, ref(Val), nil, {})
+		fnext = AST::VariableDecl.new(src, :next, ref(Next), nil, {})
+		Node = complex(:Cell, [Val, Next], AST::Struct, [fval, fnext])
 	end
 	
 	Nodes << tci(Tuple::Node, [ref(Unit)])
@@ -188,8 +180,7 @@ class Core
 	proc do
 		ForceCastIn = param :In
 		ForceCastOut = param :Out
-		ForceCast = func(:force_cast, {in: ref(ForceCastIn)}, ref(ForceCastOut))
-		ForceCast.kind = AST.kind_params(src, [ForceCastOut, ForceCastIn])
+		ForceCast = func(:force_cast, {in: ref(ForceCastIn)}, ref(ForceCastOut), [ForceCastOut, ForceCastIn])
 		Nodes << ForceCast
 	end.()
 
@@ -203,8 +194,8 @@ class Core
 	end
 
 	class Constructor < Core
-		Constructed = AST::TypeFunction.new(src, :Constructed, AST.kind_params(src, []), nil)
-		Args = AST::TypeFunction.new(src, :Args, AST.kind_params(src, []), ref(Tuple::Node))
+		Constructed = type_func :Constructed
+		Args = type_func(:Args, Tuple::Node)
 		
 		Construct = func(:construct, {obj: ptr(ref(Constructed)), args: ref(Args)}, ref(Unit))
 		Construct.props[:shared] = true
@@ -214,8 +205,8 @@ class Core
 	end
 
 	class Callable < Core
-		Args = AST::TypeFunction.new(src, :Args, AST.kind_params(src, []), ref(Tuple::Node))
-		Result = AST::TypeFunction.new(src, :Result, AST.kind_params(src, []), ref(Sizeable::Node))
+		Args = type_func(:Args, Tuple::Node)
+		Result = type_func(:Result, Sizeable::Node)
 		
 		Apply = func(:apply, {args: ref(Args)}, ref(Result))
 		

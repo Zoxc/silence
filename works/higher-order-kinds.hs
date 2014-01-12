@@ -1,10 +1,10 @@
-struct Test T
+struct Test[T]
 	field T
 
 	action create
 		field = 0
 		
-	struct Nested A
+	struct Nested[A]
 		action create
 		
 	shared test()

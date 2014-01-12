@@ -1,4 +1,4 @@
-class Cool T
+class Cool[T]
 	type R
 
 instance Cool bool

@@ -64,10 +64,8 @@ def print_ast(ast)
 			format.(ast, [[:id, :value, ast.__id__], [:nodes, ast.nodes]])
 		when AST::TypeClassInstance
 			format.(ast, [[:kind, :single], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
-		when AST::RegularKind
-			format.(ast, [])
-		when AST::HigherKind
-			format.(ast, [[:params, ast.params], [:result, :single], [:scope, :single]])
+		when AST::KindParams
+			format.(ast, [[:params, ast.params], [:ctx, ast.ctx]])
 		when AST::Complex
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:kind, :single]])
 		when AST::TypeParam
