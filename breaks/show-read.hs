@@ -1,8 +1,8 @@
 
-class Show T
+class Show[T]
 	shared show(i T) -> int
 	
-class Read T
+class Read[T]
 	shared read(i int) -> T
 	
 show[T](i T)

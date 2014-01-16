@@ -45,6 +45,8 @@ a2(v Cool[bool])
 struct A2[H]
 	field H
 
+	action create
+
 hello[T]()
 	.t A2[T]
 	return t.field
@@ -55,22 +57,24 @@ test_hello()
 class TCool[T]
 	type Hi
 
+struct Hi_Type
+
 instance[T] TCool T
-	struct Hi
+	alias Hi = Hi_Type
 
 t_a()
-	.var TCool[int].Hi
+	.var TCool[int].Hi = undef()
 	return var
 
 t_b[T]()
-	.var TCool[T].Hi
+	.var TCool[T].Hi = undef()
 	return var
 	
 itest(y)
 	y()
 	
 export itest_e()
-	.f () -> bool
+	.f () -> bool = undef()
 	itest(f)
 	
 class RecursiveClass[T]
@@ -88,17 +92,19 @@ instance[T RecursiveClass] RecursiveClass List[T]
 		return RecursiveClass.test(v.field)
 
 RecursiveClass_a()
-	.h List[bool]
+	.h List[bool] = undef()
 	RecursiveClass.test h
 
 class TypeFuncCool[T]
 	type R
 
+struct R_Type
+
 instance TypeFuncCool bool
-	struct R
+	alias R = R_Type
 
 TypeFunc_a[T](i T)
-	.hello TypeFuncCool[T].R
+	.hello TypeFuncCool[T].R = undef()
 	
 export TypeFunc_b()
 	TypeFunc_a(true)

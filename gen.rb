@@ -199,6 +199,15 @@ class Codegen
 	def mangle(ast, map, prefix = true)
 		"_" + mangle_impl(ast, map)
 	end
+
+	def idx(i)
+		case i
+			when 0
+				"f_val"
+			else
+				"f_next.#{idx(i - 1)}"
+		end
+	end
 	
 	def function_proto(ast, map, bare = false)
 		result = ast.ctype.type.args[Core::Func::Result]
@@ -256,7 +265,7 @@ class Codegen
 				self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.type_params.first], map)
 				
 				o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
-				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.f_#{i}" }.join});\n}\n\n"
+				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.#{idx i}" }.join});\n}\n\n"
 				
 				@out[:func] << o
 			when Core::Ptr::Node
@@ -269,15 +278,6 @@ class Codegen
 				o << "\n{\n"
 				o << "   void *data;\n"
 				o << "   void (*func)(#{(["void *", c_type(result, map) + " *"] + args.map{|a| c_type(a, map) }).join(", ")});\n"
-				o << "};\n\n"
-				@out[:struct] << o
-			when Core::Cell::Node
-				fields = [map.params[Core::Cell::Val]] + map.params[Core::Cell::Next].tuple_map
-				name = mangle(ast, map)
-				o = "struct #{name}"
-				@out[:struct_forward] << o << ";\n"
-				o << "\n{\n"
-				o << fields.each_with_index.map { |f, i| "   #{c_type(f, map)} f_#{i};\n" }.join
 				o << "};\n\n"
 				@out[:struct] << o
 			when AST::Function

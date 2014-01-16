@@ -2,22 +2,22 @@ class Cool[T]
 	type R
 
 instance Cool bool
-	struct R
+	alias R = bool
 
-struct Hello Type
+struct Hello[Type]
 	field Cool[Type].R
 
 a2[T](i T)
-	.hello Cool[T].R
-	.var Hello[T]
+	.hello Cool[T].R = undef()
+	.var Hello[T] = undef()
 	
 export b2()
 	a2(true)
 
 		
 a[T Cool]()
-	.var1 T
-	.var2 Cool[T].R
+	.var1 T = undef()
+	.var2 Cool[T].R = undef()
 	var1 = var2
 	
 export b()
@@ -26,9 +26,9 @@ export b()
 	
 
 am[T, U](i T)
-	.var Cool[T].R
-	.var2 Cool[U].R
-	var = (var2 = 1)
+	.var Cool[T].R = undef()
+	.var2 Cool[U].R = undef()
+	var = (var2 = false)
 	
 export b3()
 	am[bool, bool](true)

@@ -1,4 +1,4 @@
-class TypeFuncCool T
+class TypeFuncCool[T]
 	type R
 	
 use_func[T](i T)

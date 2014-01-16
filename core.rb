@@ -45,6 +45,8 @@ class Core
 			# TODO: Handle all kinds here
 			params = Hash[AST.type_params(obj).map { |tp| [tp, AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::KindParams.new(tp.source, [], []), nil, false)] }]
 		
+			# TODO: Disallow structs in typeclass instances. They have no owner
+
 			list = [obj]
 			current = obj.declared.owner
 			while !current.kind_of?(AST::Program)
@@ -177,6 +179,12 @@ class Core
 	String = complex :string
 	Char = complex :char
 	
+	proc do
+		UndefT = param :T
+		Undef = func(:undef, {}, ref(UndefT), [UndefT])
+		Nodes << Undef
+	end.()
+
 	proc do
 		ForceCastIn = param :In
 		ForceCastOut = param :Out

@@ -1,2 +1,2 @@
 export b()
-	.var String
+	.var

@@ -10,7 +10,7 @@
 
 	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :lvalue) do
 		def to_s
-			"#{"lvalue" if lvalue} #{var.real_text} = #{type.text}.#{name} [#{args.map{ |t|t .text }.join(", ")}]"
+			"#{"lvalue" if lvalue} #{var.real_text} = #{type.text}.#{name} #{"[#{args.map{ |t|t .text }.join(", ")}]" if args}"
 		end
 	end
 	
@@ -74,19 +74,23 @@
 		@ctx.require_level(src, type, level)
 	end
 	
+	# TODO: Make scoped and typeclass into an enum of NoTypeclasses, ViewTypeclasses, ScopedTypeclasses
+	# TODO: Make lvalue and tuple_lvalue into an enum of NotLValue, TupleLValue, LValue
 	class AnalyzeArgs
-		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass
+		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped
 		def initialize
 			@lvalue = false
 			@tuple_lvalue = false
 			@typeof = false
 			@typeclass = false
+			@scoped = false
 		end
 		
 		def next(opts = {})
 			new = dup
 			new.typeof = opts[:typeof] || @typeof
 			new.lvalue = opts[:lvalue] || false
+			new.scoped = opts[:scoped] || false
 			new.typeclass = opts[:typeclass] || false
 			new.tuple_lvalue = opts[:tuple_lvalue] || false
 			new
@@ -126,10 +130,10 @@
 		end
 	end
 	
-	def analyze_ref(source, obj, indices, scope, args, parent_args)
+	def analyze_ref(source, obj, indices, args, parent_args)
 		case obj
 			when AST::TypeClass
-				if !scope
+				if !args.scoped
 					if args.typeclass
 						type_class_result = new_var(source)
 						indices ||= []
@@ -154,7 +158,7 @@
 			when AST::TypeClass
 				limit = typeclass_limit(source, obj, result.args)
 				
-				if scope
+				if args.scoped
 					# Put a typeclass in Result. It will only be used by AST::Field anyway
 					#full_result = TypeclassResult.new(limit)
 				else
@@ -219,7 +223,7 @@
 			when RefResult
 				args = AnalyzeArgs.new
 				if tp.type_params.empty?
-					type, value = coerce_typeval(result, AnalyzeArgs.new, nil, false)
+					type, value = coerce_typeval(result, AnalyzeArgs.new, nil)
 					unexpected_value.(result.type.source) if value
 					type
 				else
@@ -237,7 +241,7 @@
 		end
 	end
 	
-	def coerce_typeval(result, args, index = nil, scoped = false)
+	def coerce_typeval(result, args, index = nil)
 		case result
 			when Result
 				[result.type, result.value]
@@ -246,7 +250,7 @@
 				limit.args = index
 				[limit.var, true]
 			when RefResult
-				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, scoped, args, result.args)
+				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, args, result.args)
 				
 				case result.ast
 					when AST::Ref
@@ -480,10 +484,10 @@
 					RefResult.new(ast, ast.obj, parent_args)
 				end
 			when AST::Field
-				next_args = args.next(lvalue: args.lvalue)
+				next_args = args.next(lvalue: args.lvalue, scoped: true)
 				result = analyze_impl(ast.obj, next_args)
 				
-				type, value = coerce_typeval(result, next_args, nil, true)
+				type, value = coerce_typeval(result, next_args, nil)
 				
 				if value
 					result = new_var(ast.source)
@@ -503,13 +507,15 @@
 				end
 				
 			when AST::Index
+				next_args = args.next(scoped: args.scoped, typeclass: args.typeclass)
+
 				indices = ast.args
-				
-				result = analyze_impl(ast.obj, args.next(typeclass: args.typeclass))
+
+				result = analyze_impl(ast.obj, next_args)
 				
 				type, value = case result
 					when RefResult, ValueFieldResult
-						coerce_typeval(result, args.next, indices)
+						coerce_typeval(result, next_args, indices)
 					else
 						raise TypeError.new("[] operator unsupported\n#{ast.source.format}")
 				end
@@ -540,7 +546,6 @@
 			var = c.var.prune
 			type = c.type.prune
 			type = view(type) if type.is_a? Types::Variable
-			raise TypeError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
 			case type
 				when Types::Ref
 					field = type.ref.scope.names[c.name]
@@ -560,6 +565,8 @@
 					
 					true
 				when Types::Variable
+					# TODO: Find out when this is really required
+					raise TypeError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
 				else
 					raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 			end

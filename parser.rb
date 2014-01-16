@@ -118,6 +118,8 @@ class Parser
 						self.class
 					when :type
 						type_function
+					when :alias
+						alias_type
 					when :action
 						action
 					else
@@ -172,6 +174,15 @@ class Parser
 			else
 				return r
 			end
+		end
+	end
+	
+	def alias_type
+		source do |s|
+			step
+			name = match :id
+			match(:sym, '=')
+			AST::TypeAlias.new(s, name, expression)
 		end
 	end
 	

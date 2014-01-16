@@ -193,8 +193,8 @@ module Types
 					"#{@args[Core::Func::Args].text} -> #{@args[Core::Func::Result].text}"
 				when Core::Ptr::Node
 					"*#{@args[Core::Ptr::Type].text}"
-				#when Core::Unit, Core::Cell::Node
-				#	"(#{tuple_map.map(&:text).join(', ')})"
+				when Core::Unit, Core::Cell::Node
+					"(#{tuple_map.map(&:text).join(', ')})"
 				else
 					"#{"!" unless @plain}#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end

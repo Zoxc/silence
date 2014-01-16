@@ -86,6 +86,10 @@ class FuncCodegen
 		
 		@vars.map { |v| v.decl(self) }.join + "\n" + @out.join("\n")
 	end
+
+	def idx(i)
+		@gen.idx(i)
+	end
 	
 	def ref(obj, params)
 		map = {}
@@ -182,7 +186,7 @@ class FuncCodegen
 			when :tuple
 				tuple_map = type.tuple_map
 				lval.reverse.each_with_index do |v, i|
-					assign(nil, tuple_map[i], v, "(#{rhs}).f_#{i}")
+					assign(nil, tuple_map[i], v, "(#{rhs}).#{idx i}")
 				end
 				copy_var(rhs, var.ref, type) if var
 		end
@@ -324,7 +328,7 @@ class FuncCodegen
 				ast.args.each_with_index do |a, i|
 					arg = new_var
 					convert(a, arg)
-					o "#{args.ref}.f_#{i} = #{arg.ref};"
+					o "#{args.ref}.#{idx i} = #{arg.ref};"
 					del_var arg, false
 				end
 				assign_var(args, ast.gen[:args], nil)
