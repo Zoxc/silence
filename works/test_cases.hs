@@ -108,3 +108,11 @@ TypeFunc_a[T](i T)
 	
 export TypeFunc_b()
 	TypeFunc_a(true)
+
+struct ValueInTypeParamHi[p :: int]
+	shared hi()
+		return p
+
+export value_in_type_param()
+	.a = ValueInTypeParamHi[4].p
+	.h int = ValueInTypeParamHi[6].hi()

@@ -90,8 +90,8 @@ class FuncCodegen
 	def idx(i)
 		@gen.idx(i)
 	end
-	
-	def ref(obj, params)
+
+	def map_ref(obj, params)
 		map = {}
 		
 		params.each do |k, v|
@@ -100,7 +100,7 @@ class FuncCodegen
 		
 		owner = obj.declared.owner
 		
-		if owner.is_a?(AST::TypeClass)	
+		if owner.is_a?(AST::TypeClass)
 			ref, new_map = @gen.find_instance(owner.ctype.type, TypeContext::Map.new({}, map), obj)
 			
 			ref.type_params.each_with_index do |p, i|
@@ -114,7 +114,12 @@ class FuncCodegen
 			obj = ref
 			map = new_map
 		end
-		
+
+		return obj, map
+	end
+	
+	def ref(obj, params)
+		obj, map = map_ref(obj, params)
 		@gen.ref(obj, map)
 	end
 	
@@ -128,7 +133,15 @@ class FuncCodegen
 	end
 	
 	def assign_f(var, ast, obj, params)
-		ref = ref(obj, params)
+		obj, map = map_ref(obj, params)
+
+		if obj.is_a?(AST::TypeParam)
+			direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast}), nil, [map[obj].value.to_s], ast)
+			assign_var(var, ast, nil)
+			return
+		end
+
+		ref = @gen.ref(obj, map)
 		
 		if obj.is_a?(AST::Function)
 			assign_func(var, nil, ref)

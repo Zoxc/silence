@@ -14,6 +14,8 @@ module Types
 				a.equal?(b)
 			when Types::Ref
 				a.ref == b.ref and a.plain == b.plain
+			when Types::Value
+				a.value == b.value
 		end
 		
 		return cmp_types_args(a.type_args, b.type_args, &cmp)
@@ -198,6 +200,19 @@ module Types
 				else
 					"#{"!" unless @plain}#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
 			end
+		end
+	end
+
+	class Value < Type
+		attr_accessor :value
+		
+		def initialize(source, value)
+			@source = source
+			@value = value
+		end
+
+		def text
+			"::#{value}"
 		end
 	end
 end

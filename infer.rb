@@ -109,7 +109,7 @@
 		
 		args.each_with_index do |arg, i|
 			param = params[i]
-			parent_args[param] = coerce_typeparam(param, arg)
+			parent_args[param] = coerce_typeparam(param, arg, parent_args)
 		end
 		
 		params.each do |param|
@@ -118,8 +118,13 @@
 	end
 	
 	def lvalue_check(source, obj, lvalue)
-		return unless lvalue && obj.is_a?(AST::Function)
-		raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
+		return unless lvalue
+		case obj
+			when AST::Function
+				raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
+			when AST::TypeParam
+				raise TypeError.new("Type parameter '#{obj.name}' is not a valid l-value\n#{source.format}")
+		end
 	end
 
 	class ASTWrap
@@ -199,7 +204,7 @@
 		end
 	end
 	
-	ValueFieldResult = Struct.new(:limit) do # TODO: Try to merge this with FieldResult
+	ValueFieldResult = Struct.new(:limit) do
 		def src
 			limit.source
 		end
@@ -209,35 +214,53 @@
 		end
 	end
 
-	def coerce_typeparam(tp, ast)
+	def eval_ast(ast)
+		case ast
+			when AST::Literal
+				case ast.type
+					when :int
+						# TODO: Ensure ast.result is a fixed_type and a primitive integer
+						Types::Value.new(ast.source, ast.value)
+					else
+						raise TypeError.new("Unable to evaluate literal at compile-time\n#{ast.source.format}")
+				end
+			else
+				raise TypeError.new("Unable to evaluate expression at compile-time\n#{ast.source.format}")
+		end
+	end
+
+	def coerce_typeparam(tp, ast, parent_args)
 		unexpected_value = proc do |source|
 			raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{source.format}")
 		end
 
 		result = analyze_impl(ast, AnalyzeArgs.new)
-		case result
-			when Result
-				unexpected_value.(result.type.source) if result.value
-				raise TypeError.new("Type parameter #{tp.scoped_name} is not of kind *\n#{result.type.source.format}") if !tp.type_params.empty?
-				result.type
-			when RefResult
-				args = AnalyzeArgs.new
-				if tp.type_params.empty?
-					type, value = coerce_typeval(result, AnalyzeArgs.new, nil)
-					unexpected_value.(result.type.source) if value
-					type
-				else
+
+		if tp.type_params.empty?
+			type, value = coerce_typeval(result, AnalyzeArgs.new, nil)
+
+			if value
+				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{result.type.source}") unless tp.value
+				tp_type, inst_args = inst_ex(tp.source, tp, parent_args)
+				unify(tp_type, type)
+
+				eval_ast(ast)
+			else
+				type
+			end
+
+		else # Higher-order
+			case result
+				when RefResult
 					# TODO: Check for typeclasses!
 					# TODO: Check if kinds match
 
 					obj = result.obj
 					infer(obj)
 					Types::Ref.new(result.ast.source, obj, result.args, false)
-				end
-			when ValueFieldResult
-				unexpected_value.(result.src)
-			else
-				raise "(unhandled #{result.class.inspect})"
+				else
+					raise TypeError.new("Expected explicit reference for higher-order type parameter #{tp.scoped_name}\n#{result.src.format}")
+			end
 		end
 	end
 	
@@ -254,10 +277,14 @@
 				
 				case result.ast
 					when AST::Ref
-						result.ast.gen = [resultt.type, inst_args] 
+						if result.obj.is_a?(AST::TypeParam) && result.obj.value
+							# Include the type param itself in the required map if it's a value
+							inst_args.params[result.obj] = map_type(result.obj)
+						end
+						result.ast.gen = [resultt.type, inst_args]
 					when AST::Field
 						result.ast.gen = {result: resultt.type, type: :single, ref: result.obj, args: inst_args}
-				end if resultt.is_a?(Result)
+				end
 
 				coerce_typeval(resultt, args)
 			else
@@ -585,7 +612,7 @@
 	
 	def process_type_params
 		@obj.type_params.map do |p|
-			process_type_constraint(p.type, Types::Ref.new(p.source, p)) if p.type_params.empty?
+			process_type_constraint(p.type, Types::Ref.new(p.source, p)) if (p.type_params.empty? && !p.value)
 		end
 	end
 	
@@ -765,7 +792,11 @@
 			when AST::TypeClassInstance
 				process_instance
 			when AST::TypeParam
-				create_type([])
+				if value.value
+					finalize(analyze_type(value.type, AnalyzeArgs.new), true)
+				else
+					create_type([])
+				end
 			when AST::Complex
 				process_type_params
 				

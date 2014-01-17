@@ -156,6 +156,8 @@
 	def inst_type(args, type)
 		type = type.prune
 		case type
+			when Types::Value
+				Types::Value.new(src_wrap(type.source, args), type.value)
 			when Types::Variable
 				args.vars[type] ||= new_var(src_wrap(type.source, args), type.name)
 			when Types::Ref
@@ -163,7 +165,7 @@
 
 				if ref
 					if type.args.empty?
-						# TypeParameter of RegularKind
+						# TypeParameter of RegularKind or a value
 						ref
 					else
 						# A higher-order type parameter
@@ -221,6 +223,8 @@
 		error.() if (a.class != b.class)
 		
 		error.() unless case a
+			when Types::Value
+				a.value == b.value
 			when Types::Ref
 				a.ref == b.ref && a.plain == b.plain
 			else

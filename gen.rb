@@ -41,6 +41,8 @@ class Codegen
 	def inst_type(type, map)
 		type = type.prune
 		case type
+			when Types::Value
+				type
 			when Types::Variable
 				r = map.vars[type]
 				raise "Unable to find type for #{type}\n#{type.stack}\n#{type.source.format}" unless r
@@ -123,6 +125,9 @@ class Codegen
 	end
 
 	def mangle_type(type, map)
+		inst_type = inst_type(type, map)
+		return "_V#{inst_type.value}" if inst_type.is_a?(Types::Value)
+
 		ast, map, plain = fixed_type(type, map)
 		check_map map
 		if plain

@@ -159,7 +159,14 @@ class Parser
 	
 	def type_param
 		source do |s|
-			AST::TypeParam.new(s, match(:id), kind_params, opt_type_specifier, false)
+			name = match(:id)
+			kind = kind_params
+			type, value = if matches(:sym, '::')
+				[expression, true]
+			else
+				[opt_type_specifier, false]
+			end
+			AST::TypeParam.new(s, name, kind, type, value)
 		end
 	end
 	
