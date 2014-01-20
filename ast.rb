@@ -476,7 +476,7 @@ module AST
 	end
 	
 	class Function < HigherKinded
-		attr_accessor :params, :result, :scope, :type, :ctype, :props, :type_param_count, :action_type
+		attr_accessor :params, :result, :scope, :type, :ctype, :props, :type_param_count, :action_type, :self
 		attr_writer :name
 		
 		class Param < Node
@@ -520,6 +520,14 @@ module AST
 			super
 			@declared = @name ? scope.declare(@name, self) : scope
 			@type_param_count = type_params.size
+
+			case scope.owner
+				when AST::Struct, AST::TypeClassInstance
+					if !props[:shared]
+						@self = Variable.new(source, :self, @scope, nil, nil)
+						@self.declared = @scope.declare(:self, @self)
+					end
+			end
 		end
 		
 		def visit

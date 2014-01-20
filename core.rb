@@ -119,7 +119,7 @@ class Core
 	
 	# Typeclasses which allows you to increase required levels in type parameters
 	
-	class Sizeable < Core
+	class Sizeable < Core # TODO: Rename this
 		T = param :T
 		Node = complex(:Sizeable, [T], AST::TypeClass)
 		
@@ -180,6 +180,12 @@ class Core
 	Char = complex :char
 	
 	proc do
+		SizeOfT = param(:T, ref(Sizeable::Node))
+		SizeOf = func(:size_of, {}, ref(UInt), [SizeOfT])
+		Nodes << SizeOf
+	end.()
+
+	proc do
 		UndefT = param :T
 		Undef = func(:undef, {}, ref(UndefT), [UndefT])
 		Nodes << Undef
@@ -220,6 +226,16 @@ class Core
 		
 		T = param :T
 		Node = complex(:Callable, [T], AST::TypeClass, [Args, Result, Apply])
+	end
+
+	class Indexable < Core
+		Index = type_func(:Index, Tuple::Node)
+		Result = type_func(:Result, Sizeable::Node)
+		
+		Ref = func(:ref, {index: ref(Index)}, ptr(ref(Result)))
+		
+		T = param :T
+		Node = complex(:Indexable, [T], AST::TypeClass, [Index, Result, Ref])
 	end
 
 	proc do

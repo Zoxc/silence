@@ -298,11 +298,13 @@ class Codegen
 					else
 						self_type = owner.ctype.type
 					end
-					o << "    auto self = (#{c_type(self_type, map)} *)data;\n"
+					o << "    auto &v_self = *(#{c_type(self_type, map)} *)data;\n"
 				end
 				ast.scope.names.values.each do |value|
 					next if !value.is_a?(AST::Variable)
 					next if ast.params.map(&:var).include?(value)
+					next if ast.self.equal?(value)
+
 					o << "    #{c_type(ast.ctype.vars[value], map)} v_#{value.name};\n"
 				end
 				

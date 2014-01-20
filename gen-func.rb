@@ -127,81 +127,174 @@ class FuncCodegen
 		@out << ("    " + str)
 	end
 	
-	def assign_func(var, data, ref)
+	def gen_func(data, ref, type)
+		var = new_var
 		o var.ref + ".func = " + ref + ";"
 		(o var.ref + ".data = &" + data + ";") if data
+		assign_var(var, type, nil)
+		del_var var
+		return "&#{var.ref}"
 	end
 	
-	def assign_f(var, ast, obj, params)
+	def make_ptr(type)
+		InferContext.make_ptr(Core.src, type)
+	end
+
+	def assign_f_impl(type, obj, params)
 		obj, map = map_ref(obj, params)
 
 		if obj.is_a?(AST::TypeParam)
-			direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast}), nil, [map[obj].value.to_s], ast)
-			assign_var(var, ast, nil)
-			return
+			# TODO: This should reference read-only memory instead of constructing a new value
+			tvar = new_var
+			direct_call(tvar, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => type}), nil, [map[obj].value.to_s], type)
+			assign_var(tvar, type, nil)
+			del_var tvar
+			return "&#{tvar.ref}"
 		end
 
 		ref = @gen.ref(obj, map)
-		
+
 		if obj.is_a?(AST::Function)
-			assign_func(var, nil, ref)
-			assign_var(var, ast, nil, true)
+			gen_func(nil, ref, type)
 		else
-			assign_var(var, ast, ref, true)
+			"&#{ref}"
+		end
+	end
+
+	def assign_f(var, type, obj, params)
+		assign_var(var, make_ptr(type), assign_f_impl(type, obj, params), true)
+	end
+
+	def readonly(ast, var)
+		case ast
+			when AST::UnaryOp, AST::Field, AST::Ref
+				lvalue(ast, var)
+				nil
+			else
+				tvar = new_var
+				convert(ast, tvar)
+				assign_var(var, make_ptr(tvar.type), "&#{tvar.ref}")
+				tvar
+		end
+	end
+
+	def call_args(ast, var, lval = nil)
+		if ast.gen[:type] == :call
+			obj = new_var
+			ovar = readonly(ast.obj, obj)
+		end
+		
+		args = new_var
+		ast.args.each_with_index do |a, i|
+			arg = new_var
+			convert(a, arg)
+			o "#{args.ref}.#{idx i} = #{arg.ref};"
+			del_var arg, false
+		end
+		assign_var(args, ast.gen[:args], nil)
+		
+		case ast.gen[:type]
+			when :call
+				direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), "*#{obj.ref}", [args.ref], ast.gen[:result])
+		
+			when :index
+				direct_call(var, ref(Core::Indexable::Ref, {Core::Indexable::T => ast.gen[:obj_type]}), lval, [args.ref], ast.gen[:result])
+		
+			when :construct
+				rvar = var ? var : new_var
+				assign_var(rvar, ast.gen[:result], nil)
+				direct_call(nil, ref(Core::Constructor::Construct, {Core::Constructor::T => ast.gen[:obj_type]}), nil, ["&#{rvar.ref}", args.ref], Core::Unit.ctype.type)
+				del_var rvar unless var
+			else
+				raise "(unhandled)"
+		end
+
+		del_var args, false
+		
+		if ast.gen[:type] == :call
+			del_var ovar if ovar
+			del_var obj
 		end
 	end
 	
-	def lvalue(ast)
+	# TODO: Have this return a variable with the pointer to the object and a variable to delete after usage of the object is done
+	# Make it pass in a var for the pointer to the object instead?
+	def lvalue(ast, var)
 		case ast
+			when AST::Call
+				raise unless ast.gen[:type] == :index
+
+				obj_ptr = new_var
+				lvalue(ast.obj, obj_ptr)
+				call_args(ast, var, "*#{obj_ptr.ref}")
+				del_var obj_ptr
 			when AST::UnaryOp
-				ptr = new_var
-				convert(ast.node, ptr)
-				return [:single, "*#{ptr.ref}", ptr]
+				case ast.op
+					when '*'
+						convert(ast.node, var)
+					when '&'
+						lvalue(ast.node, var)
+					else
+						raise "(unhandled)"
+				end
 			when AST::Field
 				case ast.gen[:type]
 					when :single
-						return [:single, ref(ast.gen[:ref], ast.gen[:args].last.params)]
+						assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
 					when :field
-						single, lval, lvar = lvalue(ast.obj)
-						return [:single, "(#{lval}).f_#{ast.gen[:ref].name}", lvar]
+						obj_ptr = new_var
+						lvalue(ast.obj, obj_ptr)
+
+						ref = if ast.gen[:ref].is_a?(AST::Function)
+							gen_func(obj_ptr.ref, ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
+						else
+							"&#{obj_ptr.ref}->f_#{ast.gen[:ref].name}"
+						end
+
+						assign_var(var, make_ptr(ast.gen[:result]), ref, true)
+						del_var obj_ptr
 				end
 			when AST::Ref
 				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner == @func
-					return [:single, "v_#{ast.obj.name}"]
+					assign_var(var, make_ptr(ast.gen), "&v_#{ast.obj.name}", true)
 				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-					return [:single, "self->f_#{ast.obj.name}"]
+					assign_var(var, make_ptr(ast.gen.first), "&v_self.f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
 				else
-					return [:single, ref(ast.obj, ast.gen.last.params)]
+					assign_f(var, ast.gen.first, ast.obj, ast.gen.last.params)
 				end
-			when AST::Tuple
-				[:tuple, ast.nodes.reverse.map { |n| lvalue(n) }]
 			else
-				raise "Unknown"
+				raise "(unhandled #{ast.class})"
 		end
 	end
 	
 	def direct_call(var, ref, obj, args, result_type)
 		rvar = var ? var : new_var
 		assign_var(rvar, result_type, nil)
-		o "#{ref}(#{obj ? "&#{obj.ref}" : "0"}, &#{rvar.ref}#{args.map{|a| ", #{a}"}.join});"
+		o "#{ref}(#{obj ? "&#{obj}" : "0"}, &#{rvar.ref}#{args.map{|a| ", #{a}"}.join});"
 		del_var rvar unless var
 	end
 	
-	def assign(var, type, lvalue_result, rhs)
+	def assign(var, type, lhs, rhs)
 		assign_var(var, type, nil) if var
-		kind, lval, tvar = lvalue_result
-		case kind
-			when :single
-				destroy_var(lval, type)
-				copy_var(rhs, lval, type)
-				copy_var(lval, var.ref, type) if var
-				del_var tvar
-			when :tuple
+
+		case lhs
+			when AST::Tuple
 				tuple_map = type.tuple_map
-				lval.reverse.each_with_index do |v, i|
+
+				lhs.nodes.each_with_index do |v, i|
 					assign(nil, tuple_map[i], v, "(#{rhs}).#{idx i}")
 				end
 				copy_var(rhs, var.ref, type) if var
+			else
+				ptr = new_var
+				dptr = "*#{ptr.ref}"
+				lvalue(lhs, ptr)
+
+				destroy_var(dptr, type)
+				copy_var(rhs, dptr, type)
+				copy_var(dptr, var.ref, type) if var
+
+				del_var ptr
 		end
 	end
 	
@@ -257,42 +350,14 @@ class FuncCodegen
 					else
 						raise "Unknown literal type #{ast.type}"
 				end)
-			when AST::UnaryOp
-				case ast.op
-					when '*'
-						ptr = new_var
-						convert(ast.node, ptr)
-						assign_var(var, ast.gen, "*#{ptr.ref}", true)
-						del_var ptr
-					when '&'
-						single, lval, tvar = lvalue(ast.node)
-						assign_var(var, ast.gen, "&(#{lval})", true)
-						del_var tvar
-				end
-			when AST::Field
-				case ast.gen[:type]
-					when :single
-						assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
-					when :field
-						single, lval, lvar = lvalue(ast.obj)
-						if ast.gen[:ref].is_a?(AST::Function)
-							assign_func(var, lval, ref(ast.gen[:ref], ast.gen[:args].params))
-							assign_var(var, ast.gen[:result], nil, true)
-						else
-							assign_var(var, ast.gen[:result], "(#{lval}).f_#{ast.gen[:ref].name}", true)
-						end
-						del_var lvar
-				end
+			when AST::UnaryOp, AST::Ref, AST::Field
+				tvar = new_var
+				lvalue(ast, tvar)
+				type = @gen.inst_type(tvar.type, @map).args.values.first
+				assign_var(var, type, "*#{tvar.ref}", true)
+				del_var tvar
 			when AST::Index
 				convert(ast.obj, var)
-			when AST::Ref
-				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner == @func
-					assign_var(var, ast.gen, "v_#{ast.obj.name}", true)
-				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-					assign_var(var, ast.gen.first, "self->f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
-				else
-					assign_f(var, ast.gen.first, ast.obj, ast.gen.last.params)
-				end
 			when AST::Return # TODO: Ensure all variables in scope get's destroyed on return
 				convert(ast.value, RealVar.new("(*result)", nil))
 				@current_vars.reverse.each { |v| destroy_var(v.ref, v.type) }
@@ -302,7 +367,7 @@ class FuncCodegen
 				rhs = new_var
 				convert(ast.rhs, rhs)
 				if ast.op == '='
-					assign(var, ast.gen, lvalue(ast.lhs), rhs.ref)
+					assign(var, ast.gen, ast.lhs, rhs.ref)
 				else
 					lhs = new_var
 					convert(ast.lhs, lhs)
@@ -332,31 +397,7 @@ class FuncCodegen
 			when AST::Grouped
 				convert(ast.node, var)
 			when AST::Call
-				if ast.gen[:call]
-					obj = new_var
-					convert(ast.obj, obj) 
-				end
-				
-				args = new_var
-				ast.args.each_with_index do |a, i|
-					arg = new_var
-					convert(a, arg)
-					o "#{args.ref}.#{idx i} = #{arg.ref};"
-					del_var arg, false
-				end
-				assign_var(args, ast.gen[:args], nil)
-				
-				if ast.gen[:call]
-					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), obj, [args.ref], ast.gen[:result])
-				else
-					rvar = var ? var : new_var
-					assign_var(rvar, ast.gen[:result], nil)
-					direct_call(nil, ref(Core::Constructor::Construct, {Core::Constructor::T => ast.gen[:obj_type]}), nil, ["&#{rvar.ref}", args.ref], Core::Unit.ctype.type)
-					del_var rvar unless var
-				end
-				del_var args, false
-				
-				del_var obj if ast.gen[:call]
+				call_args(ast, var)
 			else
 				raise "(unhandled #{ast.class})"
 		end

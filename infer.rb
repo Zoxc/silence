@@ -60,8 +60,12 @@
 		self.class.make_tuple(source, args)
 	end
 	
-	def make_ptr(source, type)
+	def self.make_ptr(source, type)
 		Types::Ref.new(source, Core::Ptr::Node, {Core::Ptr::Type => type})
+	end
+	
+	def make_ptr(source, type)
+		self.class.make_ptr(source,type)
 	end
 	
 	def typeclass_limit(source, typeclass, args)
@@ -320,7 +324,7 @@
 	
 	def analyze_impl(ast, args)
 		case ast
-			when AST::Ref, AST::Field, AST::UnaryOp, AST::Tuple
+			when AST::Ref, AST::Field, AST::UnaryOp, AST::Tuple, AST::Call
 			else
 				raise TypeError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
 		end if args.lvalue
@@ -369,24 +373,41 @@
 				
 				Result.new(unit_type(ast.source), true)
 			when AST::Call
-				type, value = analyze(ast.obj, args.next)
+				type, value = analyze(ast.obj, args.next(lvalue: args.lvalue))
 				
 				result = new_var(ast.source)
 				
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
 				
-				ast.gen = {call: value, args: callable_args, result: result, obj_type: type}
+				ast.gen = {args: callable_args, result: result, obj_type: type}
 				
-				if value
-					# It's a call
-					limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
-					limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
-					limit.eq_limit(ast.source, result, Core::Callable::Result)
+				ast.gen[:type] = if value
+					if args.lvalue
+						# It's a indexed assignment
+						limit = typeclass_limit(ast.source, Core::Indexable::Node, {Core::Indexable::T => type})
+						limit.eq_limit(ast.source, callable_args, Core::Indexable::Index)
+						limit.eq_limit(ast.source, result, Core::Indexable::Result)
+
+						ast.gen[:result] = make_ptr(ast.source, ast.gen[:result]) # We return a pointer
+
+						:index
+					else
+						# It's a call
+						limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
+						limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
+						limit.eq_limit(ast.source, result, Core::Callable::Result)
+
+						:call
+					end
 				else
+					raise TypeError.new("A constructor is not a valid l-value\n#{ast.source.format}") if args.lvalue
+
 					# It's a constructor
 					limit = typeclass_limit(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
 					limit.eq_limit(ast.source, callable_args, Core::Constructor::Args)
 					limit.eq_limit(ast.source, result, Core::Constructor::Constructed)
+
+					:construct
 				end
 				
 				req_level(ast.source, result, :sizeable) # Constraint on Callable.Result / Types must be sizeable for constructor syntax
@@ -586,6 +607,7 @@
 					
 					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 					
+					# TODO: Reduce fields to single when shared
 					c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args}
 					
 					unify(field_type, var)
@@ -632,6 +654,17 @@
 			
 			@vars[var] = if var.type
 					analyze_type(var.type, analyze_args.next(typeclass: var_params.include?(var)))
+				elsif func.self.equal?(var)
+					owner = func.declared.owner
+					case owner
+						when AST::Struct
+							owner.ctype.type
+						when AST::TypeClassInstance
+							typeclass_obj = owner.typeclass.obj.type_params.first
+							owner.ctype.typeclass[typeclass_obj]
+						else
+							raise "(unhandled)"
+					end
 				else
 					new_var(var.source)
 				end
