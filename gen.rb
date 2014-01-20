@@ -247,6 +247,16 @@ class Codegen
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
 				@out[:func] << o << "\n{\n    *result = v_input;\n}\n\n"
+			when Core::SizeOf
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				
+				type = map.params[Core::SizeOfT]
+				
+				o << "    *result = sizeof(#{c_type(type, map)});\n}\n\n"
+				
+				@out[:func] << o
 			when Core::ForceCast
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
