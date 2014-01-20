@@ -323,7 +323,20 @@ class Parser
 			if (eq(:sym, '[') || eq(:sym, '(')) && !@l.whitespace
 				function s, baseline, name, props, nil
 			else
-				AST::VariableDecl.new(s, name, expression, nil, props)
+				props[:field] = true
+				
+				if matches(:sym, '=')
+					skip :line
+					val = expression
+				else
+					type = expression
+
+					if matches(:sym, '=')
+						skip :line
+						val = expression
+					end
+				end
+				AST::VariableDecl.new(s, name, type, val, props)
 			end
 		end
 	end

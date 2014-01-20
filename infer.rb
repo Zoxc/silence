@@ -740,6 +740,7 @@
 		unresolved_vars -= @dependent_vars
 		
 		# Find unresolved type variables used in type class constraints
+		# TODO: This allows variable with just p1 types, find a better way to filter type variables
 		unresolved_vars = @ctx.vars_in_typeclass_args(unresolved_vars)
 		
 		parameterize(type_vars) if @obj.is_a?(AST::Function)
@@ -842,7 +843,18 @@
 				
 				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
-				finalize(value.type ? analyze_type(value.type, AnalyzeArgs.new) : new_var(ast.source), true)
+				val_ast = value.decl.value if value.props[:field]
+				type = analyze_type(value.type, AnalyzeArgs.new) if value.type
+				val = analyze_value(val_ast, AnalyzeArgs.new) if val_ast
+
+				type = if type && val
+					unify(type, val)
+					type
+				else
+					type || val
+				end
+
+				finalize(type, true)
 			when AST::Function
 				# TODO: Require a fixed type for imports/exports
 				process_function

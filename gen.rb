@@ -342,8 +342,15 @@ class Codegen
 			when AST::Variable
 				return if ast.declared.owner.is_a? AST::Function
 				return if ast.declared.owner.is_a?(AST::Struct) && !ast.props[:shared]
-				o = "#{"static " unless ast.props[:export]}#{c_type(ast.ctype.type, map)} #{mangle(ast, map)};\n"
+				name = mangle(ast, map)
+				o = "#{"static " unless ast.props[:export]}#{c_type(ast.ctype.type, map)} #{name};\n"
 				@out[:globals] << o
+				if ast.decl.value
+					cn = "#{name}_Init"
+					code = FuncCodegen.new(self, ast, map).global
+					o = "struct #{cn} {\n#{cn}()\n{\n#{code}\n}\n};\nstatic #{cn} #{cn}_var;\n\n"
+					@out[:func] << o
+				end
 			else
 				raise "(unknown #{ast.class.inspect})"
 		end

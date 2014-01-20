@@ -131,15 +131,16 @@ module AST
 	end
 	
 	class Variable < Node
-		attr_accessor :name, :type, :ctype, :props, :type_params
+		attr_accessor :name, :type, :ctype, :props, :type_params, :decl
 		
-		def initialize(source, name, declared, type, props)
+		def initialize(source, name, declared, type, props, decl = nil)
 			super(source)
 			@name = name
 			@declared = declared
 			@type = type
 			@props = props
 			@type_params = []
+			@decl = decl
 		end
 		
 		def visit
@@ -574,7 +575,7 @@ module AST
 			@source = source
 			@name = name
 			@props = props
-			@var = Variable.new(@source, @name, nil, type, @props)
+			@var = Variable.new(@source, @name, nil, type, @props, self)
 			@value = value
 		end
 		

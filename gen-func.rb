@@ -69,6 +69,21 @@ class FuncCodegen
 		copy_var(var.ref, var.ref, type) if var && copy
 	end
 	
+	def content
+		raise "Undestroyed variables:\n#{@current_vars.map(&:ref).join("\n")}" unless @current_vars.empty?
+
+		@vars.map { |v| v.decl(self) }.join + "\n" + @out.join("\n")
+	end
+
+	def global
+		n = ref(@func, @map.params)
+		var = RealVar.new(ref(@func, @map.params), @func.ctype.type)
+
+		convert(@func.decl.value, var)
+
+		content
+	end
+
 	def process
 		params = @func.ctype.type.args[Core::Func::Args].tuple_map.zip(@func.params)
 		params = params.map { |type, p| var = RealVar.new("v_#{p.name}", type); @current_vars.push(var); var }
@@ -77,14 +92,13 @@ class FuncCodegen
 			pop_var(var)
 			destroy_var(var.ref, var.type)
 		end
-		raise "Undestroyed variables:\n#{@current_vars.map(&:ref).join("\n")}" unless @current_vars.empty?
 		
 		if @func.is_a?(AST::Function)
 			param_types = @func.ctype.type.args[Core::Func::Args].tuple_map.reverse
 			@func.params.reverse.each_with_index { |p, i| destroy_var("v_#{p.name}", param_types[i]) }
 		end
-		
-		@vars.map { |v| v.decl(self) }.join + "\n" + @out.join("\n")
+
+		content
 	end
 
 	def idx(i)
