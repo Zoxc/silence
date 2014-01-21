@@ -573,6 +573,56 @@ module AST
 		end
 	end
 	
+	class MatchBinding < Node
+		attr_accessor :name
+		
+		def initialize(source, name)
+			super(source)
+			@name = name
+		end
+	end
+	
+	class MatchWhen < Node
+		attr_accessor :type, :group
+		
+		def initialize(source, type, group)
+			super(source)
+			@type = type
+			@group = group
+		end
+
+		def visit
+			@type = yield @type
+			@group = yield @group
+		end
+	end
+	
+	class MatchAs < ExpressionNode
+		attr_accessor :expr, :binding, :whens, :else_group
+		
+		def initialize(source, expr, binding, whens, else_group)
+			super(source)
+			@expr = expr
+			@binding = binding
+			@whens = whens
+			@else_group = else_group
+		end
+	
+		def declare_pass(scope)
+			whens.each do |c|
+				c.group.declare(binding.name, binding)
+			end
+			else_group.declare(binding.name, binding) if else_group
+		end
+		
+		def visit
+			@whens.map! { |n| yield n }
+			@expr = yield @expr
+			@binding = yield @binding
+			@else_group = yield @else_group if @else_group
+		end
+	end
+	
 	class UnaryOp < ExpressionNode
 		attr_accessor :op, :node, :gen
 		

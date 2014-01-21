@@ -14,7 +14,12 @@ class Lexer
 			@space = space
 			@levels = [0] * 3
 		end
-		
+			
+		def initialize_copy(other)
+			super
+			@levels = @levels.dup
+		end
+
 		def ignore?
 			@levels.any? { |l| l > 0 }
 		end
@@ -33,7 +38,13 @@ class Lexer
 		get_line_indent
 		step
 	end
-	
+
+	def initialize_copy(other)
+		super
+		@scanner = @scanner.dup
+		@blocks = @blocks.map { |b| b.dup }
+	end
+
 	def indent
 		[@indent, @indent_pos]
 	end
@@ -68,30 +79,36 @@ class Lexer
 		end
 	end
 	
-	def get_line_indent
-		s = @scanner
-		@indent_pos = s.pos
-		@indent = s.scan(/[ \t]+/) || ''
+	def get_line_indent_impl(s = @scanner.dup)
+		indent_pos = s.pos
+		indent = s.scan(/[ \t]+/) || ''
 		
-		get_line_indent if s.scan(/\r\n|\n|\r/)
+		if s.scan(/\r\n|\n|\r/)
+			get_line_indent_impl(s)
+		else
+			return s, indent_pos, indent
+		end
+	end
+	
+	def get_line_indent
+		@scanner, @indent_pos, @indent = get_line_indent_impl
 	end
 	
 	def indent_newline(baseline)
 		raise "Newline required!" unless tok == :line
-		get_line_indent
+		scanner, indent_pos, indent = get_line_indent_impl
 		
 		r = false
 		
-		case compare_indent(baseline.first, @indent)
+		case compare_indent(baseline.first, indent)
 			when :inc
 				@blocks << Block.new(baseline)
 				r = true
 				@tok = nil
+				@scanner, @indent_pos, @indent = scanner, indent_pos, indent
 				step
 			when :err
-				raise(Error, "Unable to find indentation size\n#{source(@indent_pos, @indent).format}\nRelative to baseline:\n#{source(baseline.last, baseline.first).format}")
-			else
-				handle_line
+				raise(Error, "Unable to find indentation size\n#{source(indent_pos, indent).format}\nRelative to baseline:\n#{source(baseline.last, baseline.first).format}")
 		end
 		r
 	end
@@ -108,11 +125,11 @@ class Lexer
 			when :dec, :same
 				@blocks.pop
 				i = 1
-				while block && ([:dec, :same].include? compare_indent(block.space.first, @indent))
+				while block && !block.ignore? && ([:dec, :same].include? compare_indent(block.space.first, @indent))
 					i += 1
 					@blocks.pop
 				end
-				@tok_str, @tok, @tok_val = [@indent, :deindent, i]
+				@tok_str, @tok, @tok_val = [@indent, :deindent, i * 2]
 				produce_token
 			when :inc
 				step
@@ -164,7 +181,7 @@ class Lexer
 			when v = s.check(/[)\]}]/)
 				if block
 					p = pop_brace_level(BraceIndex[v])
-					return ['', :deindent, p] if p > 0
+					return ['', :deindent, p * 2 - 1] if p > 0
 				end
 				s.getch
 				[v, :sym, v]
@@ -173,7 +190,7 @@ class Lexer
 			when s.eos?
 				@pos = @src.size - 1
 				if block
-					r = ['', :deindent, @blocks.size]
+					r = ['', :deindent, @blocks.size * 2]
 					@blocks = []
 					r
 				else
@@ -190,7 +207,7 @@ class Lexer
 	end
 	
 	def produce_token
-		#debug "produced"
+		debug "produced"
 	end
 	
 	def prestep
@@ -204,6 +221,7 @@ class Lexer
 			@tok = nil
 			step
 		else
+			@tok = :line
 			@tok_val -= 1
 			produce_token
 		end
@@ -211,10 +229,20 @@ class Lexer
 	
 	def step_line
 		raise 'Requires line' if tok != :line
-		@tok = nil
-		prestep
-		get_line_indent
-		handle_line
+		case @tok_val
+			when true
+				@tok = nil
+				prestep
+				get_line_indent
+				handle_line
+			when 1
+				@tok = nil
+				step
+			else
+				@tok = :deindent
+				@tok_val -= 1
+				produce_token
+		end
 	end
 	
 	def step

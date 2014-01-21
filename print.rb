@@ -66,6 +66,12 @@ def print_ast(ast)
 			format.(ast, [[:kind_params, :single], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
 		when AST::KindParams
 			format.(ast, [[:params, ast.params], [:ctx, ast.ctx]])
+		when AST::MatchBinding
+			format.(ast, [[:name]])
+		when AST::MatchWhen
+			format.(ast, [[:type, :single], [:group, :single]])
+		when AST::MatchAs
+			format.(ast, [[:expr, :single], [:binding, :single], [:else_group, :single], [:whens, ast.whens]])
 		when AST::Complex
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:kind_params, :single]])
 		when AST::TypeParam

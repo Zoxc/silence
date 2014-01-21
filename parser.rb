@@ -71,37 +71,42 @@ class Parser
 	end
 	
 	def program
-		r = AST::Program.new(AST::GlobalScope.new(global_scope_entries))
+		r = AST::Program.new(AST::GlobalScope.new(global_scope_entries(proc { eq(:eos) })))
 		expected('end') unless tok == :eos
 		r
 	end
 	
-	def parse_scope(baseline, &block)
+	def parse_scope(baseline)
 		if eq :line
 			if @l.indent_newline(baseline)
-				r = yield
+				r = yield(proc { eq(:deindent) })
 				match(:deindent)
 				return r
 			end
 		end
+		state = @l.dup
+		skip :line
 		if matches(:sym, '{')
-			r = yield
+			skip :line
+			r = yield(proc { eq(:sym, '}') })
 			match(:sym, '}')
 			return r
+		else
+			@l = state
+			nil
 		end
-		[]
 	end
 	
 	def global_scope(baseline)
-		AST::GlobalScope.new(parse_scope(baseline) { global_scope_entries })
+		AST::GlobalScope.new(parse_scope(baseline) { |term| global_scope_entries(term) } || [])
 	end
 	
-	def global_scope_entries
+	def global_scope_entries(term)
 		r = []
-		skip :line
 		while (entry = global_scope_entry)
 			r << entry
-			skip :line
+			break if term.()
+			match(:line)
 		end
 		r
 	end
@@ -377,23 +382,12 @@ class Parser
 	
 	def group(baseline)
 		r = []
-		if eq :line
-			if @l.indent_newline(baseline)
-				while is_expression do
-					r << expression
-					match :line unless eq :deindent
-				end
-				match(:deindent)
-				return AST::LocalScope.new(r)
-			end
-		end
-		if matches(:sym, '{')
-			skip :line
+		parse_scope(baseline) do |term|
 			while is_expression do
 				r << expression
-				match :line unless eq :sym, '}'
+				break if term.()
+				match(:line) 
 			end
-			match(:sym, '}')
 		end
 		AST::LocalScope.new(r)
 	end
@@ -403,7 +397,7 @@ class Parser
 		case tok
 			when :id
 				case tok_val
-					when :return, :if
+					when :return, :if, :match
 						true
 				end
 			when :sym
@@ -417,6 +411,8 @@ class Parser
 	def expression
 		if tok == :id
 			case tok_val
+				when :match
+					return _match
 				when :return
 					return _return
 				when :if
@@ -447,6 +443,49 @@ class Parser
 		end
 	end
 	
+	def _match
+		source do |s|
+			baseline = @l.indent
+			step
+			skip :line
+			exp = chain
+			match :id, :as
+			binding = source do |s|
+				AST::MatchBinding.new(s, match(:id))
+			end
+
+			else_group = nil
+			whens = []
+
+			parse_scope(baseline) do |term|
+				while eq(:id, :when) do
+					source do |s|
+						when_baseline = @l.indent
+						step
+						skip :line
+						when_type = expression
+						when_group = group(when_baseline)
+
+						whens << AST::MatchWhen.new(s, when_type, when_group)
+					end
+
+					break if term.()
+					match(:line)
+				end
+
+				else_group = if eq(:id, :else)
+					else_baseline = @l.indent
+					step
+					g = group(else_baseline)
+					match(:line) unless term.()
+					g
+				end
+			end
+
+			AST::MatchAs.new(s, exp, binding, whens, else_group)
+		end
+	end
+	
 	def _return
 		step
 		skip :line
@@ -459,12 +498,16 @@ class Parser
 		skip :line
 		exp = expression
 		grp = group(baseline)
+
+		state = @l.dup
 		skip :line
 		
 		if eq :id, :else
 			baseline = @l.indent
 			step
 			else_grp = group(baseline)
+		else
+			@l = state
 		end
 		
 		AST::If.new(exp, grp, else_grp)
