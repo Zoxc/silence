@@ -112,6 +112,8 @@ class Parser
 				case tok_val
 					when :struct
 						struct
+					when :when
+						struct_when
 					when :instance
 						instance
 					when :class
@@ -234,6 +236,17 @@ class Parser
 		s.extend(@l.last_ended)
 		scope = global_scope(baseline)
 		AST::Struct.new(s, name, scope, tp)
+	end
+	
+	def struct_when
+		s = @l.source
+		baseline = @l.indent
+		step
+		name = match :id
+		tp = kind_params
+		s.extend(@l.last_ended)
+		scope = global_scope(baseline)
+		AST::StructCase.new(s, name, scope, tp)
 	end
 	
 	def action

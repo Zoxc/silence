@@ -10,7 +10,7 @@ struct Array[T]
 
 	action create
 		size = 0
-		list = force_cast malloc(1)
+		list = force_cast malloc(0)
 	
 	action copy
 		.b = size * unit
@@ -31,7 +31,7 @@ instance[T] Callable Array[T]
 	alias Result = T
 	alias Args = Cell[uint, Unit]
 
-	apply(args Cell[uint, Unit]) -> T
+	apply(args Cell[uint, Unit])
 		return self.get(args.val)
 
 instance[T] Indexable Array[T]

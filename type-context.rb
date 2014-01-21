@@ -324,9 +324,8 @@
 				dup.eqs.concat c.eqs
 				true
 			end
-		end
-		
-		@limits.each do |c|
+		end or
+		@limits.any? do |c|
 			reduce_eqs(c.eqs)
 		end
 	end
@@ -351,9 +350,11 @@
 	end
 	
 	def reduce(obj)
+		reduce_limits or
+
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
 
-		nil while @limits.reject! do |c|
+		@limits.reject! do |c|
 			next if (obj && obj.declared && obj.declared.inside?(c.typeclass.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
 			#puts "Searching instance for #{c}"
@@ -372,9 +373,8 @@
 			elsif c.args.values.all? { |t| t.fixed_type? }
 				raise TypeError.new("Unable to find an instance of the type class '#{c}'\n#{c.source.format}")
 			end
-		end
+		end or
 		
-		reduce_limits
 		reduce_levels
 	end
 	

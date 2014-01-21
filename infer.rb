@@ -8,9 +8,9 @@
 	class TypeError < CompileError
 	end
 
-	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :lvalue) do
+	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :infer_args) do
 		def to_s
-			"#{"lvalue" if lvalue} #{var.real_text} = #{type.text}.#{name} #{"[#{args.map{ |t|t .text }.join(", ")}]" if args}"
+			"#{var.real_text} = #{type.text}.#{name} #{"[#{args.map{ |t|t .text }.join(", ")}]" if args}"
 		end
 	end
 	
@@ -58,6 +58,19 @@
 	
 	def make_tuple(source, args)
 		self.class.make_tuple(source, args)
+	end
+	
+	def self.scope_lookup(ref, name, args)
+		result = ref.scope.names[name]
+		if !result && ref.is_a?(AST::StructCase)
+			[ref.parent.scope.names[name], true]
+		else
+			[result, false]
+		end
+	end
+	
+	def scope_lookup(ref, name, args)
+		self.class.scope_lookup(ref, name, args)
 	end
 	
 	def self.make_ptr(source, type)
@@ -333,14 +346,27 @@
 			when ASTWrap
 				Result.new(ast.type, false)
 
-			# Values only
-			
 			when AST::ActionCall
-				type = analyze_value(ast.obj, args.next)
-				ast.gen = new_var(ast.source)
-				unify(make_ptr(ast.source, ast.gen), type)
-				
+				type = analyze_type(ast.type, args.next)
+
+				action_arg = analyze_value(ast.arg, args.next) if ast.arg
+
+				analyze_value(ast.obj, args.next)
+				ast.gen = {type: type, arg: action_arg} 
+
 				Result.new(unit_type(ast.source), true)
+			when AST::ActionArgs
+				type = analyze_type(ast.obj, args.next).prune
+				raise "Unknown action type #{type}" unless type.is_a?(Types::Ref)
+				func = type.ref.actions[ast.action_type]
+				func_type, inst_args = inst_ex(ast.source, func, type.args)
+
+				result = func_type.args[Core::Func::Args].tuple_map.first
+
+				Result.new(result, false)
+
+			# Values only
+
 			when AST::VariableDecl
 				ast.gen = @vars[ast.var]
 				
@@ -539,13 +565,13 @@
 				
 				if value
 					result = new_var(ast.source)
-					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args.lvalue)
+					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args)
 					@fields << limit
 					ValueFieldResult.new(limit)
 				else
 					raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Ref)
 					
-					ref = type.ref.scope.names[ast.name]
+					ref, shared = scope_lookup(type.ref, ast.name, args)
 					
 					raise TypeError.new("'#{ast.name}' is not a member of '#{type.ref.scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
 					
@@ -596,11 +622,11 @@
 			type = view(type) if type.is_a? Types::Variable
 			case type
 				when Types::Ref
-					field = type.ref.scope.names[c.name]
+					field, shared = scope_lookup(type.ref, c.name, c.infer_args)
 					
 					raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 					
-					lvalue_check(c.ast.source, field, c.lvalue)
+					lvalue_check(c.ast.source, field, c.infer_args.lvalue)
 				
 					parent_args = type.args.dup
 					map_type_params(c.source, field, parent_args, c.args)
@@ -608,7 +634,7 @@
 					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 					
 					# TODO: Reduce fields to single when shared
-					c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args}
+					c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, shared: shared}
 					
 					unify(field_type, var)
 					
@@ -657,6 +683,8 @@
 				elsif func.self.equal?(var)
 					owner = func.declared.owner
 					case owner
+						when AST::StructCase
+							owner.parent.ctype.type
 						when AST::Struct
 							owner.ctype.type
 						when AST::TypeClassInstance
@@ -699,18 +727,17 @@
 		type = type.prune
 		@value = value
 		
-		solve_fields
-		
-		@ctx.reduce_limits
-		
 		# If we are a complex, we can allow to give less strict constraints in case @ctx.reduce refers back to it
 		if @obj.is_a? AST::Complex
 			@type = type
 			@obj.ctype = self
 		end
-		
-		@ctx.reduce(@obj)
-		
+
+		nil while proc do
+			solve_fields
+			@ctx.reduce(@obj)
+		end.()
+
 		@fields.each do |c|
 			raise TypeError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
 		end
@@ -836,9 +863,16 @@
 				
 				create_type(parent_args)
 				
-				if value.is_a?(AST::Struct)
-					Core.create_constructor(value)
-					Core.create_def_action_constructor(value) if value.actions[:create]
+				case value
+					when AST::Struct
+						unless value.enum?
+							Core.create_constructor_action(value) unless value.actions[:create_args]
+							Core.create_constructor(value) if value.actions[:create_args]
+							Core.create_def_constructor(value) if value.actions[:create]
+						end
+					when AST::StructCase
+						Core.create_constructor_action(value) unless value.actions[:create_args]
+						Core.create_constructor(value)
 				end
 				
 				InferContext.infer_scope(value.scope, @infer_args)

@@ -341,6 +341,9 @@ class Codegen
 				o = "struct #{name}"
 				@out[:struct_forward] << o << ";\n"
 				o << "\n{\n"
+				
+				o << "    #{mangle(ast.parent, map)} shared;\n" if ast.is_a?(AST::StructCase)
+
 				ast.scope.names.values.each do |value|
 					next if !value.is_a?(AST::Variable) || value.props[:shared]
 					field_map = map.copy

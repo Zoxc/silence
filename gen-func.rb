@@ -262,18 +262,23 @@ class FuncCodegen
 						ref = if ast.gen[:ref].is_a?(AST::Function)
 							gen_func(obj_ptr.ref, ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
 						else
-							"&#{obj_ptr.ref}->f_#{ast.gen[:ref].name}"
+							"&#{obj_ptr.ref}->#{"shared." if ast.gen[:shared]}f_#{ast.gen[:ref].name}"
 						end
 
 						assign_var(var, make_ptr(ast.gen[:result]), ref, true)
 						del_var obj_ptr
 				end
 			when AST::Ref
-				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner == @func
+				owner = ast.obj.declared.owner
+
+				if ast.obj.is_a?(AST::Variable) && owner == @func
 					assign_var(var, make_ptr(ast.gen), "&v_#{ast.obj.name}", true)
-				elsif ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-					assign_var(var, make_ptr(ast.gen.first), "&v_self.f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
+				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
+					# TODO: Turn this into a AST::Field with self as obj
+					enum_shared = owner != @func.declared.owner
+					assign_var(var, make_ptr(ast.gen.first), "&v_self.#{"shared." if enum_shared}f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
 				else
+					# TODO: Also merge the single AST::Field case and this
 					assign_f(var, ast.gen.first, ast.obj, ast.gen.last.params)
 				end
 			else
@@ -336,8 +341,16 @@ class FuncCodegen
 			when AST::ActionCall
 				ptr = new_var
 				convert(ast.obj, ptr)
-				ref = gen.ref_action(ast.gen, @map, ast.action_type, false)
-				o "#{ref}(#{ptr.ref});"
+
+				if ast.arg
+					arg = new_var
+					convert(ast.arg, arg)
+				end
+
+				ref = gen.ref_action(ast.gen[:type], @map, ast.action_type, false)
+				o "#{ref}(#{ptr.ref}#{", #{arg.ref}" if ast.arg});"
+
+				del_var arg if ast.arg
 				del_var ptr
 				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::VariableDecl

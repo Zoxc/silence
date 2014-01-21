@@ -63,17 +63,17 @@ def print_ast(ast)
 		when AST::Scope
 			format.(ast, [[:id, :value, ast.__id__], [:nodes, ast.nodes]])
 		when AST::TypeClassInstance
-			format.(ast, [[:kind, :single], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
+			format.(ast, [[:kind_params, :single], [:typeclass, :single], [:args, ast.args], [:scope, :single]])
 		when AST::KindParams
 			format.(ast, [[:params, ast.params], [:ctx, ast.ctx]])
 		when AST::Complex
-			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:kind, :single]])
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:scope, :single], [:kind_params, :single]])
 		when AST::TypeParam
-			format.(ast, [[:name], [:id, :value, ast.__id__], [:kind, :single], [:type, :single]])
+			format.(ast, [[:name], [:id, :value, ast.__id__], [:kind_params, :single], [:type, :single]])
 		when AST::TypeFunction
 			format.(ast, [[:name], [:id, :value, ast.__id__]])
 		when AST::Function
-			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:result, :single], [:params, ast.params], [:scope, :single], [:kind, :single]])
+			format.(ast, [[:name], [:props], [:id, :value, ast.__id__], [:result, :single], [:params, ast.params], [:scope, :single], [:kind_params, :single]])
 		when AST::Function::Param
 			format.(ast, [[:name], [:id, :value, ast.__id__], [:type, :single]])
 		when AST::TypeOf

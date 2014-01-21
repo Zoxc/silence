@@ -464,15 +464,50 @@ module AST
 	end
 	
 	class Struct < Complex
-		attr_accessor :level, :actions
+		attr_accessor :level, :actions, :cases
 		
 		def initialize(*args)
 			super
 			@level = :copyable
 			@actions = {}
+			@cases = []
+		end
+
+		def enum?
+			!cases.empty?
 		end
 	end
 	
+	class StructCase < Struct
+		attr_accessor :parent
+		
+		def initialize(*args)
+			super
+			@level = :opaque
+		end
+
+		def declare_pass(scope)
+			super
+			@parent = scope.owner
+			@parent.cases ||= []
+			@parent.cases.push(self)
+		end
+	end
+	
+	class ActionArgs < Node
+		attr_accessor :source, :obj, :action_type
+		
+		def initialize(source, obj, action_type)
+			@source = source
+			@obj = obj
+			@action_type = action_type
+		end
+		
+		def visit
+			@obj = yield @obj
+		end
+	end
+
 	class LocalScope < Scope
 	end
 	
@@ -707,15 +742,19 @@ module AST
 	end
 	
 	class ActionCall < ExpressionNode
-		attr_accessor :source, :obj, :action_type, :gen
+		attr_accessor :source, :type, :obj, :action_type, :gen, :arg
 		
-		def initialize(source, obj, action_type)
+		def initialize(source, type, obj, action_type, arg = nil)
 			@source = source
+			@type = type
 			@obj = obj
 			@action_type = action_type
+			@arg = arg
 		end
 		
 		def visit
+			@type = yield @type
+			@arg = yield @arg
 			@obj = yield @obj
 		end
 	end

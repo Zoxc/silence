@@ -53,7 +53,7 @@ class Core
 				list.unshift current
 				current = current.declared.owner
 			end 
-			puts list.map{|n|n.scoped_name}
+
 			wrap_ref = proc do |result, n|
 				if n.type_params.empty?
 					result
@@ -73,32 +73,60 @@ class Core
 			return params.values, type_ref
 		end
 
-		def create_constructor(obj)
-			type_params, type_ref = type_params(obj)
-			fields = obj.scope.names.values.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
-			
-			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
-			
-			args = AST::Tuple.new(src, fields.map { |f| AST::TypeOf.new(src, AST::Field.new(src, type_ref.(), f.name)) })
-			args = AST::TypeAlias.new(src, :Args, args)
-
-			constructed = AST::TypeAlias.new(src, :Constructed, type_ref.())
-				
-			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
-		
-			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', ref(constructed))), AST::Function::Param.new(src, r, :args, ref(args))]
-			r.result = ref(Core::Unit)
-			fields = fields.map { |field| AST::Field.new(src, AST::UnaryOp.new(src, '*', AST::NameRef.new(src, :obj)), field.name) }
-			assign = AST::BinOp.new(src, AST::Tuple.new(src, fields), '=', AST::NameRef.new(src, :args))
-			r.scope = AST::LocalScope.new([assign])
-			r
-		
-			instance.run_pass(:declare_pass)
-			instance.run_pass(:sema, true)
-			instance.run_pass(:ref_pass)
+		def run_pass(ast, scope = nil)
+			ast.run_pass(:declare_pass, false, scope)
+			ast.run_pass(:sema, true)
+			ast.run_pass(:ref_pass)
 		end
 
-		def create_def_action_constructor(obj)
+		def create_constructor_action(obj)
+			scope = obj.scope.names.values
+			(scope = obj.parent.scope.names.values + scope) if obj.is_a?(AST::StructCase)
+			fields = scope.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
+
+			args = AST::Tuple.new(src, fields.map { |f| AST::TypeOf.new(src, AST::NameRef.new(src, f.name)) })
+			
+			# TODO: This should not destroy existing fields
+			# TODO: Make sure there are no conflicts with names
+
+			r = AST::Function.new(src, nil, AST::KindParams.new(src, [], []))
+			r.action_type = :create_args
+			r.params = [AST::Function::Param.new(src, r, :args, args)]
+			r.result = ref(Core::Unit)
+			fields = fields.map { |field| AST::NameRef.new(src, field.name) }
+			assign = AST::BinOp.new(src, AST::Tuple.new(src, fields), '=', AST::NameRef.new(src, :args))
+			r.scope = AST::LocalScope.new([assign])
+			obj.scope.nodes << r
+
+			run_pass(r, obj.scope)
+		end
+
+		def create_constructor(obj)
+			eparent = obj.parent if obj.is_a?(AST::StructCase)
+
+			type_params, type_ref = type_params(obj)
+
+			args = AST::TypeAlias.new(src, :Args, AST::ActionArgs.new(src, type_ref.(), :create_args))
+
+			const_ref = if eparent
+				tp, tr = type_params(eparent)
+				tr.()
+			else
+				type_ref.()
+			end
+
+			constructed = AST::TypeAlias.new(src, :Constructed, const_ref)
+			
+			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
+			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', ref(constructed))), AST::Function::Param.new(src, r, :args, ref(args))]
+			r.result = ref(Core::Unit)
+			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create_args, AST::NameRef.new(src, :args))])
+			
+			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
+			run_pass(instance)
+		end
+
+		def create_def_constructor(obj)
 			type_params, type_ref = type_params(obj)
 
 			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
@@ -107,12 +135,9 @@ class Core
 		
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', type_ref.()))]
 			r.result = ref(Core::Unit)
-			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, AST::NameRef.new(src, :obj), :create)])
-			r
-		
-			instance.run_pass(:declare_pass)
-			instance.run_pass(:sema, true)
-			instance.run_pass(:ref_pass)
+			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create)])
+
+			run_pass(instance)
 		end
 		
 	end

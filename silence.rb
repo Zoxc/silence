@@ -24,7 +24,7 @@ def process(file, parent)
 
 	ast = Parser.new(input).program
 	
-	#puts print_ast(ast)
+	puts print_ast(ast)
 	begin
 		ast.run_pass :declare_pass, false, (parent.scope if parent)
 		ast.run_pass :sema, true
