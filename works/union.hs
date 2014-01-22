@@ -3,10 +3,8 @@ import malloc(size uint) -> *()
 import memcpy(dst *(), src *(), len uint)
 
 instance StringLiteral *char
-	create(data *char, size)
-		.new = malloc(size + 1)
-		memcpy(new, force_cast data, size)
-		return force_cast[*char] new
+	create(data *char, size uint)
+		return data
 
 struct Union[T]
 	common uint
