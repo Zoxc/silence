@@ -43,7 +43,7 @@ class Core
 
 		def type_params(obj)
 			# TODO: Handle all kinds here
-			params = Hash[AST.type_params(obj).map { |tp| [tp, AST::TypeParam.new(tp.source, "P_#{tp.name}".to_sym, AST::KindParams.new(tp.source, [], []), nil, false)] }]
+			params = Hash[AST.type_params(obj).map { |tp| [tp, AST::TypeParam.new(src, "P_#{tp.name}".to_sym, AST::KindParams.new(tp.source, [], []), nil, false)] }]
 		
 			# TODO: Disallow structs in typeclass instances. They have no owner
 
@@ -64,13 +64,13 @@ class Core
 
 			first = list.shift
 
-			type_ref = proc do
+			type_ref = proc do |list|
 				list.inject(wrap_ref.(ref(first), first)) do |sum, n|
 					wrap_ref.(AST::Field.new(src, sum, n.name), n)
 				end
 			end
 
-			return params.values, type_ref
+			return params.values, proc { type_ref.(list) }, proc { type_ref.(list[0..-2]) }
 		end
 
 		def run_pass(ast, scope = nil)
@@ -104,24 +104,18 @@ class Core
 		def create_constructor(obj)
 			eparent = obj.parent if obj.is_a?(AST::StructCase)
 
-			type_params, type_ref = type_params(obj)
+			type_params, type_ref, parent_ref = type_params(obj)
 
 			args = AST::TypeAlias.new(src, :Args, AST::ActionArgs.new(src, type_ref.(), :create_args))
 
-			const_ref = if eparent
-				tp, tr = type_params(eparent)
-				tr.()
-			else
-				type_ref.()
-			end
-
-			constructed = AST::TypeAlias.new(src, :Constructed, const_ref)
+			constructed = AST::TypeAlias.new(src, :Constructed, eparent ? parent_ref.() : type_ref.())
 			
 			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', ref(constructed))), AST::Function::Param.new(src, r, :args, ref(args))]
 			r.result = ref(Core::Unit)
 			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create_args, AST::NameRef.new(src, :args))])
-			
+			r.props[:shared] = true
+
 			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
 			run_pass(instance)
 		end
@@ -136,6 +130,7 @@ class Core
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', type_ref.()))]
 			r.result = ref(Core::Unit)
 			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create)])
+			r.props[:shared] = true
 
 			run_pass(instance)
 		end

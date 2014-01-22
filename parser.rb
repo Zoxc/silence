@@ -391,6 +391,12 @@ class Parser
 		end
 		AST::LocalScope.new(r)
 	end
+
+	def expression_group(baseline)
+		source do |s|
+			AST::ExpressionGroup.new(s, group(baseline))
+		end
+	end
 	
 	def is_expression
 		return true if is_factor
@@ -450,8 +456,8 @@ class Parser
 			skip :line
 			exp = chain
 			match :id, :as
-			binding = source do |s|
-				AST::MatchBinding.new(s, match(:id))
+			binding_source, binding = source do |s|
+				next s, match(:id)
 			end
 
 			else_group = nil
@@ -464,7 +470,7 @@ class Parser
 						step
 						skip :line
 						when_type = expression
-						when_group = group(when_baseline)
+						when_group = expression_group(when_baseline)
 
 						whens << AST::MatchWhen.new(s, when_type, when_group)
 					end
@@ -476,13 +482,13 @@ class Parser
 				else_group = if eq(:id, :else)
 					else_baseline = @l.indent
 					step
-					g = group(else_baseline)
+					g = expression_group(else_baseline)
 					match(:line) unless term.()
 					g
 				end
 			end
 
-			AST::MatchAs.new(s, exp, binding, whens, else_group)
+			AST::MatchAs.new(s, exp, AST::MatchCases.new(s, binding_source, binding, whens, else_group))
 		end
 	end
 	
@@ -497,7 +503,7 @@ class Parser
 		step
 		skip :line
 		exp = expression
-		grp = group(baseline)
+		grp = expression_group(baseline)
 
 		state = @l.dup
 		skip :line
@@ -505,7 +511,7 @@ class Parser
 		if eq :id, :else
 			baseline = @l.indent
 			step
-			else_grp = group(baseline)
+			else_grp = expression_group(baseline)
 		else
 			@l = state
 		end

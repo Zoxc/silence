@@ -7,6 +7,7 @@ class FuncCodegen
 		@out = []
 		@map = map
 		@var_name = 0
+		@label_name = 0
 		@vars = []
 		@current_vars = []
 		@decl_map = {}
@@ -27,7 +28,15 @@ class FuncCodegen
 			"#{name}"
 		end
 	end
-	
+
+	def new_label
+		"L#{@label_name += 1}"
+	end
+
+	def gen_label(l)
+		@out << "#{l}:"
+	end
+
 	def new_var(&block)
 		var = Var.new(@var_name += 1, nil)
 		@vars << var
@@ -86,18 +95,17 @@ class FuncCodegen
 
 	def process
 		params = @func.ctype.type.args[Core::Func::Args].tuple_map.zip(@func.params)
-		params = params.map { |type, p| var = RealVar.new("v_#{p.name}", type); @current_vars.push(var); var }
+		params = params.map do |type, p|
+			var = RealVar.new("v_#{p.name}", type)
+			@current_vars.push(var)
+			var
+		end
 		convert(func.scope, nil)
 		params.reverse.each do |var|
 			pop_var(var)
 			destroy_var(var.ref, var.type)
 		end
 		
-		if @func.is_a?(AST::Function)
-			param_types = @func.ctype.type.args[Core::Func::Args].tuple_map.reverse
-			@func.params.reverse.each_with_index { |p, i| destroy_var("v_#{p.name}", param_types[i]) }
-		end
-
 		content
 	end
 
@@ -262,7 +270,13 @@ class FuncCodegen
 						ref = if ast.gen[:ref].is_a?(AST::Function)
 							gen_func(obj_ptr.ref, ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
 						else
-							"&#{obj_ptr.ref}->#{"shared." if ast.gen[:shared]}f_#{ast.gen[:ref].name}"
+							extension = ast.gen[:extension]
+							if extension
+								idx = extension.parent.cases.index(extension) 
+								"&#{obj_ptr.ref}->e_#{idx}.f_#{ast.gen[:ref].name}"
+							else
+								"&#{obj_ptr.ref}->f_#{ast.gen[:ref].name}"
+							end
 						end
 
 						assign_var(var, make_ptr(ast.gen[:result]), ref, true)
@@ -271,12 +285,18 @@ class FuncCodegen
 			when AST::Ref
 				owner = ast.obj.declared.owner
 
-				if ast.obj.is_a?(AST::Variable) && owner == @func
+				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.inside?(@func.scope)
 					assign_var(var, make_ptr(ast.gen), "&v_#{ast.obj.name}", true)
 				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					# TODO: Turn this into a AST::Field with self as obj
-					enum_shared = owner != @func.declared.owner
-					assign_var(var, make_ptr(ast.gen.first), "&v_self.#{"shared." if enum_shared}f_#{ast.obj.name}", true) # TODO: Check for the case when accesing a field in a parent struct
+
+					ref = if owner == @func.declared.owner && owner.is_a?(AST::StructCase)
+						idx = owner.parent.cases.index(owner)
+						"&v_self.e_#{idx}.f_#{ast.obj.name}"
+					else
+						"&v_self.f_#{ast.obj.name}" # TODO: Check for the case when accesing a field in a parent struct
+					end
+					assign_var(var, make_ptr(ast.gen.first), ref, true)
 				else
 					# TODO: Also merge the single AST::Field case and this
 					assign_f(var, ast.gen.first, ast.obj, ast.gen.last.params)
@@ -320,9 +340,19 @@ class FuncCodegen
 	# Values constructed into var are rvalue objects (an unique object with no other references)
 	def convert(ast, var)
 		case ast
+			when AST::ExpressionGroup
+				convert(ast.scope, var)
 			when AST::Scope
 				nodes = ast.nodes.compact
-				
+
+				ast.names.values.each do |v|
+					next unless v.is_a?(AST::Variable)
+					next unless v.decl
+
+					o "#{@gen.c_type(@func.ctype.vars[v], @map)} v_#{v.name};"
+				end
+				o ""
+
 				if nodes.empty?
 					assign_var(var, Core::Unit.ctype.type, nil)
 				else
@@ -338,6 +368,39 @@ class FuncCodegen
 					pop_var(ref)
 					destroy_var(ref.ref, e.gen)
 				end
+			when AST::MatchAs
+				resume = new_label
+
+				type = @gen.inst_type(ast.gen[:expr], @map) 
+
+				expr = RealVar.new("v_#{ast.rest.binding.name}", type)
+				o "#{@gen.c_type(type, @map)} #{expr.name};"
+
+				convert(ast.expr, expr)
+
+				when_labels = ast.rest.whens.map { new_label }
+
+				idx = proc { |i| type.ref.cases.index(ast.gen[:when_objs][i]) }
+
+				o "switch(#{expr.ref}.type) {"
+				ast.rest.whens.each_with_index do |w, i|
+					o "    case #{idx.(i)}: goto #{when_labels[i]};"
+				end
+				o "}"
+
+				if ast.rest.else_group
+					convert(ast.rest.else_group, nil) 
+					o "goto #{resume};"
+				end
+
+				ast.rest.whens.each_with_index do |w, i|
+					gen_label when_labels[i]
+					convert(w.group, nil)
+					o "goto #{resume};"
+				end
+
+				gen_label resume
+				destroy_var(expr.ref, type)
 			when AST::ActionCall
 				ptr = new_var
 				convert(ast.obj, ptr)

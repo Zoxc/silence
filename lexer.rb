@@ -207,7 +207,7 @@ class Lexer
 	end
 	
 	def produce_token
-		debug "produced"
+		#debug "produced"
 	end
 	
 	def prestep

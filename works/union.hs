@@ -1,4 +1,14 @@
-struct Union
+import puts(str *char)
+import malloc(size uint) -> *()
+import memcpy(dst *(), src *(), len uint)
+
+instance StringLiteral *char
+	create(data *char, size)
+		.new = malloc(size + 1)
+		memcpy(new, force_cast data, size)
+		return force_cast[*char] new
+
+struct Union[T]
 	common uint
 
 	when Extra
@@ -10,12 +20,15 @@ export main() -> c_int
 	a.common = 4
 	a = Union.Empty(3)
 
-	match a as a
+	match a as b
 		when Union.Extra
-			1
-		when Union.Empty
-			2
+			b.val
+			b.common
+			puts("Extra!")
+		when Union[bool].Empty
+			b.common
+			puts("Empty!")
 		else
-			5
+			puts("Else!")
 
 	return 0

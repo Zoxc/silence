@@ -8,7 +8,7 @@
 	class TypeError < CompileError
 	end
 
-	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :infer_args) do
+	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :infer_args, :extension) do
 		def to_s
 			"#{var.real_text} = #{type.text}.#{name} #{"[#{args.map{ |t|t .text }.join(", ")}]" if args}"
 		end
@@ -60,17 +60,17 @@
 		self.class.make_tuple(source, args)
 	end
 	
-	def self.scope_lookup(ref, name, args)
-		result = ref.scope.names[name]
-		if !result && ref.is_a?(AST::StructCase)
-			[ref.parent.scope.names[name], true]
-		else
-			[result, false]
+	def self.scope_lookup(ref, name, extension)
+		if extension && extension.parent == ref
+			result = extension.scope.names[name]
+			return [result, extension] if result
 		end
+
+		[ref.scope.names[name], nil]
 	end
 	
-	def scope_lookup(ref, name, args)
-		self.class.scope_lookup(ref, name, args)
+	def scope_lookup(ref, name, extension)
+		self.class.scope_lookup(ref, name, extension)
 	end
 	
 	def self.make_ptr(source, type)
@@ -94,13 +94,14 @@
 	# TODO: Make scoped and typeclass into an enum of NoTypeclasses, ViewTypeclasses, ScopedTypeclasses
 	# TODO: Make lvalue and tuple_lvalue into an enum of NotLValue, TupleLValue, LValue
 	class AnalyzeArgs
-		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped
+		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended
 		def initialize
 			@lvalue = false
 			@tuple_lvalue = false
 			@typeof = false
 			@typeclass = false
 			@scoped = false
+			@extended = {}
 		end
 		
 		def next(opts = {})
@@ -110,6 +111,7 @@
 			new.scoped = opts[:scoped] || false
 			new.typeclass = opts[:typeclass] || false
 			new.tuple_lvalue = opts[:tuple_lvalue] || false
+			new.extended = opts[:extended] || @extended
 			new
 		end
 	end
@@ -211,6 +213,16 @@
 		end
 	end
 	
+	BindingResult = Struct.new(:binding) do
+		def src
+			type.source
+		end
+		
+		def to_s
+			"BindingResult{#{binding.name}}"
+		end
+	end
+	
 	RefResult = Struct.new(:ast, :obj, :args) do
 		def src
 			ast.source
@@ -281,7 +293,7 @@
 		end
 	end
 	
-	def coerce_typeval(result, args, index = nil)
+	def coerce_typeval(result, args, index = nil, extension = nil)
 		case result
 			when Result
 				[result.type, result.value]
@@ -289,9 +301,14 @@
 				limit = result.limit
 				limit.args = index
 				[limit.var, true]
+			when BindingResult
+				r = @vars[result.binding]
+				extended = args.extended[result.binding]
+				extension[:ref] = extended if extension
+				[r, true]
 			when RefResult
 				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, args, result.args)
-				
+
 				case result.ast
 					when AST::Ref
 						if result.obj.is_a?(AST::TypeParam) && result.obj.value
@@ -303,7 +320,7 @@
 						result.ast.gen = {result: resultt.type, type: :single, ref: result.obj, args: inst_args}
 				end
 
-				coerce_typeval(resultt, args)
+				[resultt.type, resultt.value]
 			else
 				raise "(unhandled #{result.class.inspect})"
 		end
@@ -367,6 +384,35 @@
 
 			# Values only
 
+			when AST::MatchAs
+				type = analyze_value(ast.expr, args.next)
+
+				@vars[ast.rest.binding] = type
+
+				when_objs = ast.rest.whens.map do |w|
+					w_type = analyze_impl(w.type, args.next)
+					obj = case w_type
+						when RefResult
+							raise "Expected union case\n#{w.source.format}" unless w_type.obj.is_a?(AST::StructCase)
+							unify(type, Types::Ref.new(w.type.source, w_type.obj.parent, w_type.args))
+							w_type.obj
+						else
+							raise "Expected union case\n#{w.source.format}"
+					end
+
+					extended = args.extended.dup
+					extended[ast.rest.binding] = obj
+					
+					analyze_value(w.group, args.next(extended: extended))
+
+					obj
+				end
+
+				ast.gen = {expr: type, when_objs: when_objs}
+
+				analyze_value(ast.rest.else_group, args.next) if ast.rest.else_group
+
+				Result.new(unit_type(ast.source), true)
 			when AST::VariableDecl
 				ast.gen = @vars[ast.var]
 				
@@ -456,7 +502,20 @@
 				end
 				ast.gen = result
 				Result.new(result, true)
+			when AST::ExpressionGroup
+				analyze_impl(ast.scope, args)
 			when AST::Scope
+				ast.names.each_value do |var|
+					next unless var.is_a?(AST::Variable)
+					next unless var.decl
+					
+					@vars[var] = if var.type
+							analyze_type(var.type, args.next)
+						else
+							new_var(var.source)
+						end
+				end
+				
 				nodes = ast.nodes.compact
 				result = if nodes.empty?
 					unit_type(ast.source)
@@ -551,7 +610,7 @@
 				result = @vars[ast.obj]
 				if result
 					ast.gen = result
-					Result.new(result, true)
+					BindingResult.new(ast.obj)
 				else
 					ensure_shared(ast.obj, ast.source, args) if shared?
 					parent_args = Hash[AST.type_params(ast.obj, false).map { |p| [p, map_type(p)] }]
@@ -560,18 +619,19 @@
 			when AST::Field
 				next_args = args.next(lvalue: args.lvalue, scoped: true)
 				result = analyze_impl(ast.obj, next_args)
+				extension = {}
 				
-				type, value = coerce_typeval(result, next_args, nil)
+				type, value = coerce_typeval(result, next_args, nil, extension)
 				
 				if value
 					result = new_var(ast.source)
-					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args)
+					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args, extension[:ref])
 					@fields << limit
 					ValueFieldResult.new(limit)
 				else
 					raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Ref)
 					
-					ref, shared = scope_lookup(type.ref, ast.name, args)
+					ref, ext = scope_lookup(type.ref, ast.name, nil)
 					
 					raise TypeError.new("'#{ast.name}' is not a member of '#{type.ref.scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
 					
@@ -622,7 +682,7 @@
 			type = view(type) if type.is_a? Types::Variable
 			case type
 				when Types::Ref
-					field, shared = scope_lookup(type.ref, c.name, c.infer_args)
+					field, extension = scope_lookup(type.ref, c.name, c.extension)
 					
 					raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 					
@@ -634,7 +694,7 @@
 					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 					
 					# TODO: Reduce fields to single when shared
-					c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, shared: shared}
+					c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, extension: extension}
 					
 					unify(field_type, var)
 					
@@ -674,25 +734,29 @@
 		@result = (analyze_type(func.result, analyze_args) if func.result)
 
 		var_params = func.params.map(&:var)
+
+		owner = func.declared.owner
+
+		@vars[func.self] = case owner
+			when AST::StructCase
+				analyze_args.extended[func.self] = owner
+				owner.parent.ctype.type
+			when AST::Struct
+				owner.ctype.type
+			when AST::TypeClassInstance
+				typeclass_obj = owner.typeclass.obj.type_params.first
+				owner.ctype.typeclass[typeclass_obj]
+			else
+				raise "(unhandled #{owner.class})"
+		end if func.self
 		
 		func.scope.names.each_value do |var|
-			next if var.is_a? AST::TypeParam
+			next unless var.is_a?(AST::Variable)
+			next if var.decl
+			next if var.equal?(func.self)
 			
 			@vars[var] = if var.type
 					analyze_type(var.type, analyze_args.next(typeclass: var_params.include?(var)))
-				elsif func.self.equal?(var)
-					owner = func.declared.owner
-					case owner
-						when AST::StructCase
-							owner.parent.ctype.type
-						when AST::Struct
-							owner.ctype.type
-						when AST::TypeClassInstance
-							typeclass_obj = owner.typeclass.obj.type_params.first
-							owner.ctype.typeclass[typeclass_obj]
-						else
-							raise "(unhandled)"
-					end
 				else
 					new_var(var.source)
 				end

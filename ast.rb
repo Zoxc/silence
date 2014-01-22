@@ -77,7 +77,7 @@ module AST
 		attr_accessor :source, :declared
 		
 		def scoped_name
-			raise "declared not set on #{inspect}" unless declared
+			raise "declared not set on #{name}\n#{source.format}" unless declared
 			owner = declared.owner
 			"#{"#{owner.scoped_name}." unless owner.is_a?(Program)}#{name}"
 		end
@@ -572,13 +572,26 @@ module AST
 			@result = yield @result
 		end
 	end
-	
-	class MatchBinding < Node
-		attr_accessor :name
-		
-		def initialize(source, name)
+
+	class ExpressionGroup < Node
+		attr_accessor :scope 
+
+		def initialize(source, scope)
 			super(source)
-			@name = name
+			@scope = scope
+		end
+
+		def declare_pass(scope)
+			@scope.parent = scope
+			@scope.owner = self
+		end
+
+		def apply_pass(scope)
+			@scope
+		end
+		
+		def visit
+			@scope = yield @scope
 		end
 	end
 	
@@ -597,29 +610,46 @@ module AST
 		end
 	end
 	
-	class MatchAs < ExpressionNode
+	class MatchCases < ExpressionNode
 		attr_accessor :expr, :binding, :whens, :else_group
 		
-		def initialize(source, expr, binding, whens, else_group)
+		def initialize(source, binding_src, binding, whens, else_group)
 			super(source)
-			@expr = expr
-			@binding = binding
+			@scope = LocalScope.new([])
+			@binding = Variable.new(binding_src, binding, @scope, nil, {}, nil)
 			@whens = whens
 			@else_group = else_group
 		end
 	
 		def declare_pass(scope)
-			whens.each do |c|
-				c.group.declare(binding.name, binding)
-			end
-			else_group.declare(binding.name, binding) if else_group
+			@scope.parent = scope
+			@scope.owner = self
+			@scope.declare(binding.name, binding)
+		end
+		
+		def apply_pass(scope)
+			@scope
 		end
 		
 		def visit
 			@whens.map! { |n| yield n }
-			@expr = yield @expr
 			@binding = yield @binding
 			@else_group = yield @else_group if @else_group
+		end
+	end
+	
+	class MatchAs < ExpressionNode
+		attr_accessor :expr, :rest, :gen
+		
+		def initialize(source, expr, rest)
+			super(source)
+			@expr = expr
+			@rest = rest
+		end
+	
+		def visit
+			@expr = yield @expr
+			@rest = yield @rest
 		end
 	end
 	

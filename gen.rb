@@ -149,6 +149,7 @@ class Codegen
 			when Core::Ptr::Node
 				"#{c_type(map.params[Core::Ptr::Type], map)}*"
 			else
+				gen(complex, map)
 				mangle(complex, map)
 		end
 	end
@@ -303,22 +304,14 @@ class Codegen
 				owner = ast.declared.owner
 				
 				if owner.is_a?(AST::Complex) && !ast.props[:shared]
-					if owner.is_a?(AST::TypeClassInstance)
-						self_type = inst_type(owner.ctype.typeclass[owner.typeclass.obj.type_params.first], map)
-					else
-						self_type = owner.ctype.type
-					end
-					o << "    auto &v_self = *(#{c_type(self_type, map)} *)data;\n"
+					o << "    auto &v_self = *(#{c_type(ast.ctype.vars[ast.self], map)} *)data;\n"
 				end
-				ast.scope.names.values.each do |value|
-					next if !value.is_a?(AST::Variable)
-					next if ast.params.map(&:var).include?(value)
-					next if ast.self.equal?(value)
 
-					o << "    #{c_type(ast.ctype.vars[value], map)} v_#{value.name};\n"
-				end
-				
 				# TODO: Generate an error when using type with copy operators in import/export functions
+
+				if [:create, :create_args].include?(ast.action_type) && owner.is_a?(AST::StructCase)
+					o << "    v_self.type = #{owner.parent.cases.index(owner)};\n"
+				end
 				
 				if ast.props[:import]
 					o << "    #{"*result = " if ast.ctype.type.args[Core::Func::Result] != Core::Unit.ctype.type}#{ast.name}(#{ast.params.map { |p| "v_#{p.name}"}.join(", ")});"
@@ -340,16 +333,27 @@ class Codegen
 				name = mangle(ast, map)
 				o = "struct #{name}"
 				@out[:struct_forward] << o << ";\n"
-				o << "\n{\n"
-				
-				o << "    #{mangle(ast.parent, map)} shared;\n" if ast.is_a?(AST::StructCase)
 
+				o << "\n{\n"
+
+				o << "    _uint type;\n" if ast.enum?
+				
 				ast.scope.names.values.each do |value|
 					next if !value.is_a?(AST::Variable) || value.props[:shared]
 					field_map = map.copy
 					map_vars(value, field_map)
 					o << "    #{c_type(value.ctype.type, field_map)} f_#{value.name};\n"
 				end
+
+				if ast.enum?
+					o << "    union {\n"
+					ast.cases.each_with_index do |c, i|
+						gen(c, map)
+						o << "        #{mangle(c, map)} e_#{i};\n"
+					end
+					o << "    };\n"
+				end
+
 				o << "};\n\n"
 				@out[:struct] << o
 			when AST::Variable
