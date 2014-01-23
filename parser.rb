@@ -3,11 +3,11 @@ require_relative 'ast'
 require_relative 'print'
 
 class Parser
-	attr_reader :l
+	attr_reader :l, :imports
 	
 	def initialize(str)
-		@src = str
 		@l = Lexer.new(str)
+		@imports = []
 	end
 	
 	def tok
@@ -71,7 +71,7 @@ class Parser
 	end
 	
 	def program
-		r = AST::Program.new(AST::GlobalScope.new(global_scope_entries(proc { eq(:eos) })))
+		r = global_scope_entries(proc { eq(:eos) })
 		expected('end') unless tok == :eos
 		r
 	end
@@ -108,7 +108,7 @@ class Parser
 	def global_scope_entries(term)
 		r = []
 		while (entry = global_scope_entry)
-			r << entry
+			r << entry if entry != true
 			break if term.()
 			match(:line)
 		end
@@ -119,6 +119,10 @@ class Parser
 		case tok
 			when :id
 				case tok_val
+					when :use
+						step
+						@imports << match(:str)
+						true
 					when :struct
 						struct
 					when :when

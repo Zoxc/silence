@@ -33,7 +33,7 @@ class Lexer
 		@pos = 0
 		@indent = ''
 		@tok_str = ''
-		@scanner = StringScanner.new(str)
+		@scanner = StringScanner.new(str.src)
 		@blocks = []
 		get_line_indent
 		step
@@ -188,7 +188,7 @@ class Lexer
 			when v = s.scan(/[\.*+=\-,:&~]/)
 				[v, :sym, v]
 			when s.eos?
-				@pos = @src.size - 1
+				@pos = @src.src.size - 1
 				if block
 					r = ['', :deindent, @blocks.size * 2]
 					@blocks = []

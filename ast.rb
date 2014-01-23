@@ -1,6 +1,8 @@
 require_relative 'types'
 
 module AST
+	Input = Struct.new(:src, :file)
+
 	class Source
 		attr_accessor :input, :range
 		
@@ -22,7 +24,7 @@ module AST
 		end
 		
 		def format(lshift = 0)
-			lines = @input.lines.to_a
+			lines = @input.src.lines.to_a
 			i = 0
 			line = 1
 			while i < @range.min - lines.first.chomp.size
@@ -32,10 +34,10 @@ module AST
 			end
 			count = [@range.max - @range.min, lines.first.chomp.size].max
 			pad = @range.min - i
-			source = @input[i, count]
-			linestr = "line #{line}: "
+			source = @input.src[i, count]
+			linestr = "#{@input.file}:#{line}: "
 			padstr = " " * (untab(source[0...pad]).size + linestr.size)
-			count = untab(@input[@range]).size
+			count = untab(@input.src[@range]).size
 			rep = count == 1 ? "^" : "~"
 			lshift = " " * lshift
 			"#{lshift}#{linestr}#{untab(source)}\n#{lshift}#{padstr}#{rep * count}"
@@ -72,7 +74,7 @@ module AST
 			self
 		end
 	end
-	
+
 	class Node
 		attr_accessor :source, :declared
 		

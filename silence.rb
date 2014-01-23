@@ -1,3 +1,4 @@
+require 'pathname'
 require 'rbconfig'
 IsWindows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw/)
 
@@ -17,13 +18,33 @@ require_relative 'parser'
 InferArgs = InferContext::InferArgs.new({}, [])
 InferContext.infer_scope(Core::Program.scope, InferArgs)
 
-def process(file, parent)
-	puts "Processing #{file}"
-	
-	input = File.open(file) { |f| f.read }
+def fpath(f)
+	Pathname.new(f).relative_path_from(Pathname.new(Dir.pwd)).to_s
+end
 
-	ast = Parser.new(input).program
-	
+def parse(files, file)
+	return if files[file]
+
+	puts "Parsing #{fpath file}"
+
+	input = File.open(file) { |f| f.read }
+	parser = Parser.new(AST::Input.new(input, fpath(file)))
+	ast = parser.program
+
+	[ast] + parser.imports.map do |i|
+		i = File.absolute_path(i, File.dirname(file))
+		i += ".hs" if File.extname(i) == ""
+		raise "Unable to find file '#{fpath i}'\nImported in #{fpath file}" unless File.exist?(i)
+		parse(files, File.realpath(i))
+	end
+end
+
+def process(file, parent)
+	files = {}
+	asts = parse(files, file).flatten
+
+	ast = AST::Program.new(AST::GlobalScope.new(asts))
+
 	#puts print_ast(ast)
 	begin
 		ast.run_pass :declare_pass, false, (parent.scope if parent)
@@ -46,5 +67,4 @@ def process(file, parent)
 	
 	ast
 end
-
-process(ARGV.first, Core::Program)
+process(File.realpath(ARGV.first), Core::Program)
