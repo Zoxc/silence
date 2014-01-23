@@ -75,6 +75,10 @@ class Parser
 		expected('end') unless tok == :eos
 		r
 	end
+
+	def can_be_scope
+		eq(:line) || eq(:sym, '{')
+	end
 	
 	def parse_scope(baseline)
 		if eq :line
@@ -284,7 +288,6 @@ class Parser
 			end
 		end
 		
-		match :sym, ')'
 		r
 	end
 	
@@ -299,6 +302,7 @@ class Parser
 			action_type = "#{action_type}_args".to_sym if action_type
 			match(:sym, '(')
 			params = function_params(func)
+			match :sym, ')'
 		end
 		
 		if !action_type && matches(:sym, '->')
@@ -308,7 +312,7 @@ class Parser
 		
 		func.source.extend(@l.last_ended)
 		
-		group = group(baseline)
+		group = group(baseline, AST::FuncScope)
 		
 		func.action_type = action_type
 		func.params = params
@@ -380,7 +384,7 @@ class Parser
 		pred_operator if is_expression
 	end
 	
-	def group(baseline)
+	def group(baseline, scope = AST::LocalScope)
 		r = []
 		parse_scope(baseline) do |term|
 			while is_expression do
@@ -389,7 +393,7 @@ class Parser
 				match(:line) 
 			end
 		end
-		AST::LocalScope.new(r)
+		scope.new(r)
 	end
 
 	def expression_group(baseline)
@@ -695,12 +699,40 @@ class Parser
 		
 		AST::Array.new(s, r)
 	end
+
+	def lambda
+		baseline = @l.indent
+		lambda = nil
+
+		source do |s|
+			lambda = AST::Lambda.new(s)
+			matches(:sym, '->')
+
+
+			if matches(:sym, '|')
+				lambda.params = function_params(lambda)
+				match(:sym, '|')
+			else
+				lambda.params = []
+			end
+		end
+
+		lambda.scope = if can_be_scope
+			group(baseline, AST::FuncScope)
+		else
+			source do |s|
+				AST::FuncScope.new([AST::Return.new(expression)])
+			end
+		end
+
+		lambda
+	end
 	
 	def is_factor
 		case tok
 			when :sym
 				case tok_val
-					when '[', '('
+					when '[', '(', '|', '->'
 						true
 				end
 			when :id, :int, :str
@@ -713,6 +745,8 @@ class Parser
 			case tok
 				when :sym
 					case tok_val
+						when '->', '|'
+							lambda
 						when '['
 							array(s)
 						when '('

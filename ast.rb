@@ -199,6 +199,14 @@ module AST
 			@names = {}
 		end
 		
+		def fscope
+			c = self
+			while c
+				return c if c.is_a?(FuncScope)
+				c = c.parent
+			end
+		end
+
 		def declare(name, obj)
 			existing = @names[name]
 			raise CompileError, "Unable to declare name '#{name}' (#{__id__})\n#{obj.source.format}\nName was already taked by:\n#{existing.source.format}" if existing
@@ -213,19 +221,22 @@ module AST
 			return false
 		end
 		
-		def require(source, name, err_msg = proc { "Unknown identifier '#{name}'" })
-			r = require_with_scope(source, name, err_msg)
-			r ? r.first : nil
+		def require(source, name)
+			r, scope = require_with_scope(name)
+			raise CompileError, "Unknown identifier '#{name}'\n#{source.format}" unless r
+			r_fscope = scope.fscope
+			if r.is_a?(AST::Variable) && r_fscope
+				fscope.req_var(r, r_fscope)
+			end
+			r
 		end
 		
-		def require_with_scope(source, name, err_msg)
+		def require_with_scope(name)
 			#puts "|looking up identifier #{name} in #{__id__} \n#{source.format}|#{@names.keys.inspect}"
 			result = @names[name]
-			if result
-				return [result, self]
-			end
-			return @parent.require_with_scope(source, name, err_msg) if @parent
-			raise CompileError, "#{err_msg.()}\n#{source.format}"
+			return [result, self] if result
+			return @parent.require_with_scope(name) if @parent
+			[nil, nil]
 		end
 		
 		def visit
@@ -233,6 +244,24 @@ module AST
 		end
 	end
 	
+	class FuncScope < Scope
+		attr_accessor :req_vars
+
+		def initialize(nodes)
+			super
+			@req_vars = []
+		end
+
+		def req_var(var, fscope)
+			return if fscope == self
+
+			@req_vars.push(var)
+
+			fparent = parent.fscope
+			fparent.req_var(var, fscope) if fparent
+		end
+	end
+
 	class GlobalScope < Scope
 	end
 
@@ -552,6 +581,10 @@ module AST
 			@name ? @name : "action_#{action_type}"
 		end
 		
+		def fowner
+			self
+		end
+		
 		def declare_pass(scope)
 			super
 			@declared = @name ? scope.declare(@name, self) : scope
@@ -570,6 +603,44 @@ module AST
 			super
 			@params.map! { |n| yield n }
 			@result = yield @result
+		end
+	end
+
+	class Lambda < Node
+		attr_accessor :owner, :fowner, :scope, :params, :gen
+		
+		def declare_pass(scope)
+			@scope.parent = scope
+			@scope.owner = self
+			@owner = scope.fscope.owner
+		end
+
+		def fowner
+			c = owner
+			c = c.scope.parent.fscope.owner while !c.is_a?(AST::Function)
+			c
+		end
+		
+		def apply_pass(scope)
+			@scope
+		end
+		
+		def visit
+			@scope = yield @scope
+		end
+
+		def name
+			"lambda_#{__id__}"
+		end
+
+		def scoped_name
+			name
+		end
+		
+		def visit
+			super
+			@params.map! { |n| yield n }
+			@scope = yield @scope
 		end
 	end
 

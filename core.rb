@@ -95,7 +95,7 @@ class Core
 			r.result = ref(Core::Unit)
 			fields = fields.map { |field| AST::NameRef.new(src, field.name) }
 			assign = AST::BinOp.new(src, AST::Tuple.new(src, fields), '=', AST::NameRef.new(src, :args))
-			r.scope = AST::LocalScope.new([assign])
+			r.scope = AST::FuncScope.new([assign])
 			obj.scope.nodes << r
 
 			run_pass(r, obj.scope)
@@ -113,7 +113,7 @@ class Core
 			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', ref(constructed))), AST::Function::Param.new(src, r, :args, ref(args))]
 			r.result = ref(Core::Unit)
-			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create_args, AST::NameRef.new(src, :args))])
+			r.scope = AST::FuncScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create_args, AST::NameRef.new(src, :args))])
 			r.props[:shared] = true
 
 			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
@@ -129,7 +129,7 @@ class Core
 		
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', type_ref.()))]
 			r.result = ref(Core::Unit)
-			r.scope = AST::LocalScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create)])
+			r.scope = AST::FuncScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create)])
 			r.props[:shared] = true
 
 			run_pass(instance)

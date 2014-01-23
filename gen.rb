@@ -191,6 +191,8 @@ class Codegen
 			when Core::Cell::Node
 				fields = [map.params[Core::Cell::Val]] + map.params[Core::Cell::Next].tuple_map
 				"_Q#{fields.map {|f| mangle_type(f, map) }.join("_n")}_l"
+			when AST::Lambda
+				"_L#{ast.__id__}"
 			else
 				owner = ast.declared.owner
 				name = mangle_name(ast, map)
@@ -215,18 +217,19 @@ class Codegen
 		end
 	end
 	
-	def function_proto(ast, map, bare = false)
-		result = ast.ctype.type.args[Core::Func::Result]
+	def function_proto(ast, map, bare = false, type = ast.ctype.type)
+		type = inst_type(type, map)
+		result = type.args[Core::Func::Result]
 		result_type = "void"
 		result_type = c_type(result, map) if bare && result != Core::Unit.ctype.type
 		o = "#{bare ? 'extern "C" ' : "static "}#{result_type} #{bare ? ast.name : mangle(ast, map)}("
 		
-		param_types = ast.ctype.type.args[Core::Func::Args].tuple_map
+		param_types = type.args[Core::Func::Args].tuple_map
 		
 		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} v_#{p.name}" }
 		
 		unless bare
-			args.unshift("#{c_type(result, map)} *result") if !ast.action_type
+			args.unshift("#{c_type(result, map)} *result") if !ast.is_a?(AST::Function) || !ast.action_type
 			args.unshift("void *data") 
 		end
 		
@@ -296,6 +299,24 @@ class Codegen
 				o << "   void (*func)(#{(["void *", c_type(result, map) + " *"] + args.map{|a| c_type(a, map) }).join(", ")});\n"
 				o << "};\n\n"
 				@out[:struct] << o
+			when AST::Lambda
+				o = "struct #{ast.name}"
+				@out[:struct_forward] << o << ";\n"
+				o << "\n{\n"
+				vars = ast.fowner.ctype.vars
+				ast.scope.req_vars.each do |v|
+					o << "   #{c_type(vars[v], map)} *r_#{v.name};\n"
+				end
+				o << "};\n\n"
+				@out[:struct] << o
+
+				o = function_proto(ast, map, false, ast.gen)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				o << "    auto &ref = *(#{ast.name} *)data;\n"
+				o << FuncCodegen.new(self, ast, map).process
+				o << "\n}\n\n"
+				@out[:func] << o
 			when AST::Function
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

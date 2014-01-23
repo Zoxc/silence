@@ -21,6 +21,7 @@
 		@vars = {}
 		@var_allocs = {}
 		@fields = []
+		@result = {}
 		@views = {}
 	end
 	
@@ -94,8 +95,9 @@
 	# TODO: Make scoped and typeclass into an enum of NoTypeclasses, ViewTypeclasses, ScopedTypeclasses
 	# TODO: Make lvalue and tuple_lvalue into an enum of NotLValue, TupleLValue, LValue
 	class AnalyzeArgs
-		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended
-		def initialize
+		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended, :func
+		def initialize(func)
+			@func = func
 			@lvalue = false
 			@tuple_lvalue = false
 			@typeof = false
@@ -106,6 +108,7 @@
 		
 		def next(opts = {})
 			new = dup
+			new.func = opts[:func] || @func
 			new.typeof = opts[:typeof] || @typeof
 			new.lvalue = opts[:lvalue] || false
 			new.scoped = opts[:scoped] || false
@@ -114,6 +117,10 @@
 			new.extended = opts[:extended] || @extended
 			new
 		end
+	end
+
+	def analyze_args
+		AnalyzeArgs.new(@obj)
 	end
 	
 	def map_type_params(source, ref, parent_args, args)
@@ -263,10 +270,10 @@
 			raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{source.format}")
 		end
 
-		result = analyze_impl(ast, AnalyzeArgs.new)
+		result = analyze_impl(ast, analyze_args)
 
 		if tp.type_params.empty?
-			type, value = coerce_typeval(result, AnalyzeArgs.new, nil)
+			type, value = coerce_typeval(result, analyze_args, nil)
 
 			if value
 				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{result.type.source}") unless tp.value
@@ -384,6 +391,16 @@
 
 			# Values only
 
+			when AST::Lambda
+				analyze_value(ast.scope, args.next(func: ast))
+
+				func_args = make_tuple(ast.source, ast.params.map { |p| @vars[p.var] })
+
+				func_result = Types::Ref.new(ast.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result[ast] || unit_type(ast.source))})
+
+				ast.gen = func_result
+
+				Result.new(func_result, true)
 			when AST::MatchAs
 				type = analyze_value(ast.expr, args.next)
 
@@ -426,13 +443,13 @@
 				Result.new(unit_type(ast.source), true)
 			when AST::Return
 				result = analyze_value(ast.value, args.next)
-				prev = @result
+				prev = @result[args.func]
 				
 				if prev
 					unify(result, prev)
 					result
 				else
-					@result = result
+					@result[args.func] = result
 				end
 				
 				Result.new(unit_type(ast.source), true)
@@ -614,6 +631,11 @@
 				else
 					ensure_shared(ast.obj, ast.source, args) if shared?
 					parent_args = Hash[AST.type_params(ast.obj, false).map { |p| [p, map_type(p)] }]
+
+					if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
+						args.func.scope.req_var(@obj.self, @obj.scope)
+					end
+
 					RefResult.new(ast, ast.obj, parent_args)
 				end
 			when AST::Field
@@ -709,10 +731,10 @@
 	end
 	
 	def process_type_constraint(ast_type, unify_type)
-		analyze_args = AnalyzeArgs.new.next(typeclass: true)
+		a_args = analyze_args.next(typeclass: true)
 		
 		if ast_type
-			type = analyze_type(ast_type, analyze_args)
+			type = analyze_type(ast_type, a_args)
 			raise(TypeError.new("'#{type.text}' is not a type class\n#{ast_type.source.format}")) if type.fixed_type?
 			unify(type, unify_type)
 		end
@@ -727,11 +749,11 @@
 	def process_function
 		func = @obj
 		
-		analyze_args = AnalyzeArgs.new
+		a_args = analyze_args
 		
 		process_type_params
 		
-		@result = (analyze_type(func.result, analyze_args) if func.result)
+		@result[func] = (analyze_type(func.result, a_args) if func.result)
 
 		var_params = func.params.map(&:var)
 
@@ -739,7 +761,7 @@
 
 		@vars[func.self] = case owner
 			when AST::StructCase
-				analyze_args.extended[func.self] = owner
+				a_args.extended[func.self] = owner
 				owner.parent.ctype.type
 			when AST::Struct
 				owner.ctype.type
@@ -756,7 +778,7 @@
 			next if var.equal?(func.self)
 			
 			@vars[var] = if var.type
-					analyze_type(var.type, analyze_args.next(typeclass: var_params.include?(var)))
+					analyze_type(var.type, a_args.next(typeclass: var_params.include?(var)))
 				else
 					new_var(var.source)
 				end
@@ -764,10 +786,10 @@
 		
 		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
 		
-		analyze(func.scope, AnalyzeArgs.new)
+		analyze(func.scope, a_args)
 		
 		# TODO: make @result default to Unit, so the function can reference itself
-		func_result = Types::Ref.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result || unit_type(func.source))})
+		func_result = Types::Ref.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result[func] || unit_type(func.source))})
 
 		finalize(func_result, true)
 	end
@@ -865,9 +887,9 @@
 		end
 		
 		typeclass = @obj.typeclass.obj
-		analyze_args = AnalyzeArgs.new
+		a_args = analyze_args
 		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
-		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, analyze_args)] }]
+		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, a_args)] }]
 		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Ref.new(p.source, p)] }]), false)
 		
 		InferContext.infer_scope(@obj.scope, @infer_args)
@@ -876,7 +898,8 @@
 		
 		typeclass.scope.names.each_pair do |name, value|
 			next if value.is_a? AST::TypeParam
-			member, = @obj.scope.require_with_scope(@obj.source, name, proc { "Expected '#{name}' in instance of typeclass #{typeclass.name}" })
+			member, = @obj.scope.require_with_scope(name)
+			raise(CompileError, "Expected '#{name}' in instance of typeclass #{typeclass.name}\n#{@obj.source.format}") unless member
 			next if value.is_a? AST::TypeFunction
 			m = infer(member)
 			
@@ -918,7 +941,7 @@
 				process_instance
 			when AST::TypeParam
 				if value.value
-					finalize(analyze_type(value.type, AnalyzeArgs.new), true)
+					finalize(analyze_type(value.type, analyze_args), true)
 				else
 					create_type([])
 				end
@@ -942,8 +965,8 @@
 				InferContext.infer_scope(value.scope, @infer_args)
 			when AST::Variable
 				val_ast = value.decl.value if value.props[:field]
-				type = analyze_type(value.type, AnalyzeArgs.new) if value.type
-				val = analyze_value(val_ast, AnalyzeArgs.new) if val_ast
+				type = analyze_type(value.type, analyze_args) if value.type
+				val = analyze_value(val_ast, analyze_args) if val_ast
 
 				type = if type && val
 					unify(type, val)
@@ -957,7 +980,7 @@
 				# TODO: Require a fixed type for imports/exports
 				process_function
 			when AST::TypeAlias
-				finalize(analyze_type(value.type, AnalyzeArgs.new), false)
+				finalize(analyze_type(value.type, analyze_args), false)
 			when AST::TypeFunction
 				type = new_var(value.source)
 				process_type_constraint(value.type, type)

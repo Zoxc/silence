@@ -94,7 +94,13 @@ class FuncCodegen
 	end
 
 	def process
-		params = @func.ctype.type.args[Core::Func::Args].tuple_map.zip(@func.params)
+		ftype = case @func
+			when AST::Function
+				@func.ctype.type
+			when AST::Lambda
+				@func.gen
+		end
+		params = ftype.args[Core::Func::Args].tuple_map.zip(@func.params)
 		params = params.map do |type, p|
 			var = RealVar.new("v_#{p.name}", type)
 			@current_vars.push(var)
@@ -190,7 +196,7 @@ class FuncCodegen
 	def readonly(ast, var)
 		case ast
 			when AST::UnaryOp, AST::Field, AST::Ref
-				lvalue(ast, var)
+				lvalue(ast, var, false)
 				nil
 			else
 				tvar = new_var
@@ -241,7 +247,7 @@ class FuncCodegen
 	
 	# TODO: Have this return a variable with the pointer to the object and a variable to delete after usage of the object is done
 	# Make it pass in a var for the pointer to the object instead?
-	def lvalue(ast, var)
+	def lvalue(ast, var, proper = true)
 		case ast
 			when AST::Call
 				raise unless ast.gen[:type] == :index
@@ -265,7 +271,11 @@ class FuncCodegen
 						assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
 					when :field
 						obj_ptr = new_var
-						lvalue(ast.obj, obj_ptr)
+						if proper
+							lvalue(ast.obj, obj_ptr, true)
+						else
+							ovar = readonly(ast.obj, obj_ptr)
+						end
 
 						ref = if ast.gen[:ref].is_a?(AST::Function)
 							gen_func(obj_ptr.ref, ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
@@ -280,21 +290,31 @@ class FuncCodegen
 						end
 
 						assign_var(var, make_ptr(ast.gen[:result]), ref, true)
+						del_var ovar if ovar
 						del_var obj_ptr
 				end
 			when AST::Ref
 				owner = ast.obj.declared.owner
 
-				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.inside?(@func.scope)
-					assign_var(var, make_ptr(ast.gen), "&v_#{ast.obj.name}", true)
+				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.inside?(@func.fowner.scope)
+					if @func.scope.fscope != ast.obj.declared.fscope
+						assign_var(var, make_ptr(ast.gen), "ref.r_#{ast.obj.name}", true)
+					else
+						assign_var(var, make_ptr(ast.gen), "&v_#{ast.obj.name}", true)
+					end
 				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					# TODO: Turn this into a AST::Field with self as obj
-
-					ref = if owner == @func.declared.owner && owner.is_a?(AST::StructCase)
-						idx = owner.parent.cases.index(owner)
-						"&v_self.e_#{idx}.f_#{ast.obj.name}"
+					self_ref = if @func != @func.fowner
+						"(*ref.r_self)"
 					else
-						"&v_self.f_#{ast.obj.name}" # TODO: Check for the case when accesing a field in a parent struct
+						"v_self"
+					end
+
+					ref = if owner == @func.fowner.declared.owner && owner.is_a?(AST::StructCase)
+						idx = owner.parent.cases.index(owner)
+						"&#{self_ref}.e_#{idx}.f_#{ast.obj.name}"
+					else
+						"&#{self_ref}.f_#{ast.obj.name}" # TODO: Check for the case when accesing a field in a parent struct
 					end
 					assign_var(var, make_ptr(ast.gen.first), ref, true)
 				else
@@ -342,6 +362,17 @@ class FuncCodegen
 		case ast
 			when AST::ExpressionGroup
 				convert(ast.scope, var)
+			when AST::Lambda
+				ref_n = "v_#{@var_name += 1}"
+
+				@gen.gen(ast, @map)
+				o "#{ast.name} #{ref_n};"
+				ast.scope.req_vars.each do |v|
+					o "#{ref_n}.r_#{v.name} = #{v.declared.fscope == @func.scope ? "&v_#{v.name}" : "ref.r_#{v.name}"};\n"
+				end
+				o "#{var.ref}.func = #{@gen.mangle(ast, @map)};"
+				o "#{var.ref}.data = &#{ref_n};"
+				assign_var(var, ast.gen, nil)
 			when AST::Scope
 				nodes = ast.nodes.compact
 
@@ -442,7 +473,7 @@ class FuncCodegen
 				end)
 			when AST::UnaryOp, AST::Ref, AST::Field
 				tvar = new_var
-				lvalue(ast, tvar)
+				lvalue(ast, tvar, false)
 				type = @gen.inst_type(tvar.type, @map).args.values.first
 				assign_var(var, type, "*#{tvar.ref}", true)
 				del_var tvar
