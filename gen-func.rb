@@ -399,6 +399,37 @@ class FuncCodegen
 					pop_var(ref)
 					destroy_var(ref.ref, e.gen)
 				end
+			when AST::Match
+				resume = new_label
+
+				expr = new_var
+				convert(ast.expr, expr)
+
+				when_labels = ast.whens.map { new_label }
+
+				ast.whens.each_with_index do |w, i|
+					test = new_var
+					w_expr = new_var
+					convert(w.type, w_expr)
+					direct_call(test, ref(Core::Eq::Cmp, {Core::Eq::T => ast.gen[:type]}), expr.ref, [w_expr.ref], Core::Bool.ctype.type)
+					del_var w_expr
+					o "    if(#{test.ref}) goto #{when_labels[i]};"
+					del_var test
+				end
+
+				if ast.else_group
+					convert(ast.else_group, ast.gen[:unused] ? nil : var) 
+					o "goto #{resume};"
+				end
+
+				ast.whens.each_with_index do |w, i|
+					gen_label when_labels[i]
+					convert(w.group, ast.gen[:unused] ? nil : var)
+					o "goto #{resume};"
+				end
+
+				gen_label resume
+				del_var expr
 			when AST::MatchAs
 				resume = new_label
 
@@ -420,13 +451,13 @@ class FuncCodegen
 				o "}"
 
 				if ast.rest.else_group
-					convert(ast.rest.else_group, nil) 
+					convert(ast.rest.else_group, ast.gen[:unused] ? nil : var) 
 					o "goto #{resume};"
 				end
 
 				ast.rest.whens.each_with_index do |w, i|
 					gen_label when_labels[i]
-					convert(w.group, nil)
+					convert(w.group, ast.gen[:unused] ? nil : var)
 					o "goto #{resume};"
 				end
 
@@ -513,8 +544,22 @@ class FuncCodegen
 				end
 				del_var rhs
 			when AST::If
-				result = "if(#{gen_body(ast.condition)})\n#{ind.()}{\n" + gen_body.(ast.group) + "\n#{ind.()}}"
-				result << "\nelse\n#{ind.()}{\n" + gen_body.(ast.else_node) + "\n#{ind.()}}" if ast.else_node
+				cond = new_var
+				el = new_label
+				convert(ast.condition, cond)
+				o "if(!#{cond.ref})"
+				o "    goto #{el};"
+				del_var cond
+				convert(ast.group, ast.gen ? nil : var)
+				if ast.else_node
+					ed = new_label
+					o "goto #{ed};"
+					gen_label el
+					convert(ast.else_node, ast.gen ? nil : var)
+					gen_label ed
+				else
+					gen_label el
+				end
 			when AST::Grouped
 				convert(ast.node, var)
 			when AST::Call

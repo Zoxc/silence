@@ -726,6 +726,23 @@ module AST
 		end
 	end
 	
+	class Match < ExpressionNode
+		attr_accessor :expr, :whens, :else_group, :gen
+		
+		def initialize(source, expr, whens, else_group)
+			super(source)
+			@expr = expr
+			@whens = whens
+			@else_group = else_group
+		end
+	
+		def visit
+			@expr = yield @expr
+			@whens.map! { |n| yield n }
+			@else_group = yield @else_group if @else_group
+		end
+	end
+	
 	class UnaryOp < ExpressionNode
 		attr_accessor :op, :node, :gen
 		
@@ -800,7 +817,7 @@ module AST
 	end
 	
 	class If < ExpressionNode
-		attr_accessor :condition, :group, :else_node
+		attr_accessor :condition, :group, :else_node, :gen
 		
 		def initialize(condition, group, else_node)
 			@condition = condition

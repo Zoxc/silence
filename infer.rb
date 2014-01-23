@@ -42,9 +42,6 @@
 		@ctx.new_var(source, name)
 	end
 	
-	def unit_default(type)
-	end
-	
 	def self.unit_type(source)
 		Types::Ref.new(source, Core::Unit, {})
 	end
@@ -95,7 +92,7 @@
 	# TODO: Make scoped and typeclass into an enum of NoTypeclasses, ViewTypeclasses, ScopedTypeclasses
 	# TODO: Make lvalue and tuple_lvalue into an enum of NotLValue, TupleLValue, LValue
 	class AnalyzeArgs
-		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended, :func
+		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended, :func, :unused
 		def initialize(func)
 			@func = func
 			@lvalue = false
@@ -103,6 +100,7 @@
 			@typeof = false
 			@typeclass = false
 			@scoped = false
+			@unused = false
 			@extended = {}
 		end
 		
@@ -111,6 +109,7 @@
 			new.func = opts[:func] || @func
 			new.typeof = opts[:typeof] || @typeof
 			new.lvalue = opts[:lvalue] || false
+			new.unused = opts[:unused] || false
 			new.scoped = opts[:scoped] || false
 			new.typeclass = opts[:typeclass] || false
 			new.tuple_lvalue = opts[:tuple_lvalue] || false
@@ -392,7 +391,7 @@
 			# Values only
 
 			when AST::Lambda
-				analyze_value(ast.scope, args.next(func: ast))
+				analyze_value(ast.scope, args.next(func: ast, unused: true))
 
 				func_args = make_tuple(ast.source, ast.params.map { |p| @vars[p.var] })
 
@@ -401,6 +400,24 @@
 				ast.gen = func_result
 
 				Result.new(func_result, true)
+			when AST::Match
+				type = analyze_value(ast.expr, args.next)
+
+				typeclass_limit(ast.source, Core::Eq::Node, {Core::Eq::T => type})
+
+				cases = ast.whens.map do |w|
+					w_type = analyze_value(w.type, args.next)
+					unify(type, w_type)
+					analyze_value(w.group, args.next)
+				end
+
+				cases += [analyze_value(ast.else_group, args.next)] if ast.else_group
+
+				cases.inject { |m, o| unify(m, o) } unless args.unused
+
+				ast.gen = {type: type, unused: args.unused}
+
+				Result.new(args.unused ? unit_type(ast.source) : cases.first, true)
 			when AST::MatchAs
 				type = analyze_value(ast.expr, args.next)
 
@@ -420,16 +437,18 @@
 					extended = args.extended.dup
 					extended[ast.rest.binding] = obj
 					
-					analyze_value(w.group, args.next(extended: extended))
-
-					obj
+					[obj, analyze_value(w.group, args.next(extended: extended))]
 				end
 
-				ast.gen = {expr: type, when_objs: when_objs}
+				ast.gen = {expr: type, when_objs: when_objs.map(&:first), unused: args.unused}
 
-				analyze_value(ast.rest.else_group, args.next) if ast.rest.else_group
+				cases = when_objs.map(&:last)
 
-				Result.new(unit_type(ast.source), true)
+				cases += [analyze_value(ast.rest.else_group, args.next)] if ast.rest.else_group
+
+				cases.inject { |m, o| unify(m, o) } unless args.unused
+
+				Result.new(args.unused ? unit_type(ast.source) : cases.first, true)
 			when AST::VariableDecl
 				ast.gen = @vars[ast.var]
 				
@@ -455,12 +474,18 @@
 				Result.new(unit_type(ast.source), true)
 			when AST::If
 				cond = analyze_value(ast.condition, args.next)
-				unify(cond, Types::BoolType)
+				unify(cond, Types::Ref.new(ast.source, Core::Bool))
 				
-				unit_default analyze_value(ast.group, args.next)
-				analyze_value(ast.else_node, args.next) if ast.else_node
+				l = analyze_value(ast.group, args.next)
+
+				if ast.else_node
+					r = analyze_value(ast.else_node, args.next)
+					unify(l, r) unless args.unused
+				end
+
+				ast.gen = args.unused
 				
-				Result.new(unit_type(ast.source), true)
+				Result.new(args.unused ? unit_type(ast.source) : l, true)
 			when AST::Call
 				type, value = analyze(ast.obj, args.next(lvalue: args.lvalue))
 				
@@ -509,7 +534,7 @@
 						typeclass_limit(ast.source, Core::IntLiteral::Node, {Core::IntLiteral::T => type})
 						type
 					when :bool
-						Core::Bool.ctype.type
+						Types::Ref.new(ast.source, Core::Bool)
 					when :string
 						type = new_var(ast.source)
 						typeclass_limit(ast.source, Core::StringLiteral::Node, {Core::StringLiteral::T => type})
@@ -537,10 +562,11 @@
 				result = if nodes.empty?
 					unit_type(ast.source)
 				else
+					new_args = args.next(unused: true)
 					nodes[0...-1].each do |node|
-						unit_default analyze_value(node, args.next)
+						analyze_value(node, new_args)
 					end
-					analyze_value(nodes.last, args.next)
+					analyze_value(nodes.last, args.next(unused: args.unused))
 				end
 				
 				Result.new(result, true)
@@ -786,7 +812,7 @@
 		
 		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
 		
-		analyze(func.scope, a_args)
+		analyze(func.scope, a_args.next(unused: true))
 		
 		# TODO: make @result default to Unit, so the function can reference itself
 		func_result = Types::Ref.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result[func] || unit_type(func.source))})

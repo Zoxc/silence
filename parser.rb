@@ -463,9 +463,10 @@ class Parser
 			step
 			skip :line
 			exp = chain
-			match :id, :as
-			binding_source, binding = source do |s|
-				next s, match(:id)
+			if matches(:id, :as)
+				binding_source, binding = source do |s|
+					next s, match(:id)
+				end
 			end
 
 			else_group = nil
@@ -496,7 +497,11 @@ class Parser
 				end
 			end
 
-			AST::MatchAs.new(s, exp, AST::MatchCases.new(s, binding_source, binding, whens, else_group))
+			if binding
+				AST::MatchAs.new(s, exp, AST::MatchCases.new(s, binding_source, binding, whens, else_group))
+			else
+				AST::Match.new(s, exp, whens, else_group)
+			end
 		end
 	end
 	

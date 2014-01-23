@@ -258,6 +258,12 @@ class Core
 		Node = complex(:Indexable, [T], AST::TypeClass, [Index, Result, Ref])
 	end
 
+	class Eq < Core
+		T = param :T
+		Cmp = func(:equal, {other: ref(T)}, ref(Bool))
+		Node = complex(:Eq, [T], AST::TypeClass, [Cmp])
+	end
+
 	proc do
 		args = param :Args
 		result = param :Result
@@ -278,9 +284,14 @@ class Core
 		Node = complex(:IntLiteral, [T], AST::TypeClass, [Create])
 	end
 	
-	IntLiterals = {create: {}, default: {}}
+	IntLiterals = {create: {}, default: {}, eq: {}}
 	
 	num_lit = proc do |type|
+		cmp = func(:equal, {other: ref(type)}, ref(Bool))
+		eq_inst = tci(Eq::Node, [ref(type)], [], [cmp])
+		Nodes << eq_inst
+		IntLiterals[:eq][cmp] = cmp
+		
 		create = func(:create, {input: ref(Int)}, ref(type))
 		create_inst = tci(IntLiteral::Node, [ref(type)], [], [create])
 		Nodes << create_inst

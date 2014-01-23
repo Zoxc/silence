@@ -243,6 +243,10 @@ class Codegen
 		puts "Generating #{ast.scoped_name} - #{map}"
 		case ast
 			when AST::TypeClass
+			when Core::IntLiterals[:eq][ast]
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				@out[:func] << o << "\n{\n    *result = *(#{c_type(ast.ctype.type.args[Core::Func::Args].tuple_map.first, map)} *)data == v_other;\n}\n\n"
 			when Core::IntLiterals[:default][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
