@@ -22,7 +22,7 @@ class Codegen
 	def find_instance(tc, map, ast)
 		typeclass = inst_type(tc, map)
 		inst, inst_map = TypeContext.find_instance(nil, nil, typeclass.ref, typeclass.args)
-		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text} for #{ast.name}\n#{ast.source.format}") unless inst
+		raise TypeError.new("Unable to find an instance of the type class '#{typeclass.text} for #{ast.scoped_name}\n#{ast.source.format}") unless inst
 
 		ref = inst.scope.names[ast.name]
 		raise "Didn't find name '#{ast.name}' in typeclass instance" unless ref
@@ -246,7 +246,7 @@ class Codegen
 			when Core::IntLiterals[:eq][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
-				@out[:func] << o << "\n{\n    *result = *(#{c_type(ast.ctype.type.args[Core::Func::Args].tuple_map.first, map)} *)data == v_other;\n}\n\n"
+				@out[:func] << o << "\n{\n    *result = v_lhs == v_rhs;\n}\n\n"
 			when Core::IntLiterals[:default][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

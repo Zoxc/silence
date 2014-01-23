@@ -29,11 +29,12 @@ class Core
 			AST::TypeParam.new(src(2), name, AST::KindParams.new(src(2), [], []), tp, false)
 		end
 		
-		def func(fname, args, result, params = [])
+		def func(fname, args, result, params = [], shared = false)
 			r = AST::Function.new(src(2), fname, AST::KindParams.new(src(2), params, []))
 			r.params = args.each.map { |name, type| AST::Function::Param.new(src(2), r, name, type) }
 			r.result = result
 			r.scope = AST::LocalScope.new([])
+			r.props = {shared: shared}
 			r
 		end
 
@@ -260,7 +261,7 @@ class Core
 
 	class Eq < Core
 		T = param :T
-		Cmp = func(:equal, {other: ref(T)}, ref(Bool))
+		Cmp = func(:equal, {lhs: ref(T), rhs: ref(T)}, ref(Bool), [], true)
 		Node = complex(:Eq, [T], AST::TypeClass, [Cmp])
 	end
 
@@ -287,7 +288,7 @@ class Core
 	IntLiterals = {create: {}, default: {}, eq: {}}
 	
 	num_lit = proc do |type|
-		cmp = func(:equal, {other: ref(type)}, ref(Bool))
+		cmp = func(:equal, {lhs: ref(type), rhs: ref(type)}, ref(Bool), [], true)
 		eq_inst = tci(Eq::Node, [ref(type)], [], [cmp])
 		Nodes << eq_inst
 		IntLiterals[:eq][cmp] = cmp
@@ -319,12 +320,15 @@ class Core
 	class Joinable < Core
 		T = param :T
 		
-		Join = func(:join, {lhs: ref(T), rhs: ref(T)}, ref(T))
+		Join = func(:join, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
 		
 		Node = complex(:Joinable, [T], AST::TypeClass, [Join])
 	end
 	
-	OpMap = {'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join}}
+	OpMap = {
+		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
+		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Cmp, result: Core::Bool}
+	}
 
 	
 	Program.run_pass(:declare_pass, false)

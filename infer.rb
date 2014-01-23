@@ -625,13 +625,19 @@
 				
 				if lvalue
 					req_level(ast.source, lhs) if (assign_op && !ast.constructing)
-					
+
 					typeclass = Core::OpMap[ast.op]
-					typeclass_limit(ast.source, typeclass[:ref], {typeclass[:param] => lhs}) if typeclass
-					
+
+					result = lhs
+					if typeclass
+						typeclass_limit(ast.source, typeclass[:ref], {typeclass[:param] => lhs}) 
+
+						result = Types::Ref.new(ast.source, typeclass[:result]) if typeclass[:result]
+					end
+
 					unify(lhs, rhs)
-					ast.gen = lhs
-					Result.new(lhs, true)
+					ast.gen = {arg: lhs, result: result}
+					Result.new(result, true)
 				else
 					raise TypeError.new("Unknown type operator '#{ast.op}'\n#{ast.source.format}") if ast.op != '->'
 					
