@@ -5,7 +5,7 @@ class Codegen
 		@named = {}
 		@names = 0
 		
-		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::CInt => 'int', Core::Bool => 'bool', Core::Char => 'char'}.each do |type, name|
+		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::CInt => 'int', Core::Char => 'char'}.each do |type, name|
 			@gen[type] = [TypeContext::Map.new({}, {})]
 			@out[:prelude] << "typedef #{name} #{mangle(type, TypeContext::Map.new({}, {}))};\n"
 		end
@@ -246,7 +246,7 @@ class Codegen
 			when Core::IntLiterals[:eq][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
-				@out[:func] << o << "\n{\n    *result = v_lhs == v_rhs;\n}\n\n"
+				@out[:func] << o << "\n{\n    *result = v_lhs == v_rhs ? Enum_bool_true : Enum_bool_false;\n}\n\n"
 			when Core::IntLiterals[:default][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
@@ -273,7 +273,7 @@ class Codegen
 				in_type = map.params[Core::ForceCastIn]
 				out_type = map.params[Core::ForceCastOut]
 				
-				o << "    *result = reinterpret_cast<#{c_type(out_type, map)}>(v_in);\n}\n\n"
+				o << "    *result = (#{c_type(out_type, map)})v_in;\n}\n\n"
 				
 				@out[:func] << o
 			when Core::CallableFuncApply
@@ -354,6 +354,16 @@ class Codegen
 					o << "\n}\n\n"
 				end
 				@out[:func] << o
+			when AST::EnumValue
+				owner = mangle(ast.owner, map)
+				@out[:globals] << "static #{owner} #{mangle(ast, map)} = Enum#{owner}_#{ast.name};\n"
+			when AST::Enum
+				name = mangle(ast, map)
+				o = "enum #{name}\n{"
+				ast.values.each do |v|
+					o << "    Enum#{name}_#{v.name},\n"
+				end
+				@out[:struct_forward] << o << "};\n"
 			when AST::Struct
 				name = mangle(ast, map)
 				o = "struct #{name}"

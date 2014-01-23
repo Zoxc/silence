@@ -136,6 +136,24 @@ class Core
 			run_pass(instance)
 		end
 		
+		def create_enum_eq(obj)
+			type_params, type_ref = type_params(obj)
+
+			r = AST::Function.new(src, :equal, AST::KindParams.new(src, [], []))
+
+			instance = AST::TypeClassInstance.new(src, ref(Core::Eq::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::KindParams.new(src, type_params, []))
+		
+			r.params = [AST::Function::Param.new(src, r, :lhs, type_ref.()), AST::Function::Param.new(src, r, :rhs, type_ref.())]
+			r.result = ref(Core::Bool)
+
+			lhs = AST::Call.new(src, AST::Index.new(src, ref(Core::ForceCast), [ref(Core::UInt)]), [AST::NameRef.new(src, :lhs)])
+			rhs = AST::Call.new(src, ref(Core::ForceCast), [AST::NameRef.new(src, :rhs)])
+
+			r.scope = AST::FuncScope.new([AST::Return.new(AST::BinOp.new(src, lhs, '==', rhs))])
+			r.props[:shared] = true
+
+			run_pass(instance)
+		end
 	end
 	
 	# Typeclasses which allows you to increase required levels in type parameters
@@ -196,7 +214,17 @@ class Core
 	Int = complex :int
 	UInt = complex :uint
 	CInt = complex :c_int
-	Bool = complex :bool
+
+	proc do
+		values = []
+		Bool = AST::Enum.new(src, :bool, [])
+		values << AST::EnumValue.new(src, :false, Bool)
+		values << AST::EnumValue.new(src, :true, Bool)
+		Bool.values = values
+		Nodes << Bool
+		Nodes.concat(values)
+	end.()
+
 	String = complex :string
 	Char = complex :char
 	
@@ -261,8 +289,8 @@ class Core
 
 	class Eq < Core
 		T = param :T
-		Cmp = func(:equal, {lhs: ref(T), rhs: ref(T)}, ref(Bool), [], true)
-		Node = complex(:Eq, [T], AST::TypeClass, [Cmp])
+		Equal = func(:equal, {lhs: ref(T), rhs: ref(T)}, ref(Bool), [], true)
+		Node = complex(:Eq, [T], AST::TypeClass, [Equal])
 	end
 
 	proc do
@@ -327,7 +355,7 @@ class Core
 	
 	OpMap = {
 		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
-		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Cmp, result: Core::Bool}
+		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}
 	}
 
 	

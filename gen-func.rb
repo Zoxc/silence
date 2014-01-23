@@ -411,7 +411,7 @@ class FuncCodegen
 					test = new_var
 					w_expr = new_var
 					convert(w.type, w_expr)
-					direct_call(test, ref(Core::Eq::Cmp, {Core::Eq::T => ast.gen[:type]}), expr.ref, [expr.ref, w_expr.ref], Core::Bool.ctype.type)
+					direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), expr.ref, [expr.ref, w_expr.ref], Core::Bool.ctype.type)
 					del_var w_expr
 					o "    if(#{test.ref}) goto #{when_labels[i]};"
 					del_var test
@@ -494,8 +494,6 @@ class FuncCodegen
 					when :int
 						direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast.gen}), nil, [ast.value.to_s], ast.gen)
 						nil
-					when :bool
-						ast.value.to_s
 					when :string
 						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gen}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"], ast.gen)
 						nil
@@ -529,15 +527,15 @@ class FuncCodegen
 					if typeclass
 						lhs_arg = new_var
 						rhs_arg = new_var
-						copy_var(lhs.ref, lhs_arg.ref, ast.gen[:result])
-						copy_var(rhs.ref, rhs_arg.ref, ast.gen[:result])
-						assign_var(lhs_arg, ast.gen[:result], nil)
-						assign_var(rhs_arg, ast.gen[:result], nil)
+						copy_var(lhs.ref, lhs_arg.ref, ast.gen[:arg])
+						copy_var(rhs.ref, rhs_arg.ref, ast.gen[:arg])
+						assign_var(lhs_arg, ast.gen[:arg], nil)
+						assign_var(rhs_arg, ast.gen[:arg], nil)
 						direct_call(var, ref(typeclass[:func], {typeclass[:param] => ast.gen[:arg]}), nil, [lhs_arg.ref, rhs_arg.ref], ast.gen[:result])
 						del_var rhs_arg, false
 						del_var lhs_arg, false
 					else
-						assign_var(var, ast.gen, lhs.ref + " #{ast.op} " + rhs.ref)
+						assign_var(var, ast.gen[:result], lhs.ref + " #{ast.op} " + rhs.ref)
 					end
 					
 					del_var lhs

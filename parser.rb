@@ -123,6 +123,8 @@ class Parser
 						step
 						@imports << match(:str)
 						true
+					when :enum
+						enum
 					when :struct
 						struct
 					when :when
@@ -238,6 +240,30 @@ class Parser
 		
 		scope = global_scope(baseline)
 		AST::TypeClassInstance.new(s, type_class, args, scope, tp)
+	end
+	
+	def enum
+		s = @l.source
+		baseline = @l.indent
+		step
+		name = match :id
+		s.extend(@l.last_ended)
+
+		values = []
+
+		result = AST::Enum.new(s, name, values)
+
+		parse_scope(baseline) do |term|
+			while eq(:id) do
+				source do |s|
+					values << AST::EnumValue.new(s, match(:id), result)
+				end
+				break if term.()
+				match(:line)
+			end
+		end
+
+		result
 	end
 	
 	def struct
@@ -773,12 +799,6 @@ class Parser
 						when :typeof
 							step
 							AST::TypeOf.new(s, chain)
-						when :true
-							step
-							AST::Literal.new(s, :bool, true)
-						when :false
-							step
-							AST::Literal.new(s, :bool, false)
 						else
 							AST::NameRef.new(s, match(:id))
 					end

@@ -145,6 +145,8 @@
 	def lvalue_check(source, obj, lvalue)
 		return unless lvalue
 		case obj
+			when AST::EnumValue
+				raise TypeError.new("The enum value '#{obj.name}' is not a valid l-value\n#{source.format}")
 			when AST::Function
 				raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
 			when AST::TypeParam
@@ -533,8 +535,6 @@
 						type = new_var(ast.source)
 						typeclass_limit(ast.source, Core::IntLiteral::Node, {Core::IntLiteral::T => type})
 						type
-					when :bool
-						Types::Ref.new(ast.source, Core::Bool)
 					when :string
 						type = new_var(ast.source)
 						typeclass_limit(ast.source, Core::StringLiteral::Node, {Core::StringLiteral::T => type})
@@ -948,21 +948,12 @@
 		end
 	end
 	
-	def parent_args
-		parent = @obj.scope.parent.owner
-		if parent.is_a? AST::Complex
-			parent.ctype.type.args.each.to_a
-		else
-			[]
-		end
-	end
-	
 	def map_type(obj, parent = [])
 		Types::Ref.new(obj.source, obj, Hash[parent], obj.type_params.empty?)
 	end
 	
-	def create_type(parent)
-		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, map_type(p)] } + parent]), false)
+	def create_type
+		finalize(Types::Ref.new(@obj.source, @obj, Hash[AST.type_params(@obj).map { |p| [p, map_type(p)] }]), false)
 	end
 	
 	def process
@@ -975,14 +966,16 @@
 				if value.value
 					finalize(analyze_type(value.type, analyze_args), true)
 				else
-					create_type([])
+					create_type
 				end
 			when AST::Complex
 				process_type_params
 				
-				create_type(parent_args)
+				create_type
 				
 				case value
+					when AST::Enum
+						Core.create_enum_eq(value)
 					when AST::Struct
 						unless value.enum?
 							Core.create_constructor_action(value) unless value.actions[:create_args]
@@ -995,6 +988,9 @@
 				end
 				
 				InferContext.infer_scope(value.scope, @infer_args)
+			when AST::EnumValue
+				infer(value.owner)
+				finalize(value.owner.ctype.type, true)
 			when AST::Variable
 				val_ast = value.decl.value if value.props[:field]
 				type = analyze_type(value.type, analyze_args) if value.type

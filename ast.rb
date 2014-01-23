@@ -334,7 +334,6 @@ module AST
 		
 		def initialize(source, kind_params)
 			super(source)
-			@name = name
 			@kind_params = kind_params
 			@scope = LocalScope.new([]) if !type_params.empty? and !@scope
 		end
@@ -384,7 +383,7 @@ module AST
 		case ast
 			when AST::Program
 				[]
-			when AST::TypeParam, AST::TypeClassInstance
+			when AST::TypeParam, AST::TypeClassInstance, AST::Enum
 				plain ? ast.type_params : []
 			else
 				result = type_params(ast.declared.owner)
@@ -522,6 +521,30 @@ module AST
 			@parent = scope.owner
 			@parent.cases ||= []
 			@parent.cases.push(self)
+		end
+	end
+	
+	class EnumValue < HigherKinded
+		attr_accessor :name, :owner, :ctype
+		
+		def initialize(source, name, owner)
+			super(source, AST::KindParams.new(source, [], []))
+			@name = name
+			@owner = owner
+		end
+
+		def declare_pass(scope)
+			@declared = scope.declare(@name, self)
+		end
+	end
+	
+	class Enum < Complex
+		attr_accessor :values, :actions
+		
+		def initialize(source, name, values)
+			super(source, name, AST::GlobalScope.new(values), AST::KindParams.new(source, [], []))
+			@values = values
+			@actions = {}
 		end
 	end
 	
@@ -742,7 +765,7 @@ module AST
 			@else_group = yield @else_group if @else_group
 		end
 	end
-	
+
 	class UnaryOp < ExpressionNode
 		attr_accessor :op, :node, :gen
 		
