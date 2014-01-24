@@ -30,43 +30,20 @@ class Codegen
 		return ref, inst_map
 	end
 	
-	def map_ref(ref, map)
-		if ref.param
-			r = map.params[ref.param]
-			raise "Unable to find instance of #{ref.ref.scoped_name} #{map}" unless r
-			r.prune
-		end
-	end
-	
 	def inst_type(type, map)
-		type = type.prune
-		case type
-			when Types::Value
-				type
-			when Types::Variable
-				r = map.vars[type]
-				raise "Unable to find type for #{type}\n#{type.stack}\n#{type.source.format}" unless r
+		TypeContext.inst_type(type,
+			proc { |s| s },
+			proc { |t|
+				r = map.vars[t]
+				raise "Unable to find type for #{t}\n#{t.stack}\n#{t.source.format}" unless r
 				r.prune
-			when Types::Ref
-				ref = map_ref(type, map)
-				
-				if ref
-					if type.args.empty?
-						ref
-					else
-						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
-						type_args = type.args.map do |k, v|
-							[ref.ref.type_params[type.ref.type_params.index(k)], inst_type(v, map)]
-						end
-						parent_args = ref.args.select { |k, v| !ref.ref.type_params.index(k) }.to_a
-						Types::Ref.new(type.source, ref.ref, Hash[type_args + parent_args], type.plain)
-					end
-				else
-					Types::Ref.new(type.source, type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, map)] }], type.plain)
-				end
-			else
-				raise "(inst_type unknown #{type.class.inspect})"
-		end
+			},
+			proc { |t|
+				if t.param
+					r = map.params[t.param]
+					raise "Unable to find instance of #{t.ref.scoped_name} #{map}" unless r
+					r.prune
+				end})
 	end
 	
 	def map_vars(ref, map)
@@ -291,6 +268,10 @@ class Codegen
 				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.#{idx i}" }.join});\n}\n\n"
 				
 				@out[:func] << o
+			when Core::Table::Node
+				name = mangle(ast, map)
+				o = "typedef #{c_type(map.params[Core::Table::Type], map)} #{name}[#{map.params[Core::Table::Size].value}]"
+				@out[:struct_forward] << o << ";\n"
 			when Core::Ptr::Node
 			when Core::Func::Node
 				args = map.params[Core::Func::Args].tuple_map

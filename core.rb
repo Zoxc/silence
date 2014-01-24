@@ -358,6 +358,21 @@ class Core
 		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}
 	}
 
+	class Table < Core
+		Type = param(:Type, ref(Copyable::Node))
+		Size = AST::TypeParam.new(src, :Size, AST::KindParams.new(src, [], []), ref(UInt), true)
+		Node = complex(:Table, [Size, Type])
+
+		proc do
+			_type = param :Type
+			_size = AST::TypeParam.new(src, :Size, AST::KindParams.new(src, [], []), ref(UInt), true)
+			_index = AST::TypeAlias.new(src, :Index, AST::Tuple.new(src, [ref(UInt)]))
+			_result = AST::TypeAlias.new(src, :Result, ref(_type))
+			Ref = func(:ref, {index: ref(_index)}, ptr(ref(_result)))
+			inst = tci(Indexable::Node, [AST::Index.new(src, ref(Node), [ref(_size), ref(_type)])], [_size, _type], [Ref, _index, _result])
+			Nodes << inst
+		end.()
+	end
 	
 	Program.run_pass(:declare_pass, false)
 	Program.run_pass(:ref_pass)

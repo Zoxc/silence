@@ -194,6 +194,10 @@ class FuncCodegen
 	end
 
 	def readonly(ast, var)
+		if ast.is_a?(AST::Call) && ast.gen[:type] == :binding
+			return readonly(ast.args.first, var)
+		end
+
 		case ast
 			when AST::UnaryOp, AST::Field, AST::Ref
 				lvalue(ast, var, false)
@@ -207,6 +211,11 @@ class FuncCodegen
 	end
 
 	def call_args(ast, var, lval = nil)
+		if ast.gen[:type] == :binding
+			convert(ast.args.first, var)
+			return
+		end
+
 		if ast.gen[:type] == :call
 			obj = new_var
 			ovar = readonly(ast.obj, obj)
@@ -239,23 +248,27 @@ class FuncCodegen
 
 		del_var args, false
 		
-		if ast.gen[:type] == :call
-			del_var ovar if ovar
-			del_var obj
-		end
+		del_var ovar if ovar
+		del_var obj if obj
 	end
-	
+
 	# TODO: Have this return a variable with the pointer to the object and a variable to delete after usage of the object is done
 	# Make it pass in a var for the pointer to the object instead?
 	def lvalue(ast, var, proper = true)
 		case ast
 			when AST::Call
-				raise unless ast.gen[:type] == :index
+				case ast.gen[:type]
+					when :index
+						obj_ptr = new_var
+						lvalue(ast.obj, obj_ptr)
+						call_args(ast, var, "*#{obj_ptr.ref}")
+						del_var obj_ptr
+					when :binding
+						lvalue(ast.args.first, var, proper)
+					else
+						raise
+				end
 
-				obj_ptr = new_var
-				lvalue(ast.obj, obj_ptr)
-				call_args(ast, var, "*#{obj_ptr.ref}")
-				del_var obj_ptr
 			when AST::UnaryOp
 				case ast.op
 					when '*'

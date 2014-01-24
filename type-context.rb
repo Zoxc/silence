@@ -153,15 +153,17 @@
 		@levels.concat(levels)
 	end
 	
-	def inst_type(args, type)
+	def self.inst_type(type, src_wrap, map_var, params)
+		inst_type = proc { |t| inst_type(t, src_wrap, map_var, params) }
+
 		type = type.prune
 		case type
 			when Types::Value
-				Types::Value.new(src_wrap(type.source, args), type.value)
+				Types::Value.new(src_wrap.(type.source), type.value)
 			when Types::Variable
-				args.vars[type] ||= new_var(src_wrap(type.source, args), type.name)
+				map_var.(type)
 			when Types::Ref
-				ref = args.params[type.ref]
+				ref = params.(type)
 
 				if ref
 					if type.args.empty?
@@ -171,17 +173,24 @@
 						# A higher-order type parameter
 						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
 						type_args = type.args.map do |k, v|
-							[ref.ref.type_params[type.ref.type_params.index(k)], inst_type(args, v)]
+							[ref.ref.type_params[type.ref.type_params.index(k)], inst_type.(v)]
 						end
 						parent_args = ref.args.select { |k, v| !ref.ref.type_params.index(k) }.to_a
-						Types::Ref.new(src_wrap(type.source, args), ref.ref, Hash[type_args + parent_args], type.plain)
+						Types::Ref.new(src_wrap.(type.source), ref.ref, Hash[type_args + parent_args], type.plain)
 					end
 				else
-					Types::Ref.new(src_wrap(type.source, args), type.ref, Hash[type.args.map { |k, v| [k, inst_type(args, v)] }], type.plain)
+					Types::Ref.new(src_wrap.(type.source), type.ref, Hash[type.args.map { |k, v| [k, inst_type.(v)] }], type.plain)
 				end
 			else
 				raise "Unknown type #{type.class}"
 		end
+	end
+	
+	def inst_type(args, type)
+		self.class.inst_type(type,
+			proc { |s| src_wrap(s, args) },
+			proc { |t| args.vars[t] ||= new_var(src_wrap(t.source, args), t.name) },
+			proc { |t| args.params[t.ref] })
 	end
 	
 	def inst(src, obj, params = {})
@@ -278,6 +287,16 @@
 		[result, map]
 	end
 	
+	def self.inst_type_or_die(type, map)
+		inst_type(type,
+			proc { |s| s },
+			proc { |t| raise "Unknown variable type in typeclass constraint of instance #{t}\n#{t.stack}\n#{t.source.format}" },
+			proc { |t|
+				r = map[t.ref]
+				raise "Unable to find instance of #{t.ref.scoped_name} #{map}" unless r
+				r.prune})
+	end
+	
 	def self.find_instance(obj, infer_args, typeclass, args)
 		#TODO: Find all matching instances and error if multiple are appliable
 		#      If one instance is more specific than the other (or an instance of), use the most specific one.
@@ -290,12 +309,13 @@
 			
 			InferContext.infer(inst, infer_args)
 			result, map = is_instance?(args.values, inst.ctype.typeclass.values)
-			
-			#puts "Comparing #{inst.ctype.typeclass.text} with #{input.text} = #{result}\n#{input.source.format}"
-			
+
 			next unless result
-			
-			true
+
+			inst.ctype.ctx.limits.all? do |limit|
+				args = Hash[limit.args.map { |k, t| [k, inst_type_or_die(t, map)] }]
+				find_instance(obj, infer_args, limit.typeclass, args).first
+			end
 		end, map]
 	end
 	
@@ -357,15 +377,14 @@
 		@limits.reject! do |c|
 			next if (obj && obj.declared && obj.declared.inside?(c.typeclass.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
-			#puts "Searching instance for #{c}"
 			inst, map = TypeContext.find_instance(obj, @infer_args, c.typeclass, c.args)
 			if inst
-				instance = inst(c.source, inst, map) # Adds the limits of the instance to the @limits array
-				
 				# Resolve the type functions
 				c.eqs.each do |eq| 
-					ast = instance.ref.scope.names[eq.type_ast.name]
-					result = inst(eq.source, ast, instance.args)
+					ast = inst.scope.names[eq.type_ast.name]
+					inst_args = Map.new({}, map, eq.source)
+					infer(ast)
+					result = inst_type(inst_args, ast.ctype.type)
 					unify(result, eq.var)
 				end
 				

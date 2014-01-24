@@ -198,7 +198,8 @@
 													   #       Generate an error when the view's type variable is unified with anything other than another type variable
 													   #       When unifing with another type variable, pick the one with a view. If both have a view, create a type error
 													   #       Have the view bind to the variable name instead?
-					result = type_class_result
+					#result = type_class_result
+					full_result = TypeclassResult.new(limit, type_class_result)
 				end
 		
 			when AST::TypeFunction
@@ -207,8 +208,7 @@
 		end
 		
 		lvalue_check(source, obj, args.lvalue)
-		#full_result ? full_result : 
-		[Result.new(result, obj.ctype.value), inst_args]
+		[full_result ? full_result : Result.new(result, obj.ctype.value), inst_args]
 	end
 	
 	Result = Struct.new(:type, :value) do # TODO: Split into Type and Value results
@@ -228,6 +228,26 @@
 		
 		def to_s
 			"BindingResult{#{binding.name}}"
+		end
+	end
+	
+	TypeclassBinding = Struct.new(:limit, :result) do
+		def src
+			limit.source
+		end
+		
+		def to_s
+			"TypeclassBinding{#{limit}, #{result}}"
+		end
+	end
+	
+	TypeclassResult = Struct.new(:limit, :result) do
+		def src
+			limit.source
+		end
+		
+		def to_s
+			"TypeclassResult{#{limit}, #{result}}"
 		end
 	end
 	
@@ -262,7 +282,7 @@
 						raise TypeError.new("Unable to evaluate literal at compile-time\n#{ast.source.format}")
 				end
 			else
-				raise TypeError.new("Unable to evaluate expression at compile-time\n#{ast.source.format}")
+				raise TypeError.new("Unable to evaluate expression at compile-time (#{ast.class})\n#{ast.source.format}")
 		end
 	end
 
@@ -301,19 +321,24 @@
 		end
 	end
 	
-	def coerce_typeval(result, args, index = nil, extension = nil)
+	def coerce_typeval_impl(result, args, index = nil, extension = nil)
 		case result
 			when Result
-				[result.type, result.value]
+				result
 			when ValueFieldResult
 				limit = result.limit
 				limit.args = index
-				[limit.var, true]
+				Result.new(limit.var, true)
 			when BindingResult
 				r = @vars[result.binding]
 				extended = args.extended[result.binding]
 				extension[:ref] = extended if extension
-				[r, true]
+				Result.new(r, true)
+			when TypeclassBinding
+				extension[:limit] = result.limit if extension
+				Result.new(result.result, true)
+			when TypeclassResult
+				Result.new(result.result, false)
 			when RefResult
 				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, args, result.args)
 
@@ -326,12 +351,17 @@
 						result.ast.gen = [resultt.type, inst_args]
 					when AST::Field
 						result.ast.gen = {result: resultt.type, type: :single, ref: result.obj, args: inst_args}
-				end
+				end if resultt.is_a?(Result)
 
-				[resultt.type, resultt.value]
+				resultt
 			else
 				raise "(unhandled #{result.class.inspect})"
 		end
+	end
+	
+	def coerce_typeval(result, args, index = nil, extension = nil)
+		result = coerce_typeval_impl(result, args, index, extension) while !result.is_a?(Result)
+		[result.type, result.value]
 	end
 	
 	def analyze_value(ast, args)
@@ -489,46 +519,56 @@
 				
 				Result.new(args.unused ? unit_type(ast.source) : l, true)
 			when AST::Call
-				type, value = analyze(ast.obj, args.next(lvalue: args.lvalue))
-				
-				result = new_var(ast.source)
-				
+				next_args = args.next(lvalue: args.lvalue, typeclass: true)
+				obj_result = coerce_typeval_impl(analyze_impl(ast.obj, next_args), next_args)
+
 				callable_args = make_tuple(ast.source, ast.args.map { |arg| analyze_value(arg, args.next) })
-				
-				ast.gen = {args: callable_args, result: result, obj_type: type}
-				
-				ast.gen[:type] = if value
-					if args.lvalue
-						# It's a indexed assignment
-						limit = typeclass_limit(ast.source, Core::Indexable::Node, {Core::Indexable::T => type})
-						limit.eq_limit(ast.source, callable_args, Core::Indexable::Index)
-						limit.eq_limit(ast.source, result, Core::Indexable::Result)
 
-						ast.gen[:result] = make_ptr(ast.source, ast.gen[:result]) # We return a pointer
-
-						:index
-					else
-						# It's a call
-						limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
-						limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
-						limit.eq_limit(ast.source, result, Core::Callable::Result)
-
-						:call
-					end
+				if obj_result.is_a?(TypeclassResult)
+					unify(callable_args, make_tuple(ast.source, [obj_result.result]))
+					ast.gen = {type: :binding, result: obj_result.result}
+					TypeclassBinding.new(obj_result.limit, obj_result.result)
 				else
-					raise TypeError.new("A constructor is not a valid l-value\n#{ast.source.format}") if args.lvalue
+					type, value = coerce_typeval(obj_result, next_args)
+					
+					result = new_var(ast.source)
+					
+					
+					ast.gen = {args: callable_args, result: result, obj_type: type}
+					
+					ast.gen[:type] = if value
+						if args.lvalue
+							# It's a indexed assignment
+							limit = typeclass_limit(ast.source, Core::Indexable::Node, {Core::Indexable::T => type})
+							limit.eq_limit(ast.source, callable_args, Core::Indexable::Index)
+							limit.eq_limit(ast.source, result, Core::Indexable::Result)
 
-					# It's a constructor
-					limit = typeclass_limit(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
-					limit.eq_limit(ast.source, callable_args, Core::Constructor::Args)
-					limit.eq_limit(ast.source, result, Core::Constructor::Constructed)
+							ast.gen[:result] = make_ptr(ast.source, ast.gen[:result]) # We return a pointer
 
-					:construct
+							:index
+						else
+							# It's a call
+							limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
+							limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
+							limit.eq_limit(ast.source, result, Core::Callable::Result)
+
+							:call
+						end
+					else
+						raise TypeError.new("A constructor is not a valid l-value\n#{ast.source.format}") if args.lvalue
+
+						# It's a constructor
+						limit = typeclass_limit(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
+						limit.eq_limit(ast.source, callable_args, Core::Constructor::Args)
+						limit.eq_limit(ast.source, result, Core::Constructor::Constructed)
+
+						:construct
+					end
+					
+					req_level(ast.source, result, :sizeable) # Constraint on Callable.Result / Types must be sizeable for constructor syntax
+					
+					Result.new(result, true)
 				end
-				
-				req_level(ast.source, result, :sizeable) # Constraint on Callable.Result / Types must be sizeable for constructor syntax
-				
-				Result.new(result, true)
 			when AST::Literal
 				result = case ast.type
 					when :int
@@ -679,11 +719,11 @@
 				
 				if value
 					result = new_var(ast.source)
-					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args, extension[:ref])
+					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args, extension)
 					@fields << limit
 					ValueFieldResult.new(limit)
 				else
-					raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.kind_of?(Types::Ref)
+					raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.is_a?(Types::Ref) && type.ref.is_a?(AST::Complex)
 					
 					ref, ext = scope_lookup(type.ref, ast.name, nil)
 					
@@ -701,14 +741,12 @@
 
 				result = analyze_impl(ast.obj, next_args)
 				
-				type, value = case result
+				case result
 					when RefResult, ValueFieldResult
-						coerce_typeval(result, next_args, indices)
+						coerce_typeval_impl(result, next_args, indices)
 					else
 						raise TypeError.new("[] operator unsupported\n#{ast.source.format}")
 				end
-				
-				Result.new(type, value)
 			else
 				raise "Unknown AST #{ast.class}"
 		end
@@ -733,16 +771,26 @@
 		nil while @fields.reject! do |c|
 			var = c.var.prune
 			type = c.type.prune
-			type = view(type) if type.is_a? Types::Variable
+			#type = view(type) if type.is_a? Types::Variable
 			case type
 				when Types::Ref
-					field, extension = scope_lookup(type.ref, c.name, c.extension)
+					limit = c.extension[:limit]
+					if limit
+						ref = limit.typeclass
+						parent_args = limit.args.dup
+					else
+						ref = type.ref
+						parent_args = type.args.dup
+					end
+
+					raise TypeError.new("Object doesn't have a scope (#{type})\n#{c.ast.source.format}") unless ref.is_a?(AST::Complex)
+
+					field, extension = scope_lookup(ref, c.name, c.extension[:ref])
 					
-					raise TypeError.new("'#{c.name}' is not a field in type '#{type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
+					raise TypeError.new("'#{c.name}' is not a field in '#{ref.scoped_name}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 					
 					lvalue_check(c.ast.source, field, c.infer_args.lvalue)
 				
-					parent_args = type.args.dup
 					map_type_params(c.source, field, parent_args, c.args)
 					
 					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
@@ -931,7 +979,7 @@
 		typeclass.scope.names.each_pair do |name, value|
 			next if value.is_a? AST::TypeParam
 			member, = @obj.scope.require_with_scope(name)
-			raise(CompileError, "Expected '#{name}' in instance of typeclass #{typeclass.name}\n#{@obj.source.format}") unless member
+			raise(CompileError, "Expected '#{name}' in instance of typeclass #{typeclass.scoped_name}\n#{@obj.source.format}") unless member
 			next if value.is_a? AST::TypeFunction
 			m = infer(member)
 			
@@ -940,7 +988,8 @@
 			ctx.reduce_limits
 			ctx.reduce(nil)
 			
-			raise TypeError, "Expected type '#{expected_type.text}' for #{name} in typeclass instance, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless m == expected_type
+			#TODO: Handle tests with type variables here
+			#raise TypeError, "Expected type '#{expected_type.text}' for '#{name}' in instance of typeclass #{typeclass.scoped_name}, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless m == expected_type
 			
 			#TODO: How to ensure members are a proper instance of the typeclass?
 			#TODO: Figure out how this should work for type parameters in members
