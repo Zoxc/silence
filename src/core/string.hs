@@ -15,6 +15,9 @@ struct String
 	action destroy
 		free(force_cast data)
 
+	each(f)
+		times(size, |i| f(*ptr_idx(data, i)))
+
 instance StringLiteral String
 	create(data *char, size)
 		.new = malloc(size + 1)

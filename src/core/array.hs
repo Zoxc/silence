@@ -18,7 +18,7 @@ struct Array[T]
 		free(force_cast list)
 
 	ptr(idx uint) -> *T
-		return force_cast(force_cast list + idx * size_of[T]())
+		return ptr_idx(list, idx)
 
 	get(idx uint)
 		return *ptr(idx)
