@@ -294,6 +294,21 @@ class Core
 	end
 
 	proc do
+		values = []
+		Order = AST::Enum.new(src, :Order, values)
+		values << AST::EnumValue.new(src, :Greater, Order)
+		values << AST::EnumValue.new(src, :Equal, Order)
+		values << AST::EnumValue.new(src, :Lesser, Order)
+		Nodes << Order
+	end.()
+
+	class Ord < Core
+		T = param :T
+		Cmp = func(:cmp, {gt: ref(T), ls: ref(T)}, ref(Order), [], true)
+		Node = complex(:Ord, [T], AST::TypeClass, [Cmp])
+	end
+
+	proc do
 		args = param :Args
 		result = param :Result
 		
@@ -313,13 +328,18 @@ class Core
 		Node = complex(:IntLiteral, [T], AST::TypeClass, [Create])
 	end
 	
-	IntLiterals = {create: {}, default: {}, eq: {}}
+	IntLiterals = {create: {}, default: {}, eq: {}, ord: {}}
 	
 	num_lit = proc do |type|
-		cmp = func(:equal, {lhs: ref(type), rhs: ref(type)}, ref(Bool), [], true)
-		eq_inst = tci(Eq::Node, [ref(type)], [], [cmp])
+		cmp = func(:cmp, {gt: ref(type), ls: ref(type)}, ref(Order), [], true)
+		ord_inst = tci(Ord::Node, [ref(type)], [], [cmp])
+		Nodes << ord_inst
+		IntLiterals[:ord][cmp] = cmp
+		
+		equal = func(:equal, {lhs: ref(type), rhs: ref(type)}, ref(Bool), [], true)
+		eq_inst = tci(Eq::Node, [ref(type)], [], [equal])
 		Nodes << eq_inst
-		IntLiterals[:eq][cmp] = cmp
+		IntLiterals[:eq][equal] = equal
 		
 		create = func(:create, {input: ref(Int)}, ref(type))
 		create_inst = tci(IntLiteral::Node, [ref(type)], [], [create])
@@ -354,9 +374,13 @@ class Core
 	end
 	
 	OpMap = {
+		'>' => {ref: Ord::Node, param: Ord::T, func: Ord::Cmp, result: Core::Bool},
 		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
 		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}
 	}
+	OpMap['>='] = OpMap['>']
+	OpMap['<='] = OpMap['>']
+	OpMap['<'] = OpMap['>']
 
 	class Table < Core
 		Type = param(:Type, ref(Copyable::Node))

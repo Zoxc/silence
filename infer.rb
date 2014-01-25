@@ -123,6 +123,8 @@
 	end
 	
 	def map_type_params(source, ref, parent_args, args)
+		infer(ref) # Functions' type parameters can increase after inference
+		
 		params = ref.type_params
 		limit = ref.is_a?(AST::Function) ? ref.type_param_count : params.size
 		
@@ -348,16 +350,14 @@
 			when RefResult
 				resultt, inst_args = analyze_ref(result.ast.source, result.obj, index, args, result.args)
 
-				case result.ast
-					when AST::Ref
-						if result.obj.is_a?(AST::TypeParam) && result.obj.value
-							# Include the type param itself in the required map if it's a value
-							inst_args.params[result.obj] = map_type(result.obj)
-						end
-						result.ast.gen = [resultt.type, inst_args]
-					when AST::Field
-						result.ast.gen = {result: resultt.type, type: :single, ref: result.obj, args: inst_args}
-				end if resultt.is_a?(Result)
+				if resultt.is_a?(Result)
+					if result.ast.is_a?(AST::Ref) && result.obj.is_a?(AST::TypeParam) && result.obj.value
+						# Include the type param itself in the required map if it's a value
+						inst_args.params[result.obj] = map_type(result.obj)
+					end
+
+					result.ast.gen = {result: resultt.type, type: :single, ref: result.obj, args: inst_args}
+				end 
 
 				resultt
 			else
@@ -429,6 +429,8 @@
 			# Values only
 
 			when AST::Lambda
+				process_func_params(ast.params)
+
 				analyze_value(ast.scope, args.next(func: ast, unused: true))
 
 				func_args = make_tuple(ast.source, ast.params.map { |p| @vars[p.var] })
@@ -706,12 +708,21 @@
 				if result
 					ast.gen = result
 					BindingResult.new(ast.obj)
+				elsif ast.obj == @obj
+					@result[@obj] = unit_type(@obj.source) unless @result[@obj]
+					ast.gen = {type: :self}
+					args.func.scope.req_var(@obj.self, @obj.scope) if @obj.self
+					lvalue_check(ast.source, ast.obj, args.lvalue)
+					Result.new(get_func_type, true)
 				else
 					ensure_shared(ast.obj, ast.source, args) if shared?
 					parent_args = Hash[AST.type_params(ast.obj, false).map { |p| [p, map_type(p)] }]
 
-					if ast.obj.is_a?(AST::Variable) && ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-						args.func.scope.req_var(@obj.self, @obj.scope)
+					case ast.obj
+						when AST::Variable, AST::Function
+							if ast.obj.declared.owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
+								args.func.scope.req_var(@obj.self, @obj.scope)
+							end
 					end
 
 					RefResult.new(ast, ast.obj, parent_args)
@@ -831,6 +842,23 @@
 			process_type_constraint(p.type, Types::Ref.new(p.source, p)) if (p.type_params.empty? && !p.value)
 		end
 	end
+
+	def get_func_type
+		func = @obj
+		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
+		func_result = Types::Ref.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result[func] || unit_type(func.source))})
+	end
+
+	def process_func_params(params)
+		a_args = analyze_args
+		params.map(&:var).each do |var|
+			@vars[var] = if var.type
+					analyze_type(var.type, a_args.next(typeclass: true))
+				else
+					new_var(var.source)
+				end
+		end
+	end
 	
 	def process_function
 		func = @obj
@@ -840,8 +868,6 @@
 		process_type_params
 		
 		@result[func] = (analyze_type(func.result, a_args) if func.result)
-
-		var_params = func.params.map(&:var)
 
 		owner = func.declared.owner
 
@@ -858,26 +884,13 @@
 				raise "(unhandled #{owner.class})"
 		end if func.self
 		
-		func.scope.names.each_value do |var|
-			next unless var.is_a?(AST::Variable)
-			next if var.decl
-			next if var.equal?(func.self)
-			
-			@vars[var] = if var.type
-					analyze_type(var.type, a_args.next(typeclass: var_params.include?(var)))
-				else
-					new_var(var.source)
-				end
-		end
-		
-		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
+		process_func_params(func.params)
 		
 		analyze(func.scope, a_args.next(unused: true))
 		
 		# TODO: make @result default to Unit, so the function can reference itself
-		func_result = Types::Ref.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result[func] || unit_type(func.source))})
-
-		finalize(func_result, true)
+		
+		finalize(get_func_type, true)
 	end
 	
 	def parameterize(tvs)
@@ -946,7 +959,7 @@
 		
 		puts "" unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
 		
-		puts "#{@obj.scoped_name}  ::  #{type.text}"
+		puts "#{@obj.scoped_name}#{"[#{@obj.type_params.map{|k,v|k.name}.join(",")}]" unless @obj.type_params.empty?}  ::  #{type.text}"
 		
 		@ctx.limits.each{|i| puts "    - #{i}"}
 		@ctx.levels.each{|i| puts "    - #{i}"}

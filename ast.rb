@@ -386,6 +386,7 @@ module AST
 			when AST::TypeParam, AST::TypeClassInstance, AST::Enum
 				plain ? ast.type_params : []
 			else
+				raise "Missing @declared on #{ast.name}\n#{ast.source.format}" unless ast.declared
 				result = type_params(ast.declared.owner)
 				result += ast.type_params if plain
 				result
@@ -581,7 +582,7 @@ module AST
 			
 			def declare_pass(scope)
 				if scope
-					@var = Variable.new(@source, @name, scope, @type, @props)
+					@var = Variable.new(@source, @name, scope, @type, {})
 					@declared = scope.declare(@name, @var)
 				end
 			end
@@ -618,7 +619,7 @@ module AST
 			case scope.owner
 				when AST::Struct, AST::TypeClassInstance
 					if !props[:shared]
-						@self = Variable.new(source, :self, @scope, nil, nil)
+						@self = Variable.new(source, :self, @scope, nil, {})
 						@self.declared = @scope.declare(:self, @self)
 					end
 			end

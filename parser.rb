@@ -578,6 +578,7 @@ class Parser
 	pred_num = 0
 	pred.(pred_num += 1, '->')
 	pred.(pred_num += 1, '==')
+	pred.(pred_num += 1, '<', '>', '>=', '<=')
 	pred.(pred_num += 1, '+', '-', '~')
 	pred.(pred_num += 1, '*', '/', '%')
 	
@@ -746,8 +747,10 @@ class Parser
 
 
 			if matches(:sym, '|')
+				@in_lambda_params = true
 				lambda.params = function_params(lambda)
 				match(:sym, '|')
+				@in_lambda_params = false
 			else
 				lambda.params = []
 			end
@@ -768,6 +771,8 @@ class Parser
 		case tok
 			when :sym
 				case tok_val
+					when '|'
+						!@in_lambda_params
 					when '[', '(', '|', '->'
 						true
 				end

@@ -34,7 +34,7 @@ class FuncCodegen
 	end
 
 	def gen_label(l)
-		@out << "#{l}:"
+		@out << "#{l}:;"
 	end
 
 	def new_var(&block)
@@ -183,7 +183,7 @@ class FuncCodegen
 		ref = @gen.ref(obj, map)
 
 		if obj.is_a?(AST::Function)
-			gen_func(nil, ref, type)
+			gen_func(self_ref, ref, type)
 		else
 			"&#{ref}"
 		end
@@ -252,8 +252,15 @@ class FuncCodegen
 		del_var obj if obj
 	end
 
-	# TODO: Have this return a variable with the pointer to the object and a variable to delete after usage of the object is done
-	# Make it pass in a var for the pointer to the object instead?
+	def self_ref
+		return unless @func.fowner.self
+		if @func != @func.fowner
+			"(*ref.r_self)"
+		else
+			"v_self"
+		end
+	end
+
 	def lvalue(ast, var, proper = true)
 		case ast
 			when AST::Call
@@ -317,11 +324,6 @@ class FuncCodegen
 					end
 				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					# TODO: Turn this into a AST::Field with self as obj
-					self_ref = if @func != @func.fowner
-						"(*ref.r_self)"
-					else
-						"v_self"
-					end
 
 					ref = if owner == @func.fowner.declared.owner && owner.is_a?(AST::StructCase)
 						idx = owner.parent.cases.index(owner)
@@ -329,10 +331,13 @@ class FuncCodegen
 					else
 						"&#{self_ref}.f_#{ast.obj.name}" # TODO: Check for the case when accesing a field in a parent struct
 					end
-					assign_var(var, make_ptr(ast.gen.first), ref, true)
+					assign_var(var, make_ptr(ast.gen[:result]), ref, true)
+				elsif ast.gen[:type] == :self
+					type = @func.fowner.ctype.type
+					assign_var(var, make_ptr(type), gen_func(self_ref, @gen.mangle(@func.fowner, @map), type), true)
 				else
 					# TODO: Also merge the single AST::Field case and this
-					assign_f(var, ast.gen.first, ast.obj, ast.gen.last.params)
+					assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
 				end
 			else
 				raise "(unhandled #{ast.class})"
@@ -536,6 +541,9 @@ class FuncCodegen
 					convert(ast.lhs, lhs)
 					
 					typeclass = Core::OpMap[ast.op]
+
+					cmp_op = ['>', '<', '>=', '<='].include?(ast.op)
+					cmp_op_var = new_var if cmp_op
 					
 					if typeclass
 						lhs_arg = new_var
@@ -544,11 +552,27 @@ class FuncCodegen
 						copy_var(rhs.ref, rhs_arg.ref, ast.gen[:arg])
 						assign_var(lhs_arg, ast.gen[:arg], nil)
 						assign_var(rhs_arg, ast.gen[:arg], nil)
-						direct_call(var, ref(typeclass[:func], {typeclass[:param] => ast.gen[:arg]}), nil, [lhs_arg.ref, rhs_arg.ref], ast.gen[:result])
+						direct_call(cmp_op ? cmp_op_var : var, ref(typeclass[:func], {typeclass[:param] => ast.gen[:arg]}), nil, [lhs_arg.ref, rhs_arg.ref], cmp_op ? Types::Ref.new(Core.src, Core::Order) : ast.gen[:result])
 						del_var rhs_arg, false
 						del_var lhs_arg, false
 					else
 						assign_var(var, ast.gen[:result], lhs.ref + " #{ast.op} " + rhs.ref)
+					end
+
+					if cmp_op
+						values = case ast.op
+							when '>'
+								["Greater"]
+							when '<'
+								["Lesser"]
+							when '>='
+								["Greater", "Equal"]
+							when '<='
+								["Lesser", "Equal"]
+						end
+						r = values.map {|v| "#{cmp_op_var.ref} == Enum_Order_#{v}" }.join(" || ")
+						assign_var(var, ast.gen[:result], "(#{r}) ? Enum_bool_true : Enum_bool_false")
+						del_var cmp_op_var
 					end
 					
 					del_var lhs
