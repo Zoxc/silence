@@ -210,6 +210,38 @@ class FuncCodegen
 		end
 	end
 
+	def extract_func_f(obj, params)
+		if obj.is_a?(AST::Function)
+			[ref(obj, params), self_ref]
+		end
+	end
+
+	def extract_func(ast)
+		case ast
+			when AST::Field
+				case ast.gen[:type]
+					when :single
+						extract_func_f(ast.gen[:ref], ast.gen[:args].params)
+					when :field
+						if ast.gen[:ref].is_a?(AST::Function)
+							obj_ptr = new_var
+							del_var obj_ptr, false
+							ovar = readonly(ast.obj, obj_ptr)
+							[ref(ast.gen[:ref], ast.gen[:args].params), "*#{obj_ptr.ref}", ovar]
+						end
+				end
+			when AST::Ref
+				owner = ast.obj.declared.owner
+
+				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.inside?(@func.fowner.scope)
+				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
+				elsif ast.gen[:type] == :self
+				else
+					extract_func_f(ast.gen[:ref], ast.gen[:args].params)
+				end
+		end
+	end
+
 	def call_args(ast, var, lval = nil)
 		if ast.gen[:type] == :binding
 			convert(ast.args.first, var)
@@ -217,23 +249,40 @@ class FuncCodegen
 		end
 
 		if ast.gen[:type] == :call
-			obj = new_var
-			ovar = readonly(ast.obj, obj)
+			efunc = extract_func(ast.obj)
+			if efunc
+				ovar = efunc[2]
+			else
+				obj = new_var
+				ovar = readonly(ast.obj, obj) 
+			end
 		end
 		
-		args = new_var
-		ast.args.each_with_index do |a, i|
-			arg = new_var
-			convert(a, arg)
-			o "#{args.ref}.#{idx i} = #{arg.ref};"
-			del_var arg, false
+		unless efunc
+			args = new_var
+			ast.args.each_with_index do |a, i|
+				arg = new_var
+				convert(a, arg)
+				o "#{args.ref}.#{idx i} = #{arg.ref};"
+				del_var arg, false
+			end
+			assign_var(args, ast.gen[:args], nil)
 		end
-		assign_var(args, ast.gen[:args], nil)
 		
 		case ast.gen[:type]
 			when :call
-				direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), "*#{obj.ref}", [args.ref], ast.gen[:result])
-		
+				if efunc
+					args = ast.args.map do |a, i|
+						arg = new_var
+						convert(a, arg)
+						arg
+					end
+					direct_call(var, efunc[0], efunc[1], args.map(&:ref), ast.gen[:result])
+					args.reverse.each { |arg| del_var(arg) }
+				else
+					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), "*#{obj.ref}", [args.ref], ast.gen[:result])
+				end
+
 			when :index
 				direct_call(var, ref(Core::Indexable::Ref, {Core::Indexable::T => ast.gen[:obj_type]}), lval, [args.ref], ast.gen[:result])
 		
@@ -246,8 +295,8 @@ class FuncCodegen
 				raise "(unhandled)"
 		end
 
-		del_var args, false
 		
+		del_var(args, false) unless efunc
 		del_var ovar if ovar
 		del_var obj if obj
 	end
