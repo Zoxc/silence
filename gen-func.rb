@@ -46,7 +46,11 @@ class FuncCodegen
 
 	def copy_var(src, dst, type)
 		ref = gen.ref_action(type, @map, :copy)
-		o "#{dst} = #{src}; #{"#{ref}(&(#{dst}));" if ref} // copy"
+		if dst != src
+			o "#{dst} = #{src}; #{"#{ref}(&(#{dst}));" if ref} // copy"
+		elsif ref
+			o "#{"#{ref}(&(#{dst}));" if ref} // copy"
+		end
 	end
 	
 	def destroy_var(var, type)
@@ -278,7 +282,7 @@ class FuncCodegen
 						arg
 					end
 					direct_call(var, efunc[0], efunc[1], args.map(&:ref), ast.gen[:result])
-					args.reverse.each { |arg| del_var(arg) }
+					args.reverse.each { |arg| del_var(arg, false) }
 				else
 					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), "*#{obj.ref}", [args.ref], ast.gen[:result])
 				end
@@ -347,7 +351,7 @@ class FuncCodegen
 						end
 
 						ref = if ast.gen[:ref].is_a?(AST::Function)
-							gen_func(obj_ptr.ref, ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
+							gen_func("*#{obj_ptr.ref}", ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
 						else
 							extension = ast.gen[:extension]
 							if extension
