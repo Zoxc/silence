@@ -220,6 +220,10 @@ class Codegen
 		puts "Generating #{ast.scoped_name} - #{map}"
 		case ast
 			when AST::TypeClass
+			when Core::IntLiterals[:ord][ast]
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				@out[:func] << o << "\n{\n    *result = v_gt > v_ls ? Enum_Order_Greater : (v_gt == v_ls ? Enum_Order_Equal : Enum_Order_Lesser);\n}\n\n"
 			when Core::IntLiterals[:eq][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
@@ -352,11 +356,11 @@ class Codegen
 				@out[:globals] << "static #{owner} #{mangle(ast, map)} = Enum#{owner}_#{ast.name};\n"
 			when AST::Enum
 				name = mangle(ast, map)
-				o = "enum #{name}\n{"
+				o = "enum #{name}\n{\n"
 				ast.values.each do |v|
 					o << "    Enum#{name}_#{v.name},\n"
 				end
-				@out[:struct_forward] << o << "};\n"
+				@out[:struct_forward] << o << "};\n\n"
 			when AST::Struct
 				name = mangle(ast, map)
 				o = "struct #{name}"
