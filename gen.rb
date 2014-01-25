@@ -232,6 +232,22 @@ class Codegen
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
 				@out[:func] << o << "\n{\n    *result = v_input;\n}\n\n"
+			when Core::Table::Ref
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				o << "    auto &v_self = *(#{c_type(ast.ctype.vars[ast.self], map)} *)data;\n"
+				o << "    *result = &v_self.array[v_index.f_val];\n}\n\n"
+				@out[:func] << o
+			when Core::Table::Node
+				name = mangle(ast, map)
+
+				o = "struct #{name}"
+				@out[:struct_forward] << o << ";\n"
+				o << "\n{\n"
+				o << "    #{c_type(map.params[Core::Table::Type], map)} array[#{map.params[Core::Table::Size].value}];\n"
+				o << "};\n\n"
+				@out[:struct] << o
 			when Core::SizeOf
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
@@ -268,10 +284,6 @@ class Codegen
 				o << "    self->func(self->data, result#{args.size.times.map { |i|  ", v_args.#{idx i}" }.join});\n}\n\n"
 				
 				@out[:func] << o
-			when Core::Table::Node
-				name = mangle(ast, map)
-				o = "typedef #{c_type(map.params[Core::Table::Type], map)} #{name}[#{map.params[Core::Table::Size].value}]"
-				@out[:struct_forward] << o << ";\n"
 			when Core::Ptr::Node
 			when Core::Func::Node
 				args = map.params[Core::Func::Args].tuple_map

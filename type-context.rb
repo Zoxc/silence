@@ -382,9 +382,7 @@
 				# Resolve the type functions
 				c.eqs.each do |eq| 
 					ast = inst.scope.names[eq.type_ast.name]
-					inst_args = Map.new({}, map, eq.source)
-					infer(ast)
-					result = inst_type(inst_args, ast.ctype.type)
+					result = inst(eq.source, ast, map)
 					unify(result, eq.var)
 				end
 				

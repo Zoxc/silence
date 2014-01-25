@@ -273,6 +273,12 @@
 
 	def eval_ast(ast)
 		case ast
+			when AST::Ref
+				if ast.obj.is_a?(AST::TypeParam) && ast.obj.value && ast.obj.type_params.empty?
+					Types::Ref.new(ast.source, ast.obj)
+				else
+					raise TypeError.new("Unable to evaluate reference at compile-time\n#{ast.source.format}")
+				end
 			when AST::Literal
 				case ast.type
 					when :int
