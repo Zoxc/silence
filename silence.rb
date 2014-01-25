@@ -52,6 +52,7 @@ def process(file, parent)
 		ast.run_pass :ref_pass
 
 		InferContext.infer_scope(ast.scope, InferArgs)
+		InferContext.infer_scope(Core::Generated, InferArgs)
 	rescue CompileError => error
 		$stderr.puts "Fatal errors:", error.message
 		$stderr.puts error.backtrace.join("\n")

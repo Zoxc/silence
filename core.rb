@@ -1,7 +1,8 @@
 class Core
 	Program = AST::Program.new(AST::Scope.new([]))
 	Nodes = Program.scope.nodes
-	
+	Generated = AST::Scope.new([])
+
 	class << self
 		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
 			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST::KindParams.new(src(2), args, ctx))
@@ -118,6 +119,7 @@ class Core
 			r.props[:shared] = true
 
 			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
+			Generated.nodes << instance
 			run_pass(instance)
 		end
 
@@ -133,6 +135,7 @@ class Core
 			r.scope = AST::FuncScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create)])
 			r.props[:shared] = true
 
+			Generated.nodes << instance
 			run_pass(instance)
 		end
 		
@@ -152,6 +155,7 @@ class Core
 			r.scope = AST::FuncScope.new([AST::Return.new(AST::BinOp.new(src, lhs, '==', rhs))])
 			r.props[:shared] = true
 
+			Generated.nodes << instance
 			run_pass(instance)
 		end
 	end

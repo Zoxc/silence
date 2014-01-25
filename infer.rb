@@ -990,30 +990,6 @@
 		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
 		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, a_args)] }]
 		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Ref.new(p.source, p)] }]), false)
-		
-		InferContext.infer_scope(@obj.scope, @infer_args)
-		
-		infer(typeclass)
-		
-		typeclass.scope.names.each_pair do |name, value|
-			next if value.is_a? AST::TypeParam
-			member, = @obj.scope.require_with_scope(name)
-			raise(CompileError, "Expected '#{name}' in instance of typeclass #{typeclass.scoped_name}\n#{@obj.source.format}") unless member
-			next if value.is_a? AST::TypeFunction
-			m = infer(member)
-			
-			ctx = TypeContext.new(@infer_args)
-			expected_type = ctx.inst(member.source, value, @typeclass)
-			ctx.reduce_limits
-			ctx.reduce(nil)
-			
-			#TODO: Handle tests with type variables here
-			#raise TypeError, "Expected type '#{expected_type.text}' for '#{name}' in instance of typeclass #{typeclass.scoped_name}, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless m == expected_type
-			
-			#TODO: How to ensure members are a proper instance of the typeclass?
-			#TODO: Figure out how this should work for type parameters in members
-			#TODO: Compare the limits of the expected and actual member
-		end
 	end
 	
 	def map_type(obj, parent = [])
@@ -1024,7 +1000,7 @@
 		finalize(Types::Ref.new(@obj.source, @obj, Hash[AST.type_params(@obj).map { |p| [p, map_type(p)] }]), false)
 	end
 	
-	def process
+	def process_req
 		value = @obj
 		
 		case value
@@ -1054,8 +1030,13 @@
 						Core.create_constructor_action(value) unless value.actions[:create_args]
 						Core.create_constructor(value)
 				end
-				
-				InferContext.infer_scope(value.scope, @infer_args)
+						
+				value.scope.nodes.each do |ast|
+					case ast
+						when AST::VariableDecl
+							infer(ast.var)
+					end
+				end
 			when AST::EnumValue
 				infer(value.owner)
 				finalize(value.owner.ctype.type, true)
@@ -1085,9 +1066,49 @@
 				raise "Unknown value #{value.class}"
 		end
 	end
+
+	def process_all
+		raise "process_all before process_req for #{@obj.scoped_name}" unless @obj.ctype
+
+		case @obj
+			when AST::TypeClassInstance
+				typeclass = @obj.typeclass.obj
+
+				InferContext.infer_scope(@obj.scope, @infer_args)
+				
+				infer(typeclass)
+				
+				typeclass.scope.names.each_pair do |name, value|
+					next if value.is_a? AST::TypeParam
+					member, = @obj.scope.require_with_scope(name)
+					raise(CompileError, "Expected '#{name}' in instance of typeclass #{typeclass.scoped_name}\n#{@obj.source.format}") unless member
+					next if value.is_a? AST::TypeFunction
+					m = infer(member)
+					
+					ctx = TypeContext.new(@infer_args)
+					expected_type = ctx.inst(member.source, value, @typeclass)
+					ctx.reduce_limits
+					ctx.reduce(nil)
+					
+					#TODO: Handle tests with type variables here
+					#raise TypeError, "Expected type '#{expected_type.text}' for '#{name}' in instance of typeclass #{typeclass.scoped_name}, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless m == expected_type
+					
+					#TODO: How to ensure members are a proper instance of the typeclass?
+					#TODO: Figure out how this should work for type parameters in members
+					#TODO: Compare the limits of the expected and actual member
+				end
+			when AST::Complex
+				InferContext.infer_scope(@obj.scope, @infer_args)
+		end
+	end
 	
 	def infer(value)
 		InferContext.infer(value, @infer_args)
+	end
+
+	def self.process(value, infer_args)
+		infer(value, infer_args)
+		value.ctype.process_all
 	end
 
 	def self.infer(value, infer_args)
@@ -1098,7 +1119,7 @@
 		
 		infer_args.stack.push(" #{value.scoped_name} - #{value.class}\n#{value.source.format}")
 		
-		InferContext.new(infer_args, value).process
+		InferContext.new(infer_args, value).process_req
 		
 		infer_args.stack.pop
 		
@@ -1111,9 +1132,9 @@
 		scope.nodes.each do |value|
 			case value
 				when AST::VariableDecl
-					infer(value.var, infer_args)
+					process(value.var, infer_args)
 				else
-					infer(value, infer_args)
+					process(value, infer_args)
 			end
 		end
 	end
