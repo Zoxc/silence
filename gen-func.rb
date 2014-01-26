@@ -346,6 +346,18 @@ class FuncCodegen
 				end
 			when AST::Field
 				case ast.gen[:type]
+					when :single_obj
+						# Evalute the obj part. It might have side effects
+						obj_ptr = new_var
+						if proper
+							lvalue(ast.obj, obj_ptr, true)
+						else
+							ovar = readonly(ast.obj, obj_ptr)
+							del_var ovar if ovar
+						end
+						del_var obj_ptr
+
+						assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
 					when :single
 						assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
 					when :field

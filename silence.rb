@@ -61,7 +61,7 @@ def process(file, parent)
 	
 	File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
 	
-	system 'g++ -std=gnu++0x -g -Wall -Wno-unused-value -Wno-self-assign -Wno-unused-variable output.cpp -o output'
+	system 'g++ -std=gnu++0x -g -Wall -Wno-unused-but-set-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable output.cpp -o output'
 	
 	puts "Running..."
 	system(IsWindows ? 'output.exe' : './output')

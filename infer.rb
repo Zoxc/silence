@@ -846,9 +846,19 @@
 			map_type_params(c.source, field, parent_args, c.args)
 			
 			field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
-			
-			# TODO: Reduce fields to single when shared
-			c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, extension: extension, deref: c.deref}
+
+			shared = case field
+				when AST::Function, AST::Variable
+					field.props[:shared]
+				else
+					true
+			end
+
+			if shared
+				c.ast.gen = {result: field_type, type: :single_obj, ref: field, args: inst_args}
+			else
+				c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, extension: extension, deref: c.deref}
+			end
 			
 			unify(field_type, var)
 			
