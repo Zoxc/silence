@@ -166,7 +166,7 @@ class FuncCodegen
 	def gen_func(data, ref, type)
 		var = new_var
 		o var.ref + ".func = " + ref + ";"
-		(o var.ref + ".data = &" + data + ";") if data
+		(o var.ref + ".data = " + data + ";") if data
 		assign_var(var, type, nil)
 		del_var var
 		return "&#{var.ref}"
@@ -174,6 +174,14 @@ class FuncCodegen
 	
 	def make_ptr(type)
 		InferContext.make_ptr(Core.src, type)
+	end
+
+	def func_data(obj)
+		if fowner == obj.declared.owner && !obj.props[:shared]
+			self_ref
+		else
+			"nullptr"
+		end
 	end
 
 	def assign_f_impl(type, obj, params)
@@ -191,7 +199,7 @@ class FuncCodegen
 		ref = @gen.ref(obj, map)
 
 		if obj.is_a?(AST::Function)
-			gen_func(self_ref, ref, type)
+			gen_func(func_data(obj), ref, type)
 		else
 			"&#{ref}"
 		end
@@ -224,7 +232,7 @@ class FuncCodegen
 
 	def extract_func_f(obj, params)
 		if obj.is_a?(AST::Function)
-			[ref(obj, params), self_ref]
+			[ref(obj, params), func_data(obj)]
 		end
 	end
 
@@ -239,7 +247,7 @@ class FuncCodegen
 							obj_ptr = new_var
 							del_var obj_ptr, false
 							ovar = readonly(ast.obj, obj_ptr)
-							[ref(ast.gen[:ref], ast.gen[:args].params), "*#{obj_ptr.ref}", ovar]
+							[ref(ast.gen[:ref], ast.gen[:args].params), obj_ptr.ref, ovar]
 						end
 				end
 			when AST::Ref
@@ -292,7 +300,7 @@ class FuncCodegen
 					direct_call(var, efunc[0], efunc[1], args.map(&:ref), ast.gen[:result])
 					args.reverse.each { |arg| del_var(arg, false) }
 				else
-					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), "*#{obj.ref}", [args.ref], ast.gen[:result])
+					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), obj.ref, [args.ref], ast.gen[:result])
 				end
 
 			when :index
@@ -316,9 +324,9 @@ class FuncCodegen
 	def self_ref
 		return unless @func.fowner.self
 		if @func != @func.fowner
-			"(*ref.r_self)"
+			"ref.r_self"
 		else
-			"v_self"
+			"(&v_self)"
 		end
 	end
 
@@ -329,7 +337,7 @@ class FuncCodegen
 					when :index
 						obj_ptr = new_var
 						lvalue(ast.obj, obj_ptr)
-						call_args(ast, var, "*#{obj_ptr.ref}")
+						call_args(ast, var, obj_ptr.ref)
 						del_var obj_ptr
 					when :binding
 						lvalue(ast.args.first, var, proper)
@@ -372,12 +380,12 @@ class FuncCodegen
 						ast.gen[:deref].each do |deref|
 							new_obj_ptr = new_var
 							del_var new_obj_ptr, false
-							direct_call(new_obj_ptr, ref(Core::Reference::Get, {Core::Reference::T => deref[:type]}), "*#{obj_ptr.ref}", [], deref[:result])
+							direct_call(new_obj_ptr, ref(Core::Reference::Get, {Core::Reference::T => deref[:type]}), obj_ptr.ref, [], deref[:result])
 							obj_ptr = new_obj_ptr
 						end
 
 						ref = if ast.gen[:ref].is_a?(AST::Function)
-							gen_func("*#{obj_ptr.ref}", ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
+							gen_func(obj_ptr.ref, ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
 						else
 							extension = ast.gen[:extension]
 							if extension
@@ -403,11 +411,11 @@ class FuncCodegen
 				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					# TODO: Turn this into a AST::Field with self as obj
 
-					ref = if owner == @func.fowner.declared.owner && owner.is_a?(AST::StructCase)
+					ref = if owner == fowner.declared.owner && owner.is_a?(AST::StructCase)
 						idx = owner.parent.cases.index(owner)
-						"&#{self_ref}.e_#{idx}.f_#{ast.obj.name}"
+						"&#{self_ref}->e_#{idx}.f_#{ast.obj.name}"
 					else
-						"&#{self_ref}.f_#{ast.obj.name}" # TODO: Check for the case when accesing a field in a parent struct
+						"&#{self_ref}->f_#{ast.obj.name}" # TODO: Check for the case when accesing a field in a parent struct
 					end
 					assign_var(var, make_ptr(ast.gen[:result]), ref, true)
 				elsif ast.gen[:type] == :self
@@ -425,7 +433,7 @@ class FuncCodegen
 	def direct_call(var, ref, obj, args, result_type)
 		rvar = var ? var : new_var
 		assign_var(rvar, result_type, nil)
-		o "#{ref}(#{obj ? "&#{obj}" : "0"}, &#{rvar.ref}#{args.map{|a| ", #{a}"}.join});"
+		o "#{ref}(#{obj ? obj : "nullptr"}, &#{rvar.ref}#{args.map{|a| ", #{a}"}.join});"
 		del_var rvar unless var
 	end
 	
@@ -554,7 +562,7 @@ class FuncCodegen
 					test = new_var
 					w_expr = new_var
 					convert(w.type, w_expr)
-					direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), expr.ref, [expr.ref, w_expr.ref], Core::Bool.ctype.type)
+					direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), "&#{expr.ref}", [expr.ref, w_expr.ref], Core::Bool.ctype.type)
 					del_var w_expr
 					o "    if(#{test.ref}) goto #{when_labels[i]};"
 					del_var test
