@@ -355,6 +355,14 @@ class FuncCodegen
 						else
 							ovar = readonly(ast.obj, obj_ptr)
 						end
+						del_var obj_ptr, false
+
+						ast.gen[:deref].each do |deref|
+							new_obj_ptr = new_var
+							del_var new_obj_ptr, false
+							direct_call(new_obj_ptr, ref(Core::Reference::Get, {Core::Reference::T => deref[:type]}), "*#{obj_ptr.ref}", [], deref[:result])
+							obj_ptr = new_obj_ptr
+						end
 
 						ref = if ast.gen[:ref].is_a?(AST::Function)
 							gen_func("*#{obj_ptr.ref}", ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
@@ -370,7 +378,6 @@ class FuncCodegen
 
 						assign_var(var, make_ptr(ast.gen[:result]), ref, true)
 						del_var ovar if ovar
-						del_var obj_ptr
 				end
 			when AST::Ref
 				owner = ast.obj.declared.owner

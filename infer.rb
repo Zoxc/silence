@@ -8,7 +8,7 @@
 	class TypeError < CompileError
 	end
 
-	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :infer_args, :extension) do
+	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :infer_args, :extension, :deref) do
 		def to_s
 			"#{var.real_text} = #{type.text}.#{name} #{"[#{args.map{ |t|t .text }.join(", ")}]" if args}"
 		end
@@ -742,7 +742,7 @@
 				
 				if value
 					result = new_var(ast.source)
-					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args, extension)
+					limit = FieldLimit.new(ast.source, result, type, ast.name, nil, ast, args, extension, [])
 					@fields << limit
 					ValueFieldResult.new(limit)
 				else
@@ -789,9 +789,25 @@
 		end
 		r ? r.last : var
 	end
+
+	def ptr_field(c)
+		type = c.type.prune
+		puts "Checking for PTR #{type}"
+		inst, map = TypeContext.find_instance(@obj, @infer_args, Core::Reference::Node, {Core::Reference::T => type})
+		if inst
+			ast = inst.scope.names[:Type]
+			result, inst_args = inst_ex(c.ast.source, ast, map)
+			c.type = result
+
+			c.deref << {type: type, ref: inst.scope.names[:get], result: make_ptr(c.ast.source, result)}
+
+			ptr_field(c) # More pointers?
+			true
+		end
+	end
 	
 	def solve_fields
-		nil while @fields.reject! do |c|
+		nil while (changed = false; @fields.reject! do |c|
 			var = c.var.prune
 			type = c.type.prune
 			#type = view(type) if type.is_a? Types::Variable
@@ -803,8 +819,12 @@
 			else
 				case type
 					when Types::Ref
-						ref = type.ref
-						parent_args = type.args.dup
+						if ptr_field(c)
+							changed = true
+						else
+							ref = type.ref
+							parent_args = type.args.dup
+						end
 					when Types::Variable
 						# TODO: Find out when this is really required
 						raise TypeError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
@@ -828,12 +848,12 @@
 			field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 			
 			# TODO: Reduce fields to single when shared
-			c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, extension: extension}
+			c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, extension: extension, deref: c.deref}
 			
 			unify(field_type, var)
 			
 			true
-		end
+		end || changed)
 	end
 	
 	def process_type_constraint(ast_type, unify_type)

@@ -271,6 +271,15 @@ class Core
 		Node = complex(:Constructor, [T], AST::TypeClass, [Constructed, Args, Construct])
 	end
 
+	class Reference < Core
+		Type = type_func(:Type, Sizeable::Node)
+		
+		Get = func(:get, {}, ptr(ref(Type)))
+
+		T = param :T
+		Node = complex(:Reference, [T], AST::TypeClass, [Type, Get])
+	end
+
 	class Callable < Core
 		Args = type_func(:Args, Tuple::Node)
 		Result = type_func(:Result, Sizeable::Node)
