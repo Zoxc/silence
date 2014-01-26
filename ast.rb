@@ -259,7 +259,7 @@ module AST
 		def req_var(var, fscope)
 			return if fscope == self
 
-			@req_vars.push(var)
+			@req_vars.push(var) unless @req_vars.include?(var)
 
 			fparent = parent.fscope
 			fparent.req_var(var, fscope) if fparent
