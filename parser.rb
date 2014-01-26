@@ -133,7 +133,7 @@ class Parser
 						instance
 					when :class
 						self.class
-					when :type
+					when :type_func
 						type_function
 					when :alias
 						alias_type
