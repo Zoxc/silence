@@ -4,11 +4,15 @@ use "core/array"
 use "core/io"
 use "core/file"
 
-instance StringLiteral *char
+instance StringLiteral(*char)
 	create(data *char, size uint)
 		return data
 
-struct Option[T]
+assert(b)
+	if !b()
+		C.abort()
+
+struct Option(T)
 	when Some
 		val T
 	when Nil
@@ -24,12 +28,15 @@ times_impl(i, max, f)
 times(i, f)
 	times_impl(i, i, f)
 
+for_range(a, b, f)
+	times(b - a, |i| f(a + i))
+
 ptr_idx[T](ptr *T, idx uint) -> *T
 	return force_cast(force_cast ptr + idx * size_of[T]())
 
-instance[T Indexable] Callable T
-	alias Result = Indexable[T].Result
-	alias Args = Indexable[T].Index
+instance(T Indexable) Callable(T)
+	alias Result = Indexable(T).Result
+	alias Args = Indexable(T).Index
 
 	apply(args Args)
 		return *Indexable(self).ref(args)

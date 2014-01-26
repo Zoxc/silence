@@ -608,7 +608,7 @@
 				
 				nodes = ast.nodes.compact
 				result = if nodes.empty?
-					unit_type(ast.source)
+					unit_type(ast.owner.source)
 				else
 					new_args = args.next(unused: true)
 					nodes[0...-1].each do |node|
@@ -635,7 +635,7 @@
 				type, value = analyze(ast.node, args.next(lvalue: ast.op == '&'))
 				
 				case ast.op
-					when '+', '-'
+					when '+', '-', '!'
 						ast.gen = type
 						Result.new(type, true)
 					when '*'
@@ -965,7 +965,7 @@
 		
 		puts "" unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
 		
-		puts "#{@obj.scoped_name}#{"[#{@obj.type_params.map{|k,v|k.name}.join(",")}]" unless @obj.type_params.empty?}  ::  #{type.text}"
+		puts "#{@obj.scoped_name}#{"(#{@obj.type_params.map{|k,v|k.name}.join(",")})" unless @obj.type_params.empty?}  ::  #{type.text}"
 		
 		@ctx.limits.each{|i| puts "    - #{i}"}
 		@ctx.levels.each{|i| puts "    - #{i}"}

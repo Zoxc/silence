@@ -48,6 +48,8 @@ module AST
 		def initialize(inner, outer)
 			@inner = inner
 			@outer = outer
+			raise "missing inner" unless inner
+			raise "missing outer" unless outer
 		end
 		
 		def outer
@@ -638,6 +640,7 @@ module AST
 		def declare_pass(scope)
 			@scope.parent = scope
 			@scope.owner = self
+			raise "Lambda declared outside function in #{scope.owner.scoped_name}\n#{source.format}" unless scope.fscope
 			@owner = scope.fscope.owner
 		end
 
@@ -843,7 +846,8 @@ module AST
 	class If < ExpressionNode
 		attr_accessor :condition, :group, :else_node, :gen
 		
-		def initialize(condition, group, else_node)
+		def initialize(source, condition, group, else_node)
+			super(source)
 			@condition = condition
 			@group = group
 			@else_node = else_node
@@ -913,7 +917,8 @@ module AST
 	class Return < ExpressionNode
 		attr_accessor :value
 		
-		def initialize(value)
+		def initialize(source, value)
+			super(source)
 			@value = value
 		end
 		

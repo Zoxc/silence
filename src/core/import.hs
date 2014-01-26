@@ -10,3 +10,4 @@ struct C
 	shared import fopen(file *char, mode *char) -> *FILE
 	shared import fgetc(file *FILE) -> c_int
 	shared import fclose(file *FILE) -> ()
+	shared import abort() -> ()

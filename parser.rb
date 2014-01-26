@@ -149,7 +149,7 @@ class Parser
 		if matches(:id, :where)
 			r = []
 			loop do
-				r << expression
+				r << type_expression
 				if matches(:sym, ',')
 					skip :line
 				else
@@ -161,12 +161,132 @@ class Parser
 		end
 	end
 
-	def kind_params
+	def is_type_expression
+		return true if is_type_factor
+		case tok
+			when :sym
+				case tok_val
+					when '*'
+						true
+				end
+		end
+	end
+	
+	def type_expression
+		type_operator
+	end
+
+	def type_operator(left = type_unary)
+		while eq(:sym, '->')
+			op_src = @l.source
+			
+			step
+			skip :line
+			
+			left = AST::BinOp.new(op_src, left, '->', type_unary)
+		end
+		
+		left
+	end
+	
+	def type_unary
+		if eq(:sym, '*')
+			source do |s|
+				op = tok_val
+				step
+				skip :line
+				AST::UnaryOp.new(s, op, type_unary)
+			end
+		else
+			type_apply
+		end
+	end
+	
+	def type_apply
+		s = @l.source
+		result = type_chain
+		
+		while is_type_factor
+			new_s = @l.source
+			args = [source { |s| new_src = s; type_chain }]
+			s.extend(@l.last_ended)
+			result = AST::Call.new(s, result, args)
+			s = new_s
+		end
+		
+		result
+	end
+	
+	def type_chain
+		result = type_factor
+
+		while tok == :sym && ['(', '.'].include?(tok_val)
+			source do |s|
+				case tok_val
+					when '('
+						step
+						skip :line
+						
+						result = AST::Index.new(s, result, type_parameters)
+						match :sym, ')'
+					when '.'
+						step
+						skip :line
+						name = match(:id)
+						result = AST::Field.new(s, result, name)
+				end
+			end
+		end
+		
+		result
+	end
+	
+	def is_type_factor
+		case tok
+			when :sym
+				case tok_val
+					when '('
+						true
+				end
+			when :id, :int, :str
+				true
+		end
+	end
+	
+	def type_factor
 		source do |s|
-			if matches(:sym, '[')
+			case tok
+				when :sym
+					case tok_val
+						when '('
+							tuple(s)
+						else
+							expected 'type'
+					end
+				when :int
+					AST::Literal.new(s, :int, match(:int))
+				when :str
+					AST::Literal.new(s, :string, match(:str))
+				when :id
+					case tok_val
+						when :typeof
+							step
+							AST::TypeOf.new(s, chain)
+						else
+							AST::NameRef.new(s, match(:id))
+					end
+				else
+					expected 'type'
+			end
+		end
+	end
+
+	def kind_params(f = '(', l = ')')
+		source do |s|
+			if matches(:sym, f)
 				skip :line
 				params = type_params
-				match(:sym, ']')
+				match(:sym, l)
 				AST::KindParams.new(s, params, type_context)
 			else
 				AST::KindParams.new(s, [], [])
@@ -179,7 +299,7 @@ class Parser
 			name = match(:id)
 			kind = kind_params
 			type, value = if matches(:sym, '::')
-				[expression, true]
+				[type_expression, true]
 			else
 				[opt_type_specifier, false]
 			end
@@ -206,7 +326,7 @@ class Parser
 			step
 			name = match :id
 			match(:sym, '=')
-			AST::TypeAlias.new(s, name, expression)
+			AST::TypeAlias.new(s, name, type_expression)
 		end
 	end
 	
@@ -235,7 +355,9 @@ class Parser
 		step
 		tp = kind_params
 		type_class = source { |s| AST::NameRef.new(s, match(:id)) }
-		args = type_parameters(false)
+		match(:sym, '(')
+		args = type_parameters
+		match(:sym, ')')
 		s.extend(@l.last_ended)
 		
 		scope = global_scope(baseline)
@@ -322,7 +444,7 @@ class Parser
 	end
 	
 	def function(s, baseline, name, props, action_type)
-		tp = kind_params
+		tp = kind_params('[', ']')
 		
 		func = AST::Function.new(AST::Source.new(s.input, s.range), name, tp)
 		
@@ -337,7 +459,7 @@ class Parser
 		
 		if !action_type && matches(:sym, '->')
 			skip :line
-			result = expression
+			result = type_expression
 		end
 		
 		func.source.extend(@l.last_ended)
@@ -381,7 +503,7 @@ class Parser
 					skip :line
 					val = expression
 				else
-					type = expression
+					type = type_expression
 
 					if matches(:sym, '=')
 						skip :line
@@ -393,12 +515,12 @@ class Parser
 		end
 	end
 	
-	def type_parameters(terminate = true)
+	def type_parameters
 		r = []
 		skip :line
 		
 		loop do
-			r << expression
+			r << type_expression
 			if matches(:sym, ',')
 				skip :line
 			else
@@ -406,12 +528,11 @@ class Parser
 			end
 		end
 		
-		match(:sym, ']') if terminate
 		r
 	end
 	
 	def opt_type_specifier
-		pred_operator if is_expression
+		type_expression if is_type_expression
 	end
 	
 	def group(baseline, scope = AST::LocalScope)
@@ -532,16 +653,20 @@ class Parser
 	end
 	
 	def _return
-		step
-		skip :line
-		AST::Return.new(expression)
+		source do |s|
+			step
+			skip :line
+			AST::Return.new(s, expression)
+		end
 	end
 	
 	def _if
 		baseline = @l.indent
-		step
-		skip :line
-		exp = expression
+		src, exp = source do |s|
+			step
+			skip :line
+			[s, expression]
+		end
 		grp = expression_group(baseline)
 
 		state = @l.dup
@@ -555,7 +680,7 @@ class Parser
 			@l = state
 		end
 		
-		AST::If.new(exp, grp, else_grp)
+		AST::If.new(src, exp, grp, else_grp)
 	end
 	
 	def assign_operator
@@ -616,7 +741,7 @@ class Parser
 	end
 	
 	def unary
-		if tok == :sym and ['&', '*', '-', '+'].include?(tok_val)
+		if tok == :sym and ['&', '*', '-', '+', '!'].include?(tok_val)
 			source do |s|
 				op = tok_val
 				step
@@ -668,7 +793,8 @@ class Parser
 						step
 						skip :line
 						
-						result = AST::Index.new(s, result, type_parameters(true))
+						result = AST::Index.new(s, result, type_parameters)
+						match(:sym, ']')
 					when '('
 						step
 						skip :line
@@ -760,7 +886,7 @@ class Parser
 			group(baseline, AST::FuncScope)
 		else
 			source do |s|
-				AST::FuncScope.new([AST::Return.new(expression)])
+				AST::FuncScope.new([AST::Return.new(s, expression)])
 			end
 		end
 

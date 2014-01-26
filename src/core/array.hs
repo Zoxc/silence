@@ -1,4 +1,4 @@
-struct Array[T]
+struct Array(T)
 	list *T
 	size uint
 
@@ -23,16 +23,16 @@ struct Array[T]
 	get(idx uint)
 		return *ptr(idx)
 
-instance[T] Callable Array[T]
+instance(T) Callable(Array(T))
 	alias Result = T
-	alias Args = Cell[uint, Unit]
+	alias Args = Cell(uint, Unit)
 
-	apply(args Cell[uint, Unit])
+	apply(args Cell(uint, Unit))
 		return self.get(args.val)
 
-instance[T] Indexable Array[T]
+instance(T) Indexable(Array(T))
 	alias Result = T
-	alias Index = Cell[uint, Unit]
+	alias Index = Cell(uint, Unit)
 
-	ref(args Cell[uint, Unit])
+	ref(args Cell(uint, Unit))
 		return self.ptr(args.val)

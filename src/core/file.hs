@@ -1,7 +1,6 @@
 struct File
 	shared read(path String)
-		.c_path = path.c_str()
-		.f = C.fopen(c_path.data, "r")
+		.f = path.c_str |p| C.fopen(p, "r")
 
 		if nil_ptr(f)
 			return Option.Nil()

@@ -15,20 +15,20 @@ struct String
 	action destroy
 		free(force_cast data)
 
-	c_str()
-		return self
+	c_str(f)
+		return f(data)
 
 	each(f)
 		times(size, |i| f(*ptr_idx(data, i)))
 
-instance StringLiteral String
+instance StringLiteral(String)
 	create(data *char, size)
 		.new = malloc(size + 1)
 		memcpy(new, force_cast data, size)
 		*force_cast[*char](force_cast new + size) = 0
 		return String(force_cast new, size)
 
-instance Joinable String
+instance Joinable(String)
 	join(lhs String, rhs String)
 		.new_size = lhs.size + rhs.size
 		.new = malloc(new_size + 1)

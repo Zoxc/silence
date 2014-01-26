@@ -150,6 +150,7 @@ module Types
 		attr_accessor :ref, :args, :plain
 		
 		def initialize(source, ref, args = {}, plain = true)
+			raise "Missing source for #{ref.scoped_name}" unless source
 			@source = source
 			@ref = ref
 			@args = args
@@ -198,7 +199,7 @@ module Types
 				when Core::Unit, Core::Cell::Node
 					"(#{tuple_map.map(&:text).join(', ')})"
 				else
-					"#{"!" unless @plain}#{@ref.scoped_name}#{"[#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")}]" if @args.size > 0}"
+					"#{"!" unless @plain}#{@ref.scoped_name}#{"(#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")})" if @args.size > 0}"
 			end
 		end
 	end

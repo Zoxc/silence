@@ -132,7 +132,7 @@
 	end
 	
 	def src_wrap(src, args)
-		AST::NestedSource.new(src, args.src.outer)
+		AST::NestedSource.new(src, args.src)
 	end
 	
 	def inst_limits(obj, args)

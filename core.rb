@@ -152,7 +152,7 @@ class Core
 			lhs = AST::Call.new(src, AST::Index.new(src, ref(Core::ForceCast), [ref(Core::UInt)]), [AST::NameRef.new(src, :lhs)])
 			rhs = AST::Call.new(src, ref(Core::ForceCast), [AST::NameRef.new(src, :rhs)])
 
-			r.scope = AST::FuncScope.new([AST::Return.new(AST::BinOp.new(src, lhs, '==', rhs))])
+			r.scope = AST::FuncScope.new([AST::Return.new(src, AST::BinOp.new(src, lhs, '==', rhs))])
 			r.props[:shared] = true
 
 			Generated.nodes << instance
