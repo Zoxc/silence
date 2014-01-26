@@ -376,12 +376,15 @@ class Core
 		
 		Node = complex(:Joinable, [T], AST::TypeClass, [Join])
 	end
+
+	AssignOps = ['+=', '-=', '*=', '/=', '%=', '~=', '=']
 	
 	OpMap = {
 		'>' => {ref: Ord::Node, param: Ord::T, func: Ord::Cmp, result: Core::Bool},
 		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
 		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}
 	}
+	OpMap['!='] = OpMap['==']
 	OpMap['>='] = OpMap['>']
 	OpMap['<='] = OpMap['>']
 	OpMap['<'] = OpMap['>']

@@ -442,7 +442,7 @@ class Parser
 				end
 			when :sym
 				case tok_val
-					when '*', '&', '.'
+					when '*', '&', '.', '-', '+'
 						true
 				end
 		end
@@ -562,7 +562,7 @@ class Parser
 		result = pred_operator
 		
 		case tok_val
-			when '+=', '-=', '*=', '/=', '%=', '='
+			when *Core::AssignOps
 				src = @l.source
 				op = tok_val
 				step
@@ -577,7 +577,7 @@ class Parser
 	pred = proc { |p, *args| args.each { |a| Operators[a] = p }}
 	pred_num = 0
 	pred.(pred_num += 1, '->')
-	pred.(pred_num += 1, '==')
+	pred.(pred_num += 1, '==', '!=')
 	pred.(pred_num += 1, '<', '>', '>=', '<=')
 	pred.(pred_num += 1, '+', '-', '~')
 	pred.(pred_num += 1, '*', '/', '%')
@@ -616,7 +616,7 @@ class Parser
 	end
 	
 	def unary
-		if tok == :sym and ['&', '*'].include?(tok_val)
+		if tok == :sym and ['&', '*', '-', '+'].include?(tok_val)
 			source do |s|
 				op = tok_val
 				step

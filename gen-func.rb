@@ -29,6 +29,10 @@ class FuncCodegen
 		end
 	end
 
+	def fowner
+		@func.fowner
+	end
+
 	def new_label
 		"L#{@label_name += 1}"
 	end
@@ -137,7 +141,7 @@ class FuncCodegen
 			
 			ref.type_params.each_with_index do |p, i|
 				param = obj.type_params[i]
-				raise "Didn't find matching param for '#{p.name}'" unless param
+				raise "Didn't find matching param for '#{p.scoped_name} for typeclass object #{obj.scoped_name}'" unless param
 				param_mapped = map.params[param]
 				raise "Param '#{p.name}' type not provided" unless param_mapped
 				new_map.params[p] = param_mapped
@@ -198,20 +202,24 @@ class FuncCodegen
 	end
 
 	def readonly(ast, var)
-		if ast.is_a?(AST::Call) && ast.gen[:type] == :binding
-			return readonly(ast.args.first, var)
+		case ast
+			when AST::Call
+				return readonly(ast.args.first, var) if ast.gen[:type] == :binding
+
+			when AST::UnaryOp
+				if ast.op == '*'
+					lvalue(ast, var, false)
+					return
+				end
+			when AST::Field, AST::Ref
+				lvalue(ast, var, false)
+				return
 		end
 
-		case ast
-			when AST::UnaryOp, AST::Field, AST::Ref
-				lvalue(ast, var, false)
-				nil
-			else
-				tvar = new_var
-				convert(ast, tvar)
-				assign_var(var, make_ptr(tvar.type), "&#{tvar.ref}")
-				tvar
-		end
+		tvar = new_var
+		convert(ast, tvar)
+		assign_var(var, make_ptr(tvar.type), "&#{tvar.ref}")
+		tvar
 	end
 
 	def extract_func_f(obj, params)
@@ -333,8 +341,6 @@ class FuncCodegen
 				case ast.op
 					when '*'
 						convert(ast.node, var)
-					when '&'
-						lvalue(ast.node, var)
 					else
 						raise "(unhandled)"
 				end
@@ -427,6 +433,53 @@ class FuncCodegen
 				del_var ptr
 		end
 	end
+
+	def lvalue_to_convert(ast, var)
+		tvar = new_var
+		lvalue(ast, tvar, false)
+		type = @gen.inst_type(tvar.type, @map).args.values.first
+		assign_var(var, type, "*#{tvar.ref}", true)
+		del_var tvar
+	end
+
+	def bin_op(ast, lhs, rhs, op, var)
+		typeclass = Core::OpMap[op]
+
+		cmp_op = ['>', '<', '>=', '<='].include?(op)
+		cmp_op_var = new_var if cmp_op
+		
+		if typeclass
+			lhs_arg = new_var
+			rhs_arg = new_var
+			copy_var(lhs, lhs_arg.ref, ast.gen[:arg])
+			copy_var(rhs.ref, rhs_arg.ref, ast.gen[:arg])
+			assign_var(lhs_arg, ast.gen[:arg], nil)
+			assign_var(rhs_arg, ast.gen[:arg], nil)
+			direct_call(cmp_op ? cmp_op_var : var, ref(typeclass[:func], {typeclass[:param] => ast.gen[:arg]}), nil, [lhs_arg.ref, rhs_arg.ref], cmp_op ? Types::Ref.new(Core.src, Core::Order) : ast.gen[:result])
+			del_var rhs_arg, false
+			del_var lhs_arg, false
+		else
+			assign_var(var, ast.gen[:result], lhs + " #{op} " + rhs.ref)
+		end
+
+		if cmp_op
+			values = case op
+				when '>'
+					["Greater"]
+				when '<'
+					["Lesser"]
+				when '>='
+					["Greater", "Equal"]
+				when '<='
+					["Lesser", "Equal"]
+			end
+			r = values.map {|v| "#{cmp_op_var.ref} == Enum_Order_#{v}" }.join(" || ")
+			assign_var(var, ast.gen[:result], "(#{r}) ? Enum_bool_true : Enum_bool_false")
+			del_var cmp_op_var
+		end
+
+		o "#{var.ref} = #{var.ref} == Enum_bool_true ? Enum_bool_false : Enum_bool_true;" if op == '!='
+	end
 	
 	# Values constructed into var are rvalue objects (an unique object with no other references)
 	def convert(ast, var)
@@ -451,7 +504,7 @@ class FuncCodegen
 					next unless v.is_a?(AST::Variable)
 					next unless v.decl
 
-					o "#{@gen.c_type(@func.ctype.vars[v], @map)} v_#{v.name};"
+					o "#{@gen.c_type(fowner.ctype.vars[v], @map)} v_#{v.name};"
 				end
 				o ""
 
@@ -571,12 +624,18 @@ class FuncCodegen
 					else
 						raise "Unknown literal type #{ast.type}"
 				end)
-			when AST::UnaryOp, AST::Ref, AST::Field
-				tvar = new_var
-				lvalue(ast, tvar, false)
-				type = @gen.inst_type(tvar.type, @map).args.values.first
-				assign_var(var, type, "*#{tvar.ref}", true)
-				del_var tvar
+			when AST::Ref, AST::Field
+				lvalue_to_convert(ast, var)
+			when AST::UnaryOp
+				case ast.op
+					when '*'
+						lvalue_to_convert(ast, var)
+					when '&'
+						lvalue(ast.node, var)
+					else
+						convert(ast.node, var)
+						o "#{var.ref} = -#{var.ref};" if ast.op == '-'
+				end
 			when AST::Index
 				convert(ast.obj, var)
 			when AST::Return # TODO: Ensure all variables in scope get's destroyed on return
@@ -591,43 +650,23 @@ class FuncCodegen
 					assign(var, ast.gen[:result], ast.lhs, rhs.ref)
 				else
 					lhs = new_var
-					convert(ast.lhs, lhs)
-					
-					typeclass = Core::OpMap[ast.op]
 
-					cmp_op = ['>', '<', '>=', '<='].include?(ast.op)
-					cmp_op_var = new_var if cmp_op
-					
-					if typeclass
-						lhs_arg = new_var
-						rhs_arg = new_var
-						copy_var(lhs.ref, lhs_arg.ref, ast.gen[:arg])
-						copy_var(rhs.ref, rhs_arg.ref, ast.gen[:arg])
-						assign_var(lhs_arg, ast.gen[:arg], nil)
-						assign_var(rhs_arg, ast.gen[:arg], nil)
-						direct_call(cmp_op ? cmp_op_var : var, ref(typeclass[:func], {typeclass[:param] => ast.gen[:arg]}), nil, [lhs_arg.ref, rhs_arg.ref], cmp_op ? Types::Ref.new(Core.src, Core::Order) : ast.gen[:result])
-						del_var rhs_arg, false
-						del_var lhs_arg, false
+					plain_op = ast.gen[:plain_op]
+
+					if plain_op != ast.op
+						tmp = new_var
+						lvalue(ast.lhs, lhs)
+						bin_op(ast, "*#{lhs.ref}", rhs, plain_op, tmp)
+						destroy_var("*#{lhs.ref}", ast.gen[:arg])
+						copy_var(tmp.ref, "*#{lhs.ref}", ast.gen[:arg])
+						copy_var(tmp.ref, var.ref, ast.gen[:result]) if var
+						assign_var(var, ast.gen[:result], nil)
+						del_var tmp
 					else
-						assign_var(var, ast.gen[:result], lhs.ref + " #{ast.op} " + rhs.ref)
+						convert(ast.lhs, lhs)
+						bin_op(ast, lhs.ref, rhs, plain_op, var)
 					end
 
-					if cmp_op
-						values = case ast.op
-							when '>'
-								["Greater"]
-							when '<'
-								["Lesser"]
-							when '>='
-								["Greater", "Equal"]
-							when '<='
-								["Lesser", "Equal"]
-						end
-						r = values.map {|v| "#{cmp_op_var.ref} == Enum_Order_#{v}" }.join(" || ")
-						assign_var(var, ast.gen[:result], "(#{r}) ? Enum_bool_true : Enum_bool_false")
-						del_var cmp_op_var
-					end
-					
 					del_var lhs
 				end
 				del_var rhs

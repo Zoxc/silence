@@ -15,6 +15,9 @@ struct String
 	action destroy
 		free(force_cast data)
 
+	c_str()
+		return self
+
 	each(f)
 		times(size, |i| f(*ptr_idx(data, i)))
 

@@ -635,6 +635,9 @@
 				type, value = analyze(ast.node, args.next(lvalue: ast.op == '&'))
 				
 				case ast.op
+					when '+', '-'
+						ast.gen = type
+						Result.new(type, true)
 					when '*'
 						if value
 							result = new_var(ast.source)
@@ -651,7 +654,7 @@
 						ast.gen = result
 						Result.new(result, true)
 					else
-						raise TypeError.new("Invalid unary operator '#{ast.op}' allowed\n#{ast.source.format}")
+						raise TypeError.new("Invalid unary operator '#{ast.op}'\n#{ast.source.format}")
 				end
 			when AST::Tuple
 				if args.lvalue
@@ -661,8 +664,9 @@
 					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false)
 				end
 			when AST::BinOp
-				assign_op = ast.op == '='
-				next_args = args.next(lvalue: assign_op, tuple_lvalue: assign_op)
+				assign_op = Core::AssignOps.include?(ast.op)
+				assign_simple = ast.op == '='
+				next_args = args.next(lvalue: assign_op, tuple_lvalue: assign_simple)
 				
 				lresult = analyze_impl(ast.lhs, next_args)
 				
@@ -674,7 +678,9 @@
 				if lvalue
 					req_level(ast.source, lhs) if (assign_op && !ast.constructing)
 
-					typeclass = Core::OpMap[ast.op]
+					plain_op = assign_op ? (assign_simple ? '=' : ast.op[0]) : ast.op
+
+					typeclass = Core::OpMap[plain_op]
 
 					result = lhs
 					if typeclass
@@ -684,7 +690,7 @@
 					end
 
 					unify(lhs, rhs)
-					ast.gen = {arg: lhs, result: result}
+					ast.gen = {arg: lhs, result: result, plain_op: plain_op}
 					Result.new(result, true)
 				else
 					raise TypeError.new("Unknown type operator '#{ast.op}'\n#{ast.source.format}") if ast.op != '->'

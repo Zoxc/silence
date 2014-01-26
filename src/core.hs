@@ -2,6 +2,19 @@ use "core/import"
 use "core/string"
 use "core/array"
 use "core/io"
+use "core/file"
+
+instance StringLiteral *char
+	create(data *char, size uint)
+		return data
+
+struct Option[T]
+	when Some
+		val T
+	when Nil
+
+nil_ptr[P](p *P)
+	return force_cast[uint](p) == 0
 
 times_impl(i, max, f)
 	if i > 0
