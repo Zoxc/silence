@@ -581,7 +581,7 @@ class FuncCodegen
 					convert(w.type, w_expr)
 					direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), "&#{expr.ref}", [expr.ref, w_expr.ref], Core::Bool.ctype.type)
 					del_var w_expr
-					o "    if(#{test.ref}) goto #{when_labels[i]};"
+					o "    if(#{test.ref} == Enum_bool_true) goto #{when_labels[i]};"
 					del_var test
 				end
 
@@ -683,9 +683,14 @@ class FuncCodegen
 						lvalue_to_convert(ast, var)
 					when '&'
 						lvalue(ast.node, var)
-					else
+					when '-'
 						convert(ast.node, var)
-						o "#{var.ref} = -#{var.ref};" if ast.op == '-'
+						o "#{var.ref} = -#{var.ref};"
+					when '!'
+						convert(ast.node, var)
+						o "#{var.ref} = #{var.ref} == Enum_bool_false ? Enum_bool_true : Enum_bool_false;"
+					else
+						raise "unhandled"
 				end
 			when AST::Index
 				convert(ast.obj, var)
@@ -725,7 +730,7 @@ class FuncCodegen
 				cond = new_var
 				el = new_label
 				convert(ast.condition, cond)
-				o "if(!#{cond.ref})"
+				o "if(#{cond.ref} == Enum_bool_false)"
 				o "    goto #{el};"
 				del_var cond
 				convert(ast.group, ast.gen ? nil : var)
