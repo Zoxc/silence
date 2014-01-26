@@ -52,8 +52,8 @@ class FuncCodegen
 		ref = gen.ref_action(type, @map, :copy)
 		if dst != src
 			o "#{dst} = #{src}; #{"#{ref}(&(#{dst}));" if ref} // copy"
-		elsif ref
-			o "#{"#{ref}(&(#{dst}));" if ref} // copy"
+		else
+			o "#{"#{ref}(&(#{dst}));" if ref} // copy #{dst}"
 		end
 	end
 	
@@ -114,7 +114,21 @@ class FuncCodegen
 			@current_vars.push(var)
 			var
 		end
-		convert(func.scope, nil)
+
+		if @func.is_a?(AST::Function)
+			(@func.gen_init_list || []).each do |gen|
+				direct_call(nil, ref(Core::Defaultable::Construct, {Core::Defaultable::T => gen[:type]}), nil, [ref_field(gen[:field])], Core::Unit.ctype.type)
+			end
+
+			@func.init_list.each do |ast|
+				var = new_var
+				convert(ast.expr, var)
+				o "*(#{ref_field(ast.gen[:ref])}) = #{var.ref}; // construct"
+				del_var var, false
+			end
+		end
+
+		convert(@func.scope, nil)
 		params.reverse.each do |var|
 			pop_var(var)
 			destroy_var(var.ref, var.type)
@@ -330,6 +344,16 @@ class FuncCodegen
 		end
 	end
 
+	def ref_field(obj)
+		owner = obj.declared.owner
+		if owner == fowner.declared.owner && owner.is_a?(AST::StructCase)
+			idx = owner.parent.cases.index(owner)
+			"&#{self_ref}->e_#{idx}.f_#{obj.name}"
+		else
+			"&#{self_ref}->f_#{obj.name}" # TODO: Check for the case when accesing a field in a parent struct
+		end
+	end
+
 	def lvalue(ast, var, proper = true)
 		case ast
 			when AST::Call
@@ -410,14 +434,7 @@ class FuncCodegen
 					end
 				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					# TODO: Turn this into a AST::Field with self as obj
-
-					ref = if owner == fowner.declared.owner && owner.is_a?(AST::StructCase)
-						idx = owner.parent.cases.index(owner)
-						"&#{self_ref}->e_#{idx}.f_#{ast.obj.name}"
-					else
-						"&#{self_ref}->f_#{ast.obj.name}" # TODO: Check for the case when accesing a field in a parent struct
-					end
-					assign_var(var, make_ptr(ast.gen[:result]), ref, true)
+					assign_var(var, make_ptr(ast.gen[:result]), ref_field(ast.obj), true)
 				elsif ast.gen[:type] == :self
 					type = @func.fowner.ctype.type
 					assign_var(var, make_ptr(type), gen_func(self_ref, @gen.mangle(@func.fowner, @map), type), true)
@@ -618,15 +635,22 @@ class FuncCodegen
 				ptr = new_var
 				convert(ast.obj, ptr)
 
-				if ast.arg
+				arg_types = if ast.arg
 					arg = new_var
 					convert(ast.arg, arg)
+					arg.type
+				else
+					Types::Ref.new(Core.src, Core::Unit)
+				end.tuple_map
+
+				args = arg_types.each_with_index.map do |type, i|
+					"#{arg.ref}.#{idx i}"
 				end
 
 				ref = gen.ref_action(ast.gen[:type], @map, ast.action_type, false)
-				o "#{ref}(#{ptr.ref}#{", #{arg.ref}" if ast.arg});"
+				o "#{ref}(#{ptr.ref}#{args.map{|a| ", #{a}"}.join});"
 
-				del_var arg if ast.arg
+				del_var(arg, false) if arg
 				del_var ptr
 				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::VariableDecl

@@ -86,18 +86,16 @@ class Core
 			(scope = obj.parent.scope.names.values + scope) if obj.is_a?(AST::StructCase)
 			fields = scope.select { |v| v.is_a?(AST::Variable) && !v.props[:shared] }
 
-			args = AST::Tuple.new(src, fields.map { |f| AST::TypeOf.new(src, AST::NameRef.new(src, f.name)) })
-			
-			# TODO: This should not destroy existing fields
-			# TODO: Make sure there are no conflicts with names
-
 			r = AST::Function.new(src, nil, AST::KindParams.new(src, [], []))
 			r.action_type = :create_args
-			r.params = [AST::Function::Param.new(src, r, :args, args)]
+			r.params = fields.each_with_index.map do |field, i|
+				AST::Function::Param.new(src, r, field.name, nil)
+			end
 			r.result = ref(Core::Unit)
-			fields = fields.map { |field| AST::NameRef.new(src, field.name) }
-			assign = AST::BinOp.new(src, AST::Tuple.new(src, fields), '=', AST::NameRef.new(src, :args))
-			r.scope = AST::FuncScope.new([assign])
+			r.init_list = fields.each_with_index.map do |field, i|
+				AST::InitEntry.new(src, field.name, AST::NameRef.new(src, field.name))
+			end
+			r.scope = AST::FuncScope.new([])
 			obj.scope.nodes << r
 
 			run_pass(r, obj.scope)
@@ -232,6 +230,12 @@ class Core
 	String = complex :string
 	Char = complex :char
 	
+	proc do
+		ConstructT = param(:T, ref(Copyable::Node))
+		Construct = func(:construct, {dst: ptr(ref(ConstructT)), src: ref(ConstructT)}, ref(Unit), [ConstructT])
+		Nodes << Construct
+	end.()
+
 	proc do
 		SizeOfT = param(:T, ref(Sizeable::Node))
 		SizeOf = func(:size_of, {}, ref(UInt), [SizeOfT])

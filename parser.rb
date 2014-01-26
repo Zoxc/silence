@@ -456,10 +456,32 @@ class Parser
 			params = function_params(func)
 			match :sym, ')'
 		end
-		
-		if !action_type && matches(:sym, '->')
-			skip :line
-			result = type_expression
+
+		if action_type
+			if matches(:sym, ':')
+				skip :line
+
+				func.init_list = []
+
+				loop do
+					source do |s|
+						field = match(:id)
+						match(:sym, '<-')
+						func.init_list << AST::InitEntry.new(s, field, expression)
+					end
+
+					if matches(:sym, ',')
+						skip :line
+					else
+						break
+					end
+				end
+			end
+		else
+			if matches(:sym, '->')
+				skip :line
+				result = type_expression
+			end
 		end
 		
 		func.source.extend(@l.last_ended)

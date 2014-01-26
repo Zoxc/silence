@@ -407,6 +407,16 @@
 			when ASTWrap
 				Result.new(ast.type, false)
 
+			when AST::InitEntry
+				field = @obj.declared.require(ast.source, ast.field)
+				raise "Expected field to construct in #{func.declared.owner}\n#{ast.source.format}" unless field.is_a?(AST::Variable) && field.declared == @obj.declared && !field.props[:shared]
+				
+				parent_args = Hash[AST.type_params(field, false).map { |p| [p, map_type(p)] }]
+
+				lhs, val = coerce_typeval(RefResult.new(ast, field, parent_args), args)
+				rhs = analyze_value(ast.expr, args.next)
+				unify(lhs, rhs)
+				nil
 			when AST::ActionCall
 				type = analyze_type(ast.type, args.next)
 
@@ -422,7 +432,7 @@
 				func = type.ref.actions[ast.action_type]
 				func_type, inst_args = inst_ex(ast.source, func, type.args)
 
-				result = func_type.args[Core::Func::Args].tuple_map.first
+				result = func_type.args[Core::Func::Args]
 
 				Result.new(result, false)
 
@@ -792,7 +802,6 @@
 
 	def ptr_field(c)
 		type = c.type.prune
-		puts "Checking for PTR #{type}"
 		inst, map = TypeContext.find_instance(@obj, @infer_args, Core::Reference::Node, {Core::Reference::T => type})
 		if inst
 			ast = inst.scope.names[:Type]
@@ -924,6 +933,24 @@
 		end if func.self
 		
 		process_func_params(func.params)
+
+		if [:create, :create_args].include? func.action_type
+			scope = func.declared
+			inits = Hash[func.init_list.map { |i| [scope.names[i.field], true] }]
+
+			func.gen_init_list = scope.nodes.map do |ast|
+				case ast
+					when AST::VariableDecl
+						if !ast.var.props[:shared] && !inits[ast.var]
+							var_type, inst_args = inst_ex(func.source, ast.var, owner.ctype.type.args)
+							typeclass_limit(ast.var.source, Core::Defaultable::Node, {Core::Defaultable::T => var_type})
+							{field: ast.var, type: var_type}
+						end
+				end
+			end.compact
+		end
+
+		func.init_list.each { |i| analyze_impl(i, a_args) }
 		
 		analyze(func.scope, a_args.next(unused: true))
 		
@@ -1036,7 +1063,7 @@
 	end
 	
 	def create_type
-		finalize(Types::Ref.new(@obj.source, @obj, Hash[AST.type_params(@obj).map { |p| [p, map_type(p)] }]), false)
+		Types::Ref.new(@obj.source, @obj, Hash[AST.type_params(@obj).map { |p| [p, map_type(p)] }])
 	end
 	
 	def process_req
@@ -1049,32 +1076,25 @@
 				if value.value
 					finalize(analyze_type(value.type, analyze_args), true)
 				else
-					create_type
+					finalize(create_type, false)
 				end
 			when AST::Complex
 				process_type_params
-				
-				create_type
-				
+
+				finalize(create_type, false)
+
 				case value
 					when AST::Enum
 						Core.create_enum_eq(value)
+					when AST::StructCase
+						Core.create_constructor_action(value) unless value.actions[:create_args]
+						Core.create_constructor(value)
 					when AST::Struct
 						unless value.enum?
 							Core.create_constructor_action(value) unless value.actions[:create_args]
 							Core.create_constructor(value) if value.actions[:create_args]
 							Core.create_def_constructor(value) if value.actions[:create]
 						end
-					when AST::StructCase
-						Core.create_constructor_action(value) unless value.actions[:create_args]
-						Core.create_constructor(value)
-				end
-						
-				value.scope.nodes.each do |ast|
-					case ast
-						when AST::VariableDecl
-							infer(ast.var)
-					end
 				end
 			when AST::EnumValue
 				infer(value.owner)

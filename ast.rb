@@ -569,7 +569,7 @@ module AST
 	end
 	
 	class Function < HigherKinded
-		attr_accessor :params, :result, :scope, :type, :ctype, :props, :type_param_count, :action_type, :self
+		attr_accessor :params, :result, :scope, :type, :ctype, :props, :type_param_count, :action_type, :self, :init_list, :gen_init_list
 		attr_writer :name
 		
 		class Param < Node
@@ -599,6 +599,7 @@ module AST
 			super(source, kind_params)
 			@props = {}
 			@name = name
+			@init_list = []
 		end
 		
 		def ref_pass(scope)
@@ -629,6 +630,7 @@ module AST
 		
 		def visit
 			super
+			@init_list.map! { |n| yield n }
 			@params.map! { |n| yield n }
 			@result = yield @result
 		end
@@ -770,6 +772,20 @@ module AST
 		end
 	end
 
+	class InitEntry < ExpressionNode
+		attr_accessor :field, :expr, :gen
+		
+		def initialize(source, field, expr)
+			super(source)
+			@field = field
+			@expr = expr
+		end
+	
+		def visit
+			@expr = yield @expr
+		end
+	end
+	
 	class UnaryOp < ExpressionNode
 		attr_accessor :op, :node, :gen
 		

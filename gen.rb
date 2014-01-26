@@ -252,6 +252,16 @@ class Codegen
 				o << "    #{c_type(map.params[Core::Table::Type], map)} array[#{map.params[Core::Table::Size].value}];\n"
 				o << "};\n\n"
 				@out[:struct] << o
+			when Core::Construct
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				
+				type = map.params[Core::ConstructT]
+				
+				o << "    *v_dst = v_src;\n}\n\n"
+				
+				@out[:func] << o
 			when Core::SizeOf
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

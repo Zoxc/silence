@@ -293,8 +293,8 @@
 			proc { |t| raise "Unknown variable type in typeclass constraint of instance #{t}\n#{t.stack}\n#{t.source.format}" },
 			proc { |t|
 				r = map[t.ref]
-				raise "Unable to find instance of #{t.ref.scoped_name} #{map}" unless r
-				r.prune})
+				raise "Unable to find instance of #{t.ref.scoped_name} in #{TypeContext::Map.new({}, map, {})}" if t.param && !r
+				r})
 	end
 	
 	def self.find_instance(obj, infer_args, typeclass, args)
