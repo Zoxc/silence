@@ -11,7 +11,7 @@ struct File
 			.c = C.fgetc(f)
 			if c != -1
 				.u char = force_cast c
-				result ~= String(&u, 1)
+				result ~= String.from_data(&u, 1)
 				r()
 
 		r()

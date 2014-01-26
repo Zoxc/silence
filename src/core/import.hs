@@ -11,3 +11,5 @@ struct C
 	shared import fgetc(file *FILE) -> c_int
 	shared import fclose(file *FILE) -> ()
 	shared import abort() -> ()
+
+	shared import sprintf(buf *char, str *char, v uint) -> c_int
