@@ -31,6 +31,10 @@ instance StringLiteral(char)
 		assert -> size == 1
 		return *data
 
+instance(T) Eq(*T)
+	equal(lhs *T, rhs *T)
+		return force_cast[uint] lhs == force_cast rhs
+
 assert(b)
 	if !b()
 		C.abort()
@@ -55,7 +59,8 @@ times(i, f)
 	times_impl(i, i, f)
 
 for_range(a, b, f)
-	times(b - a + 1, |i| f(a + i))
+	.i uint = force_cast(b - a) + 1
+	times(i, |i| f(a + force_cast i))
 
 ptr_idx[T](ptr *T, idx uint) -> *T
 	return force_cast(force_cast ptr + idx * size_of[T]())

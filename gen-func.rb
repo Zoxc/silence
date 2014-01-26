@@ -191,7 +191,7 @@ class FuncCodegen
 	end
 
 	def func_data(obj)
-		if fowner == obj.declared.owner && !obj.props[:shared]
+		if fowner.declared.owner == obj.declared.owner && !obj.props[:shared]
 			self_ref
 		else
 			"nullptr"

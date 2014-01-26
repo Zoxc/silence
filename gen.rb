@@ -5,7 +5,7 @@ class Codegen
 		@named = {}
 		@names = 0
 		
-		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::CInt => 'int', Core::Char => 'char'}.each do |type, name|
+		{Core::Int => 'intptr_t', Core::UInt => 'uintptr_t', Core::CInt => 'int', Core::Char => 'unsigned char'}.each do |type, name|
 			@gen[type] = [TypeContext::Map.new({}, {})]
 			@out[:prelude] << "typedef #{name} #{mangle(type, TypeContext::Map.new({}, {}))};\n"
 		end
@@ -252,6 +252,12 @@ class Codegen
 				o << "    #{c_type(map.params[Core::Table::Type], map)} array[#{map.params[Core::Table::Size].value}];\n"
 				o << "};\n\n"
 				@out[:struct] << o
+			when Core::FuncEq
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n"
+				o << "    *result = v_lhs.data == v_rhs.data && v_lhs.func == v_rhs.func ? Enum_bool_true : Enum_bool_false;\n}\n\n"
+				@out[:func] << o
 			when Core::Construct
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

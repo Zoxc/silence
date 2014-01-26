@@ -19,9 +19,12 @@ struct String
 		memcpy(new, force_cast data, size)
 		return String(force_cast new, size)
 
-	c_str(f)
+	c_term()
 		.z char = 0
-		.str = self ~ String.from_data(&z, 1)
+		return self ~ String.from_data(&z, 1)
+
+	c_str(f)
+		.str = c_term()
 		return f(str.data)
 
 	each(f)

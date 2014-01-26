@@ -337,6 +337,15 @@ class Core
 		Nodes << tci(Callable::Node, [AST::BinOp.new(src, ref(args), '->', ref(result))], [args, result], [apply])
 	end.()
 
+	proc do
+		_args = param :Args
+		_result = param :Result
+		_func = proc { AST::Index.new(src, ref(Func::Node), [ref(_args), ref(_result)]) }
+		FuncEq = func(:equal, {lhs: _func.(), rhs: _func.()}, ref(Bool), [], true)
+		inst = tci(Eq::Node, [_func.()], [_args, _result], [FuncEq])
+		Nodes << inst
+	end.()
+	
 	class IntLiteral < Core
 		T = param(:T, ref(Sizeable::Node))
 		
