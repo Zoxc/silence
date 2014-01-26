@@ -305,7 +305,7 @@
 			type, value = coerce_typeval(result, analyze_args, nil)
 
 			if value
-				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{result.type.source}") unless tp.value
+				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{type.source}") unless tp.value
 				tp_type, inst_args = inst_ex(tp.source, tp, parent_args)
 				unify(tp_type, type)
 
@@ -795,41 +795,44 @@
 			var = c.var.prune
 			type = c.type.prune
 			#type = view(type) if type.is_a? Types::Variable
-			case type
-				when Types::Ref
-					limit = c.extension[:limit]
-					if limit
-						ref = limit.typeclass
-						parent_args = limit.args.dup
-					else
+
+			limit = c.extension[:limit]
+			if limit
+				ref = limit.typeclass
+				parent_args = limit.args.dup
+			else
+				case type
+					when Types::Ref
 						ref = type.ref
 						parent_args = type.args.dup
-					end
-
-					raise TypeError.new("Object doesn't have a scope (#{type})\n#{c.ast.source.format}") unless ref.is_a?(AST::Complex)
-
-					field, extension = scope_lookup(ref, c.name, c.extension[:ref])
-					
-					raise TypeError.new("'#{c.name}' is not a field in '#{ref.scoped_name}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
-					
-					lvalue_check(c.ast.source, field, c.infer_args.lvalue)
-				
-					map_type_params(c.source, field, parent_args, c.args)
-					
-					field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
-					
-					# TODO: Reduce fields to single when shared
-					c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, extension: extension}
-					
-					unify(field_type, var)
-					
-					true
-				when Types::Variable
-					# TODO: Find out when this is really required
-					raise TypeError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
-				else
-					raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
+					when Types::Variable
+						# TODO: Find out when this is really required
+						raise TypeError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
+					else
+						raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
+				end
 			end
+
+			next nil unless ref
+
+			raise TypeError.new("Object doesn't have a scope (#{type})\n#{c.ast.source.format}") unless ref.is_a?(AST::Complex)
+
+			field, extension = scope_lookup(ref, c.name, c.extension[:ref])
+			
+			raise TypeError.new("'#{c.name}' is not a field in '#{ref.scoped_name}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
+			
+			lvalue_check(c.ast.source, field, c.infer_args.lvalue)
+		
+			map_type_params(c.source, field, parent_args, c.args)
+			
+			field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
+			
+			# TODO: Reduce fields to single when shared
+			c.ast.gen = {result: field_type, type: :field, ref: field, args: inst_args, extension: extension}
+			
+			unify(field_type, var)
+			
+			true
 		end
 	end
 	
