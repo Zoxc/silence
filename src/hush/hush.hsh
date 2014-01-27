@@ -1,0 +1,14 @@
+use "lexer"
+
+parse(input, name)
+	IO.puts("Parsing file: " ~ name)
+	.lexer = Lexer(input)
+
+export main() -> c_int
+	IO.puts("Running!")
+	match File.read("test.hs") as r
+		when Option.Some
+			parse(r.val, "test.hs")
+		when Option.Nil
+			IO.puts("Failed to read file")
+	return 0

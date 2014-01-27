@@ -1,0 +1,109 @@
+use "../core"
+
+enum Token
+	None
+	Unknown
+	Id
+	EndOfFile
+
+struct Lexer
+	struct State
+		pos *char
+		input_end *char
+
+		lexer *Lexer
+		type Token
+		start *char
+		stop *char
+
+		action create(pos, end, lexer) :
+			pos <- pos,
+			input_end <- end,
+			lexer <- lexer,
+			type <- Token.None,
+			start <- undef(),
+			stop <- undef()
+
+		end()
+			stop = pos
+
+		str()
+			return String.from_data(start, int_ptr stop - int_ptr start)
+
+	struct Input
+		lexer *Lexer
+
+		pos()
+			return lexer.tok.pos
+
+		step()
+			assert -> !at_end()
+			lexer.tok.pos = ptr_idx(pos(), 1)
+			return *pos()
+
+		at_end()
+			return pos() == lexer.tok.input_end
+
+		c()
+			return *pos()
+
+		eq(c char)
+			return *pos() == c
+
+	tok State
+	content String 
+	i Input
+	jump_table Table(256, () -> ())
+
+	action create(str String) :
+		content <- str.c_term(),
+		tok <- State(content.data, ptr_idx(content.data, content.size - 1), &self),
+		i <- Input(&self),
+		jump_table <- undef()
+
+		setup_table()
+		step()
+
+	setup_table()
+		.set_char = |i char, f|
+			jump_table(force_cast i) = f
+
+		.set_chars = |start char, stop, f|
+			for_range(start, stop, |i| set_char(i, f))
+
+		set_chars(0, 255, unknown)
+
+		set_char(0, eof)
+
+	step()
+		tok.type = Token.None
+		tok.start = i.pos()
+
+		jump_table(force_cast i.c())()
+
+		assert -> int_ptr tok.stop >= int_ptr tok.start
+		assert -> tok.type != Token.None
+
+	eof()
+		if i.at_end()
+			tok.type = Token.EndOfFile
+			tok.end()
+		else
+			IO.puts("Unexpected null-terminator")
+			i.step()
+			step()
+
+	unknown()
+		i.step()
+
+		.loop = ->
+			if jump_table(force_cast i.c()) == unknown
+				i.step()
+				loop()
+		loop()
+
+		tok.end()
+
+		IO.puts("Unknown character(s): '" ~ tok.str() ~ "'")
+
+		step()
