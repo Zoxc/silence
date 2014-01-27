@@ -33,7 +33,7 @@ def parse(files, file)
 
 	[ast] + parser.imports.map do |i|
 		i = File.absolute_path(i, File.dirname(file))
-		i += ".hs" if File.extname(i) == ""
+		i += ".hsh" if File.extname(i) == ""
 		raise "Unable to find file '#{fpath i}'\nImported in #{fpath file}" unless File.exist?(i)
 		parse(files, File.realpath(i))
 	end
