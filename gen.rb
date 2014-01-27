@@ -220,6 +220,27 @@ class Codegen
 		puts "Generating #{ast.scoped_name} - #{map}"
 		case ast
 			when AST::TypeClass
+			when Core::IntLiterals[:num_not][ast]
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n    auto &v_self = *(#{c_type(ast.ctype.vars[ast.self], map)} *)data;\n"
+				@out[:func] << o << "    *result = -v_self;\n}\n\n"
+			when Core::IntLiterals[:num][ast]
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				op = case ast.name
+						when :add
+							'+'
+						when :sub
+							'-'
+						when :mul
+							'*'
+						when :div
+							'/'
+						when :mod
+							'%'
+					end
+				@out[:func] << o << "\n{\n    *result = v_lhs #{op} v_rhs;\n}\n\n"
 			when Core::IntLiterals[:ord][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

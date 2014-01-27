@@ -722,18 +722,22 @@ class FuncCodegen
 				lvalue_to_convert(ast, var)
 			when AST::UnaryOp
 				case ast.op
+					when '+'
+						convert(ast.node, var)
 					when '*'
 						lvalue_to_convert(ast, var)
 					when '&'
 						lvalue(ast.node, var)
-					when '-'
-						convert(ast.node, var)
-						o "#{var.ref} = -#{var.ref};"
-					when '!'
-						convert(ast.node, var)
-						o "#{var.ref} = #{var.ref} == Enum_bool_false ? Enum_bool_true : Enum_bool_false;"
 					else
-						raise "unhandled"
+						obj = new_var
+						ovar = readonly(ast.node, obj)
+
+						map = Core::UnaryOpMap[ast.op]
+
+						direct_call(var, ref(map[:func], {map[:param] => ast.gen}), obj.ref, [], ast.gen)
+						
+						del_var ovar if ovar
+						del_var obj
 				end
 			when AST::Index
 				convert(ast.obj, var)

@@ -645,7 +645,8 @@
 				type, value = analyze(ast.node, args.next(lvalue: ast.op == '&'))
 				
 				case ast.op
-					when '+', '-', '!'
+					when '+'
+						typeclass_limit(ast.source, Core::Num::Node, {Core::Num::T => lhs}) 
 						ast.gen = type
 						Result.new(type, true)
 					when '*'
@@ -664,7 +665,12 @@
 						ast.gen = result
 						Result.new(result, true)
 					else
-						raise TypeError.new("Invalid unary operator '#{ast.op}'\n#{ast.source.format}")
+						map = Core::UnaryOpMap[ast.op]
+						raise TypeError.new("Invalid unary operator '#{ast.op}'\n#{ast.source.format}") unless map
+
+						typeclass_limit(ast.source, map[:ref], {map[:param] => type}) 
+						ast.gen = type
+						Result.new(type, true)
 				end
 			when AST::Tuple
 				if args.lvalue

@@ -4,6 +4,34 @@ use "core/array"
 use "core/io"
 use "core/file"
 
+instance Binary(bool)
+	not()
+		return if self == true
+			false
+		else
+			true
+
+	shared and(lhs bool, rhs)
+		return if lhs == true
+			if rhs == true
+				true
+			else
+				false
+		else
+			false
+
+	shared or(lhs bool, rhs)
+		return if lhs == true
+			true
+		else
+			if rhs == true
+				true
+			else
+				false
+
+	shared xor(lhs bool, rhs)
+		return !(lhs == rhs)
+
 instance(T) Reference(*T)
 	alias Type = T
 

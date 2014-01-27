@@ -336,6 +336,19 @@ class Core
 		Node = complex(:Ord, [T], AST::TypeClass, [Cmp])
 	end
 
+	class Num < Core
+		T = param :T
+		
+		Neg = func(:neg, {}, ref(T))
+		Add = func(:add, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		Sub = func(:sub, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		Mul = func(:mul, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		Div = func(:div, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		Mod = func(:mod, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		
+		Node = complex(:Num, [T], AST::TypeClass, [Neg, Add, Sub, Mul, Div, Mod])
+	end
+
 	proc do
 		args = param :Args
 		result = param :Result
@@ -365,9 +378,24 @@ class Core
 		Node = complex(:IntLiteral, [T], AST::TypeClass, [Create])
 	end
 	
-	IntLiterals = {create: {}, default: {}, eq: {}, ord: {}}
+	IntLiterals = {create: {}, default: {}, eq: {}, ord: {}, num: {}, num_not: {}}
 	
 	num_lit = proc do |type|
+		neg = func(:neg, {}, ref(type))
+		add = func(:add, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		sub = func(:sub, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		mul = func(:mul, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		div = func(:div, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		mod = func(:mod, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		num_inst = tci(Num::Node, [ref(type)], [], [neg, add, sub, mul, div, mod])
+		Nodes << num_inst
+		IntLiterals[:num_not][neg] = neg
+		IntLiterals[:num][add] = add
+		IntLiterals[:num][sub] = sub
+		IntLiterals[:num][mul] = mul
+		IntLiterals[:num][div] = div
+		IntLiterals[:num][mod] = mod
+		
 		cmp = func(:cmp, {gt: ref(type), ls: ref(type)}, ref(Order), [], true)
 		ord_inst = tci(Ord::Node, [ref(type)], [], [cmp])
 		Nodes << ord_inst
@@ -402,6 +430,17 @@ class Core
 		Node = complex(:StringLiteral, [T], AST::TypeClass, [Create])
 	end
 	
+	class Binary < Core
+		T = param :T
+		
+		Not = func(:not, {}, ref(T))
+		Xor = func(:xor, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		And = func(:and, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		Or = func(:or, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
+		
+		Node = complex(:Binary, [T], AST::TypeClass, [Not, Xor, And, Or])
+	end
+
 	class Joinable < Core
 		T = param :T
 		
@@ -410,9 +449,22 @@ class Core
 		Node = complex(:Joinable, [T], AST::TypeClass, [Join])
 	end
 
-	AssignOps = ['+=', '-=', '*=', '/=', '%=', '~=', '=']
+	AssignOps = ['+=', '-=', '*=', '/=', '%=', '~=', '^=', '&=', '|=', '=']
 	
+	UnaryOpMap = {
+		'-' => {ref: Num::Node, param: Num::T, func: Num::Neg},
+		'!' => {ref: Binary::Node, param: Binary::T, func: Binary::Not}
+	}
+
 	OpMap = {
+		'+' => {ref: Num::Node, param: Num::T, func: Num::Add},
+		'-' => {ref: Num::Node, param: Num::T, func: Num::Sub},
+		'*' => {ref: Num::Node, param: Num::T, func: Num::Mul},
+		'/' => {ref: Num::Node, param: Num::T, func: Num::Div},
+		'%' => {ref: Num::Node, param: Num::T, func: Num::Mod},
+		'^' => {ref: Binary::Node, param: Binary::T, func: Binary::Xor},
+		'&' => {ref: Binary::Node, param: Binary::T, func: Binary::And},
+		'|' => {ref: Binary::Node, param: Binary::T, func: Binary::Or},
 		'>' => {ref: Ord::Node, param: Ord::T, func: Ord::Cmp, result: Core::Bool},
 		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
 		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}
