@@ -404,6 +404,7 @@ class Codegen
 
 				o << "};\n\n"
 				@out[:struct] << o
+
 			when AST::Variable
 				return if ast.declared.owner.is_a? AST::Function
 				return if ast.declared.owner.is_a?(AST::Struct) && !ast.props[:shared]

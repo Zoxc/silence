@@ -81,6 +81,17 @@ class Core
 			ast.run_pass(:ref_pass)
 		end
 
+		def create_empty_action(obj, name)
+			r = AST::Function.new(src, nil, AST::KindParams.new(src, [], []))
+			r.action_type = name
+			r.params = []
+			r.result = ref(Core::Unit)
+			r.scope = AST::FuncScope.new([])
+			obj.scope.nodes << r
+
+			run_pass(r, obj.scope)
+		end
+
 		def create_constructor_action(obj)
 			scope = obj.scope.names.values
 			(scope = obj.parent.scope.names.values + scope) if obj.is_a?(AST::StructCase)

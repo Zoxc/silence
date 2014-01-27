@@ -115,6 +115,44 @@ class FuncCodegen
 			var
 		end
 
+		handle_action = proc do
+			owner = @func.declared.owner
+
+			code = []
+
+			owner.scope.names.values.each do |value|
+				next if !value.is_a?(AST::Variable) || value.props[:shared]
+				field_map = map.copy
+				@gen.map_vars(value, field_map)
+
+				ref = @gen.ref_action(value.ctype.type, field_map, @func.action_type)
+
+				code << ["    #{"#{ref}(#{ref_field(value)});" if ref} // #{@func.action_type} #{value.name}\n"]
+			end
+
+			if owner.enum?
+
+				out = "    switch(#{self_ref}->type) {\n"
+				owner.cases.each_with_index do |w, i|
+					action = w.actions[@func.action_type]
+					if action
+						@gen.gen(action, @map)
+						ref = @gen.mangle(action, @map)
+					end
+
+					out << "        case #{i}:\n"
+					out << "                   #{"#{ref}(#{self_ref});" if ref} // #{@func.action_type} case #{w.name}\n"
+					out << "                   break;\n"
+				end
+				out << "    }\n"
+
+				code << out
+			end
+			code = code.reverse if @func.action_type == :destroy
+			code.unshift "\n    // #{@func.action_type} fields\n"
+			@out << code.join
+		end
+
 		if @func.is_a?(AST::Function)
 			(@func.gen_init_list || []).each do |gen|
 				direct_call(nil, ref(Core::Defaultable::Construct, {Core::Defaultable::T => gen[:type]}), nil, [ref_field(gen[:field])], Core::Unit.ctype.type)
@@ -126,9 +164,14 @@ class FuncCodegen
 				o "*(#{ref_field(ast.gen[:ref])}) = #{var.ref}; // construct"
 				del_var var, false
 			end
+
+			handle_action.() if @func.action_type == :copy
 		end
 
 		convert(@func.scope, nil)
+
+		handle_action.() if @func.is_a?(AST::Function) && @func.action_type == :destroy 
+
 		params.reverse.each do |var|
 			pop_var(var)
 			destroy_var(var.ref, var.type)

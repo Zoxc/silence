@@ -1096,6 +1096,10 @@
 							Core.create_def_constructor(value) if value.actions[:create]
 						end
 				end
+
+				Core.create_empty_action(value, :destroy) if value.is_a?(AST::Struct) && !value.actions[:destroy]
+				Core.create_empty_action(value, :copy) if value.is_a?(AST::Struct) && !value.actions[:copy]
+
 			when AST::EnumValue
 				infer(value.owner)
 				finalize(value.owner.ctype.type, true)
