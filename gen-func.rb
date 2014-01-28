@@ -501,7 +501,7 @@ class FuncCodegen
 		assign_var(var, type, nil) if var
 
 		case lhs
-			when AST::Tuple
+			when AST::ValueTuple
 				tuple_map = type.tuple_map
 
 				lhs.nodes.each_with_index do |v, i|

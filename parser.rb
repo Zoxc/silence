@@ -253,13 +253,38 @@ class Parser
 		end
 	end
 	
+	def type_tuple(s)
+		step
+		skip :line
+		
+		r = []
+		if !eq(:sym, ')')
+			loop do
+				r << type_expression
+				if matches :sym, ','
+					skip :line
+				else
+					break
+				end
+			end
+		end
+		
+		match :sym, ')'
+		
+		if r.size == 1
+			AST::Grouped.new(s, r.first)
+		else
+			AST::TypeTuple.new(s, r)
+		end
+	end
+	
 	def type_factor
 		source do |s|
 			case tok
 				when :sym
 					case tok_val
 						when '('
-							tuple(s)
+							type_tuple(s)
 						else
 							expected 'type'
 					end
@@ -874,7 +899,7 @@ class Parser
 		if r.size == 1
 			AST::Grouped.new(s, r.first)
 		else
-			AST::Tuple.new(s, r)
+			AST::ValueTuple.new(s, r)
 		end
 	end
 	

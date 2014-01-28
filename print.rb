@@ -52,7 +52,7 @@ def print_ast(ast)
 			format.(ast, [[:node, :single], [:op]])
 		when AST::Index
 			format.(ast, [[:obj, :single], [:args, ast.args]])
-		when AST::Tuple, AST::Array
+		when AST::TypeTuple, AST::ValueTuple, AST::Array
 			format.(ast, [[:nodes, ast.nodes]])
 		when AST::Grouped
 			format.(ast, [[:node, :single]])

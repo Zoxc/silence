@@ -398,7 +398,7 @@
 	
 	def analyze_impl(ast, args)
 		case ast
-			when AST::Ref, AST::Field, AST::UnaryOp, AST::Tuple, AST::Call
+			when AST::Ref, AST::Field, AST::UnaryOp, AST::ValueTuple, AST::Call
 			else
 				raise TypeError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
 		end if args.lvalue
@@ -438,6 +438,13 @@
 
 			# Values only
 
+			when AST::ValueTuple
+				if args.lvalue
+					raise TypeError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
+					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next(lvalue: true, tuple_lvalue: true)) }), true)
+				else
+					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next) }), true)
+				end
 			when AST::Lambda
 				process_func_params(ast.params)
 
@@ -672,13 +679,8 @@
 						ast.gen = type
 						Result.new(type, true)
 				end
-			when AST::Tuple
-				if args.lvalue
-					raise TypeError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
-					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next(lvalue: true, tuple_lvalue: true)) }), true)
-				else
-					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false)
-				end
+			when AST::TypeTuple
+				Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false)
 			when AST::BinOp
 				assign_op = Core::AssignOps.include?(ast.op)
 				assign_simple = ast.op == '='
@@ -715,7 +717,7 @@
 						when AST::Grouped
 							arg = analyze_type(ast.lhs.node, args.next)
 							make_tuple(ast.lhs.source, [arg])
-						when AST::Tuple
+						when AST::TypeTuple
 							lhs
 						else
 							typeclass_limit(ast.source, Core::Tuple::Node, {Core::Tuple::T => lhs})
@@ -1029,13 +1031,13 @@
 		
 		parameterize(type_vars) if @obj.is_a?(AST::Function)
 		
-		puts "" unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
+		Silence.puts("") unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
 		
-		puts "#{@obj.scoped_name}#{"(#{@obj.type_params.map{|k,v|k.name}.join(",")})" unless @obj.type_params.empty?}  ::  #{type.text}"
+		Silence.puts "#{@obj.scoped_name}#{"(#{@obj.type_params.map{|k,v|k.name}.join(",")})" unless @obj.type_params.empty?}  ::  #{type.text}"
 		
-		@ctx.limits.each{|i| puts "    - #{i}"}
-		@ctx.levels.each{|i| puts "    - #{i}"}
-		@views.each_pair{|k,v| puts "    * #{k.text} <= #{v.text}"}
+		@ctx.limits.each{|i| Silence.puts "    - #{i}"}
+		@ctx.levels.each{|i| Silence.puts "    - #{i}"}
+		@views.each_pair{|k,v| Silence.puts "    * #{k.text} <= #{v.text}"}
 		
 		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
 		

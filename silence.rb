@@ -5,6 +5,13 @@ IsWindows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw/)
 class CompileError < Exception
 end
 
+class Silence
+	Debug = ARGV.first == '-d'
+	def self.puts(*args)
+		$stdout.puts(*args) if Debug
+	end
+end
+
 require_relative 'ast'
 require_relative 'core'
 require_relative 'gen'
@@ -74,4 +81,8 @@ def process(file, parent)
 	
 	ast
 end
-process(File.realpath(ARGV.first), Core::Program)
+
+argv = ARGV.dup
+argv.shift if Silence::Debug
+
+process(File.realpath(argv.first), Core::Program)

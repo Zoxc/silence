@@ -303,7 +303,7 @@ module AST
 		end
 	end
 	
-	class Tuple < Node
+	class TypeTuple < Node
 		attr_accessor :nodes
 	
 		def initialize(source, nodes)
@@ -868,6 +868,19 @@ module AST
 		end
 	end
 	
+	class ValueTuple < ExpressionNode
+		attr_accessor :nodes
+	
+		def initialize(source, nodes)
+			super(source)
+			@nodes = nodes
+		end
+		
+		def visit
+			@nodes.map! { |n| yield n }
+		end
+	end
+
 	class If < ExpressionNode
 		attr_accessor :condition, :group, :else_node, :gen
 		

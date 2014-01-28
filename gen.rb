@@ -218,7 +218,7 @@ class Codegen
 		list = (@gen[ast] ||= [])
 		return if list.find { |i| map == i }
 		list << map
-		puts "Generating #{ast.scoped_name} - #{map}"
+		Silence.puts "Generating #{ast.scoped_name} - #{map}"
 		case ast
 			when AST::TypeClass
 			when Core::IntLiterals[:num_not][ast]
