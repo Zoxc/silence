@@ -34,7 +34,7 @@ def fpath(f)
 	end
 end
 
-def parse(files, file)
+def parse(files, asts, file)
 	return if files[file]
 	files[file] = true
 
@@ -44,18 +44,23 @@ def parse(files, file)
 	parser = Parser.new(AST::Input.new(input, fpath(file)))
 	ast = parser.program
 
-	[ast] + parser.imports.map do |i|
+	asts.concat ast
+
+	parser.imports.map do |i|
 		i = File.absolute_path(i, File.dirname(file))
 		i += ".hsh" if File.extname(i) == ""
 		raise "Unable to find file '#{fpath i}'\nImported in #{fpath file}" unless File.exist?(i)
-		parse(files, File.realpath(i))
-	end.compact
+		parse(files, asts, File.realpath(i))
+	end
 end
 
 def process(file, parent)
 	files = {}
-	asts = parse(files, file).flatten
+	asts = []
 
+	parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__)))
+	parse(files, asts, file)
+	
 	ast = AST::Program.new(AST::GlobalScope.new(asts))
 
 	#puts print_ast(ast)
@@ -73,8 +78,8 @@ def process(file, parent)
 	end
 	
 	File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
-	
-	system 'g++ -std=gnu++0x -g -Wall -Wno-unused-but-set-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable output.cpp -o output'
+
+	system "g++ -std=gnu++0x -g -Wall -Wno-unused-but-set-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable #{File.expand_path('../hush.cpp', __FILE__)} output.cpp -o output"
 	
 	puts "Running..."
 	system(IsWindows ? 'output.exe' : './output')

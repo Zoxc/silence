@@ -6,7 +6,7 @@ fn parse(input, name)
 
 export fn main() -> c_int
 	IO.puts("Running!")
-	match File.read("test.hs") as r
+	match File.read("test.hsh") as r
 		when Option.Some
 			parse(r.val, "test.hs")
 		when Option.Nil

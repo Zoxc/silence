@@ -1,7 +1,11 @@
 struct IO
 	shared fn print(s String)
-		s.each |c| C.putchar(force_cast c)
+		Runtime.hush_puts(s.data, s.size)
 
 	shared fn puts(s String)
-		print(s)
-		C.putchar(10)
+		print s
+		.l = 10
+		print String.from_data(&l, 1)
+
+	shared fn gets()
+		return Runtime.hush_gets()

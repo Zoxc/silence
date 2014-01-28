@@ -2,7 +2,7 @@ struct File
 	shared fn read(path String)
 		.f = path.c_str |p| C.fopen(p, "r")
 
-		if nil_ptr(f)
+		if is_nil_ptr(f)
 			return Option.Nil()
 
 		.result String

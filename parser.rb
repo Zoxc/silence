@@ -534,7 +534,7 @@ class Parser
 	end
 	
 	def properties
-		props = {}
+		props = {attrs: []}
 		case
 			when matches(:id, :shared) 
 				props[:shared] = true
@@ -543,6 +543,26 @@ class Parser
 			when matches(:id, :export) 
 				props[:export] = true
 			else
+				if matches(:sym, '[')
+					skip :line
+					
+					attrs = []
+
+					if !eq(:sym, '}')
+						loop do
+							attrs << match(:id)
+							if matches :sym, ','
+								skip :line
+							else
+								break
+							end
+						end
+					end
+					
+					match(:sym, ']')
+
+					props[:attrs] = attrs
+				end
 				return props
 		end while true
 	end

@@ -6,12 +6,13 @@ struct C
 
 	shared import fn memcpy(dst *(), src *(), len uint)
 
-	shared import fn puts(str *char)
-	shared import fn putchar(c c_int) -> c_int
-
 	shared import fn fopen(file *char, mode *char) -> *FILE
 	shared import fn fgetc(file *FILE) -> c_int
 	shared import fn fclose(file *FILE) -> ()
 	shared import fn abort() -> ()
 
-	shared import fn sprintf(buf *char, str *char, v uint) -> c_int
+struct Runtime
+	shared import fn hush_show_uint(i uint) -> String
+	shared import fn hush_show_int(i int) -> String
+	shared import fn hush_puts(c *char, size uint)
+	shared import fn hush_gets() -> String

@@ -51,11 +51,17 @@ instance(T) Reference(*T)
 class Show(T)
 	fn show() -> String
 
+instance Show(int)
+	fn show()
+		return Runtime.hush_show_int(self)
+
 instance Show(uint)
 	fn show()
-		.buf Table(20) = undef()
-		.size = C.sprintf(&buf(0), "%lu", self)
-		return String.from_data(&buf(0), force_cast size)
+		return Runtime.hush_show_uint(self)
+
+instance Show(String)
+	fn show()
+		return self
 
 fn show(t)
 	return Show(t).show()
@@ -75,6 +81,7 @@ instance(T) Eq(*T)
 
 fn assert(b)
 	if !b()
+		IO.puts("Assertion failed!")
 		C.abort()
 
 struct Option(T)
@@ -88,8 +95,12 @@ fn ptr_cast[R, P](p *P) -> R
 fn int_ptr[P](p *P)
 	return force_cast[uint](p)
 
-fn nil_ptr(p)
+fn is_nil_ptr(p)
 	return int_ptr(p) == 0
+
+fn nil_ptr[P]() -> *P
+	.z uint = 0
+	return force_cast z
 
 fn times_impl(i, max, f)
 	if i > 0

@@ -200,7 +200,14 @@ class Codegen
 		result = type.args[Core::Func::Result]
 		result_type = "void"
 		result_type = c_type(result, map) if bare && result != Core::Unit.ctype.type
-		o = "#{bare ? 'extern "C" ' : "static "}#{result_type} #{bare ? ast.name : mangle(ast, map)}("
+		prefix = if bare
+				r = 'extern "C" '
+				r << "__stdcall " if ast.props[:attrs].include?(:stdcall)
+				r
+			else
+				"static "
+			end
+		o = "#{prefix}#{result_type} #{bare ? ast.name : mangle(ast, map)}("
 		
 		param_types = type.args[Core::Func::Args].tuple_map
 		
