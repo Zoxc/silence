@@ -24,6 +24,7 @@ end
 
 def parse(files, file)
 	return if files[file]
+	files[file] = true
 
 	puts "Parsing #{fpath file}"
 
