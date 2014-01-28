@@ -19,7 +19,12 @@ InferArgs = InferContext::InferArgs.new({}, [])
 InferContext.infer_scope(Core::Program.scope, InferArgs)
 
 def fpath(f)
-	Pathname.new(f).relative_path_from(Pathname.new(Dir.pwd)).to_s
+	f = Pathname.new(f)
+	if IsWindows && f.absolute? && f.to_s[0].downcase != Dir.pwd[0].downcase
+		f.to_s
+	else
+		f.relative_path_from(Pathname.new(Dir.pwd)).to_s
+	end
 end
 
 def parse(files, file)
