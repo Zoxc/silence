@@ -1,0 +1,163 @@
+# [PackageDev] target_format: plist, ext: tmLanguage
+---
+name: Hush
+scopeName: source.hush
+fileTypes: [hsh]
+uuid: 76d56f58-7ddf-4e60-a4d1-2b9d14a1be3c
+
+patterns:
+- begin: '"'
+  beginCaptures:
+    '0':
+      name: punctuation.definition.string.begin.hush
+  end: '"'
+  endCaptures:
+    '0':
+      name: punctuation.definition.string.end.hush
+  name: string.quoted.double.hush
+  patterns:
+  - include: '#string_escaped_char'
+- match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
+  name: constant.numeric.hush
+
+- match: (^|;)\s*(use|instance)\b
+  name: keyword.hush
+
+- match: (^|;)\s*(struct(?:\s+ref)?)\s+([A-Za-z_]+)\b
+  name: keyword.hush
+  captures:
+      '3':
+        name: support.class
+
+- match: (^|;)\s*(type_func|class|struct|alias|enum|when)[ \t]+([A-Za-z_]+)\b
+  name: keyword.hush
+  captures:
+      '3':
+        name: support.class
+
+# Action with { on next line or whitespace scope
+- begin: ^(\s*)(action)\s+([A-Za-z_]+)(?:\s*(\().*(\)))?(\s*:)?\s*$
+  beginCaptures:
+    '2':
+      name: keyword.hush
+    '3':
+      name: support.function
+    '4':
+      name: keyword.operator.hush
+    '5':
+      name: keyword.operator.hush
+    '6':
+      name: keyword.operator.hush
+  end: ^(?!\1\s)(?!\s*$)(?!\s*{)|(})
+  endCaptures:
+    '1':
+      name: keyword.operator.hush
+  patterns:
+    - begin: \s*({)
+      beginCaptures:
+        '1':
+          name: keyword.operator.hush
+      end: (?=})
+      patterns:
+        - include: '#expression'
+
+    - include: '#expression'
+      
+- match: (^|;)\s*(action)[ \t]+([A-Za-z_]+)
+  name: keyword.hush
+  captures:
+      '2':
+        name: support.function
+  
+# Function with { on next line or whitespace scope
+- begin: ^(\s*)(shared\s*)?([A-Za-z_]+)(?:(\[).*(\])\s*)?(\()(.*)(\))(?:\s*(->) (.*))?\s*$
+  beginCaptures:
+    '2':
+      name: storage.modifier.hush
+    '3':
+      name: support.function
+    '4':
+      name: keyword.operator.hush
+    '5':
+      name: keyword.operator.hush
+    '6':
+      name: keyword.operator.hush
+    '8':
+      name: keyword.operator.hush
+    '9':
+      name: keyword.operator.hush
+    '10':
+      name: storage.type.hush
+  end: ^(?!\1\s)(?!\s*$)(?!\s*{)|(})
+  endCaptures:
+    '1':
+      name: keyword.operator.hush
+  patterns:
+    - begin: \s*({)
+      beginCaptures:
+        '1':
+          name: keyword.operator.hush
+      end: (?=})
+      patterns:
+        - include: '#expression'
+
+    - include: '#expression'
+
+- begin: (?:^|;)(?:\s*)(shared\s*)?([A-Za-z_]+)
+  end: ;|\s*$
+  beginCaptures:
+    '1':
+      name: storage.modifier.hush
+    '2':
+      name: variable.hush
+  patterns:
+    - include: '#type'
+
+- match: (^|;)\s*shared\b
+  name: storage.modifier.hush
+
+- match: (^|;)\s*\\.[A-Za-z_]+
+  name: support.function.hush
+
+- match: "[/\\*^&%!()\\[\\]~\\-\\+=,\\.:<>?|]"
+  name: keyword.operator.hush
+repository: 
+  type:
+    patterns:
+      - match: "[A-Za-z_]+"
+        name: storage.type.hush
+      - match: "[\\*\\(\\)]|->"
+        name: keyword.operator.hush
+  expression:
+    patterns:
+      - begin: "^[ \\t]*\\.[A-Za-z_]+"
+        end: (?=\s*($|=|;))
+        name: variable.hush
+      - match: "(\\.)([A-Za-z_]+)"
+        name: support.function
+        captures:
+          '1':
+            name: keyword.operator.hush
+      - match: \b(if|else|match|return|as)\b
+        name: keyword.hush
+      - match: "[/\\*^&%!()\\[\\]~\\-\\+=,\\.:<>?|]"
+        name: keyword.operator.hush
+      - begin: '"'
+        beginCaptures:
+          '0':
+            name: punctuation.definition.string.begin.hush
+        end: '"'
+        endCaptures:
+          '0':
+            name: punctuation.definition.string.end.hush
+        name: string.quoted.double.hush
+        patterns:
+        - include: '#string_escaped_char'
+  string_escaped_char:
+    patterns:
+    - match: \\(\\|[abefnprtv'"?]|[0-3]\d{,2}|[4-7]\d?|x[a-fA-F0-9]{,2}|u[a-fA-F0-9]{,4}|U[a-fA-F0-9]{,8})
+      name: constant.character.escape.hush
+    - match: \\.
+      name: invalid.illegal.unknown-escape.hush
+
+...
