@@ -1096,6 +1096,7 @@
 						Core.create_constructor_action(value) unless value.actions[:create_args]
 						Core.create_constructor(value)
 					when AST::Struct
+						return if value.level == :opaque
 						unless value.enum?
 							Core.create_constructor_action(value) unless value.actions[:create_args]
 							Core.create_constructor(value) if value.actions[:create_args]
@@ -1104,7 +1105,7 @@
 				end
 
 				Core.create_empty_action(value, :destroy) if value.is_a?(AST::Struct) && !value.actions[:destroy]
-				Core.create_empty_action(value, :copy) if value.is_a?(AST::Struct) && !value.actions[:copy]
+				Core.create_empty_action(value, :copy) if value.is_a?(AST::Struct) && value.real_struct.level == :copyable && !value.actions[:copy]
 
 			when AST::EnumValue
 				infer(value.owner)

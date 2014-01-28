@@ -5,7 +5,7 @@ import puts(str *char)
 import putchar(c c_int) -> c_int
 
 struct C
-	struct FILE
+	struct bare FILE
 
 	shared import fopen(file *char, mode *char) -> *FILE
 	shared import fgetc(file *FILE) -> c_int

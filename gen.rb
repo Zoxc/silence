@@ -78,6 +78,7 @@ class Codegen
 	
 	def ref_action(type, map, action_type, opt = true)
 		complex, map = fixed_type(type, map)
+		raise "Copying non-copyable!" if complex.level != :copyable && action_type == :copy
 		action = complex.actions[action_type]
 		if action
 			gen(action, map)

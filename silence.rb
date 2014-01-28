@@ -37,7 +37,7 @@ def parse(files, file)
 		i += ".hsh" if File.extname(i) == ""
 		raise "Unable to find file '#{fpath i}'\nImported in #{fpath file}" unless File.exist?(i)
 		parse(files, File.realpath(i))
-	end
+	end.compact
 end
 
 def process(file, parent)

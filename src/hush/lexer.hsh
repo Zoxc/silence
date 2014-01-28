@@ -1,4 +1,5 @@
 use "../core"
+use "source"
 
 enum Token
 	None

@@ -499,11 +499,15 @@ module AST
 	class Struct < Complex
 		attr_accessor :level, :actions, :cases
 		
-		def initialize(*args)
-			super
-			@level = :copyable
+		def initialize(source, name, scope, kind_params, ref = :copyable)
+			super(source, name, scope, kind_params)
+			@level = ref
 			@actions = {}
 			@cases = []
+		end
+
+		def real_struct
+			self
 		end
 
 		def enum?
@@ -517,6 +521,10 @@ module AST
 		def initialize(*args)
 			super
 			@level = :opaque
+		end
+
+		def real_struct
+			@parent
 		end
 
 		def declare_pass(scope)
@@ -542,11 +550,12 @@ module AST
 	end
 	
 	class Enum < Complex
-		attr_accessor :values, :actions
+		attr_accessor :values, :actions, :level
 		
 		def initialize(source, name, values)
 			super(source, name, AST::GlobalScope.new(values), AST::KindParams.new(source, [], []))
 			@values = values
+			@level = :copyable
 			@actions = {}
 		end
 	end

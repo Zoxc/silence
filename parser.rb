@@ -339,14 +339,14 @@ class Parser
 	end
 	
 	def class
-		source do |s|
-			baseline = @l.indent
-			step
-			name = match :id
-			tp = kind_params
-			scope = global_scope(baseline)
-			AST::TypeClass.new(s, name, scope, tp)
-		end
+		s = @l.source
+		baseline = @l.indent
+		step
+		name = match :id
+		tp = kind_params
+		s.extend(@l.last_ended)
+		scope = global_scope(baseline)
+		AST::TypeClass.new(s, name, scope, tp)
 	end
 	
 	def instance
@@ -392,11 +392,23 @@ class Parser
 		s = @l.source
 		baseline = @l.indent
 		step
+		ref = case  
+			when matches(:id, :ref)
+				:sizeable
+			when matches(:id, :bare)
+				:opaque
+			else
+				:copyable
+		end
 		name = match :id
 		tp = kind_params
 		s.extend(@l.last_ended)
-		scope = global_scope(baseline)
-		AST::Struct.new(s, name, scope, tp)
+		scope = if ref == :opaque
+				AST::GlobalScope.new([])
+			else
+				global_scope(baseline)
+			end
+		AST::Struct.new(s, name, scope, tp, ref)
 	end
 	
 	def struct_when

@@ -23,7 +23,7 @@ patterns:
 - match: (^|;)\s*(use|instance)\b
   name: keyword.hush
 
-- match: (^|;)\s*(struct(?:\s+ref)?)\s+([A-Za-z_]+)\b
+- match: (^|;)\s*(struct(?:\s+(?:ref|bare))?)\s+([A-Za-z_]+)\b
   name: keyword.hush
   captures:
       '3':

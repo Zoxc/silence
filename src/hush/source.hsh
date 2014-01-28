@@ -1,0 +1,5 @@
+use "../core"
+
+struct ref Src
+	start *char
+	stop *char
