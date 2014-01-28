@@ -25,7 +25,7 @@ class Lexer
 		end
 	end
 	
-	attr_reader :pos, :tok, :tok_str, :tok_val, :last_ended, :whitespace
+	attr_reader :pos, :tok, :tok_str, :tok_val, :last_ended
 	
 	def initialize(str)
 		@src = str
@@ -158,7 +158,6 @@ class Lexer
 		@pos = @scanner.pos
 		case
 			when v = s.scan(/[ \t]+/)
-				@whitespace = true
 				find_token
 			when v = s.scan(/\r\n|\n|\r/)
 				[v, :line, true]
@@ -212,7 +211,6 @@ class Lexer
 	
 	def prestep
 		@last_ended = @pos + @tok_str.size
-		@whitespace = false
 	end
 
 	def step_deindent

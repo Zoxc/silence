@@ -1,15 +1,17 @@
-import malloc(size uint) -> *()
-import free(mem *())
-import memcpy(dst *(), src *(), len uint)
-import puts(str *char)
-import putchar(c c_int) -> c_int
-
 struct C
 	struct bare FILE
 
-	shared import fopen(file *char, mode *char) -> *FILE
-	shared import fgetc(file *FILE) -> c_int
-	shared import fclose(file *FILE) -> ()
-	shared import abort() -> ()
+	shared import fn malloc(size uint) -> *()
+	shared import fn free(mem *())
 
-	shared import sprintf(buf *char, str *char, v uint) -> c_int
+	shared import fn memcpy(dst *(), src *(), len uint)
+
+	shared import fn puts(str *char)
+	shared import fn putchar(c c_int) -> c_int
+
+	shared import fn fopen(file *char, mode *char) -> *FILE
+	shared import fn fgetc(file *FILE) -> c_int
+	shared import fn fclose(file *FILE) -> ()
+	shared import fn abort() -> ()
+
+	shared import fn sprintf(buf *char, str *char, v uint) -> c_int

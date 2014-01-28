@@ -1,10 +1,10 @@
 use "lexer"
 
-parse(input, name)
+fn parse(input, name)
 	IO.puts("Parsing file: " ~ name)
 	.lexer = Lexer(input)
 
-export main() -> c_int
+export fn main() -> c_int
 	IO.puts("Running!")
 	match File.read("test.hs") as r
 		when Option.Some

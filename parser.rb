@@ -551,11 +551,11 @@ class Parser
 		source do |s|
 			props = properties
 			baseline = @l.indent
-			name = match :id
-			
-			if (eq(:sym, '[') || eq(:sym, '(')) && !@l.whitespace
-				function s, baseline, name, props, nil
+
+			if matches(:id, :fn)
+				function s, baseline, match(:id), props, nil
 			else
+				name = match :id
 				props[:field] = true
 				
 				if matches(:sym, '=')

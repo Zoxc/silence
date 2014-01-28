@@ -4,41 +4,41 @@ struct String
 	
 	action create :
 		size <- 0,
-		data <- force_cast malloc(0)
+		data <- Mem.alloc(0)
 	
 	action copy
-		.new = malloc(size)
-		memcpy(new, force_cast data, size)
-		data = force_cast new
+		.new = Mem.alloc(size)
+		Mem.copy(data, new, size)
+		data = new
 
 	action destroy
-		free(force_cast data)
+		Mem.free(data)
 
-	shared from_data(data *char, size)
-		.new = malloc(size)
-		memcpy(new, force_cast data, size)
-		return String(force_cast new, size)
+	shared fn from_data(data *char, size)
+		.new = Mem.alloc(size)
+		Mem.copy(data, new, size)
+		return String(new, size)
 
-	c_term()
+	fn c_term()
 		.z char = 0
 		return self ~ String.from_data(&z, 1)
 
-	c_str(f)
+	fn c_str(f)
 		.str = c_term()
 		return f(str.data)
 
-	each(f)
+	fn each(f)
 		times(size, |i| f(*ptr_idx(data, i)))
 
 instance StringLiteral(String)
-	create(data *char, size)
+	fn create(data *char, size)
 		return String.from_data(data, size)
 
 instance Joinable(String)
-	join(lhs String, rhs String)
+	fn join(lhs String, rhs String)
 		.new_size = lhs.size + rhs.size
-		.new = malloc(new_size)
-		memcpy(new, force_cast lhs.data, lhs.size)
-		.rhs_pos uint = force_cast new + lhs.size
-		memcpy(force_cast rhs_pos, force_cast rhs.data, rhs.size)
-		return String(force_cast new, new_size)
+		.new = Mem.alloc(new_size)
+		Mem.copy(lhs.data, new, lhs.size)
+		.rhs_pos = ptr_idx(new, lhs.size)
+		Mem.copy(rhs.data, rhs_pos, rhs.size)
+		return String(new, new_size)

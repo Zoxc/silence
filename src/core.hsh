@@ -4,14 +4,24 @@ use "core/array"
 use "core/io"
 use "core/file"
 
+struct Mem
+	shared fn alloc(size uint)
+		return ptr_cast C.malloc(size)
+
+	shared fn copy[T](src *T, dst *T, size)
+		C.memcpy(ptr_cast dst, ptr_cast src, size)
+
+	shared fn free(ptr)
+		C.free(ptr_cast ptr)
+
 instance Binary(bool)
-	not()
+	fn not()
 		return if self == true
 			false
 		else
 			true
 
-	shared and(lhs bool, rhs)
+	shared fn and(lhs bool, rhs)
 		return if lhs == true
 			if rhs == true
 				true
@@ -20,7 +30,7 @@ instance Binary(bool)
 		else
 			false
 
-	shared or(lhs bool, rhs)
+	shared fn or(lhs bool, rhs)
 		return if lhs == true
 			true
 		else
@@ -29,41 +39,41 @@ instance Binary(bool)
 			else
 				false
 
-	shared xor(lhs bool, rhs)
+	shared fn xor(lhs bool, rhs)
 		return !(lhs == rhs)
 
 instance(T) Reference(*T)
 	alias Type = T
 
-	get() -> *T
+	fn get() -> *T
 		return self
 
 class Show(T)
-	show() -> String
+	fn show() -> String
 
 instance Show(uint)
-	show()
+	fn show()
 		.buf Table(20) = undef()
 		.size = C.sprintf(&buf(0), "%lu", self)
 		return String.from_data(&buf(0), force_cast size)
 
-show(t)
+fn show(t)
 	return Show(t).show()
 
 instance StringLiteral(*char)
-	create(data *char, size uint)
+	fn create(data *char, size uint)
 		return data
 
 instance StringLiteral(char)
-	create(data *char, size uint)
+	fn create(data *char, size uint)
 		assert -> size == 1
 		return *data
 
 instance(T) Eq(*T)
-	equal(lhs *T, rhs *T)
+	fn equal(lhs *T, rhs *T)
 		return force_cast[uint] lhs == force_cast rhs
 
-assert(b)
+fn assert(b)
 	if !b()
 		C.abort()
 
@@ -72,30 +82,33 @@ struct Option(T)
 		val T
 	when Nil
 
-int_ptr[P](p *P)
+fn ptr_cast[R, P](p *P) -> R
+	return force_cast(p)
+
+fn int_ptr[P](p *P)
 	return force_cast[uint](p)
 
-nil_ptr(p)
+fn nil_ptr(p)
 	return int_ptr(p) == 0
 
-times_impl(i, max, f)
+fn times_impl(i, max, f)
 	if i > 0
 		f(max - i)
 		times_impl(i - 1, max, f)
 
-times(i, f)
+fn times(i, f)
 	times_impl(i, i, f)
 
-for_range(a, b, f)
+fn for_range(a, b, f)
 	.i uint = force_cast(b - a) + 1
 	times(i, |i| f(a + force_cast i))
 
-ptr_idx[T](ptr *T, idx uint) -> *T
+fn ptr_idx[T](ptr *T, idx uint) -> *T
 	return force_cast(force_cast ptr + idx * size_of[T]())
 
 instance(T Indexable) Callable(T)
 	alias Result = Indexable(T).Result
 	alias Args = Indexable(T).Index
 
-	apply(args Args)
+	fn apply(args Args)
 		return *Indexable(self).ref(args)

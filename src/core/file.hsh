@@ -1,5 +1,5 @@
 struct File
-	shared read(path String)
+	shared fn read(path String)
 		.f = path.c_str |p| C.fopen(p, "r")
 
 		if nil_ptr(f)

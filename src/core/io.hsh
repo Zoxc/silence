@@ -1,7 +1,7 @@
 struct IO
-	shared print(s String)
-		s.each |c| putchar(force_cast c)
+	shared fn print(s String)
+		s.each |c| C.putchar(force_cast c)
 
-	shared puts(s String)
+	shared fn puts(s String)
 		print(s)
-		putchar(10)
+		C.putchar(10)

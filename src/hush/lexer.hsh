@@ -25,30 +25,30 @@ struct Lexer
 			start <- undef(),
 			stop <- undef()
 
-		end()
+		fn end()
 			stop = pos
 
-		str()
+		fn str()
 			return String.from_data(start, int_ptr stop - int_ptr start)
 
 	struct Input
 		lexer *Lexer
 
-		pos()
+		fn pos()
 			return lexer.tok.pos
 
-		step()
+		fn step()
 			assert -> !at_end()
 			lexer.tok.pos = ptr_idx(pos(), 1)
 			return *pos()
 
-		at_end()
+		fn at_end()
 			return pos() == lexer.tok.input_end
 
-		c()
+		fn c()
 			return *pos()
 
-		eq(c char)
+		fn eq(c char)
 			return *pos() == c
 
 	tok State
@@ -65,7 +65,7 @@ struct Lexer
 		setup_table()
 		step()
 
-	setup_table()
+	fn setup_table()
 		.set_char = |i char, f|
 			jump_table(force_cast i) = f
 
@@ -76,7 +76,7 @@ struct Lexer
 
 		set_char(0, eof)
 
-	step()
+	fn step()
 		tok.type = Token.None
 		tok.start = i.pos()
 
@@ -85,7 +85,7 @@ struct Lexer
 		assert -> int_ptr tok.stop >= int_ptr tok.start
 		assert -> tok.type != Token.None
 
-	eof()
+	fn eof()
 		if i.at_end()
 			tok.type = Token.EndOfFile
 			tok.end()
@@ -94,7 +94,7 @@ struct Lexer
 			i.step()
 			step()
 
-	unknown()
+	fn unknown()
 		i.step()
 
 		.loop = ->
