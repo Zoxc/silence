@@ -80,7 +80,7 @@ def process(file, parent)
 	File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
 
 	system "g++ -std=gnu++0x -g -Wall -Wno-unused-but-set-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable #{File.expand_path('../hush.cpp', __FILE__)} output.cpp -o output"
-	
+	raise "Failed to compile C++ output" if $?.exitstatus != 0
 	puts "Running..."
 	system(IsWindows ? 'output.exe' : './output')
 	
