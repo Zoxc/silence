@@ -573,6 +573,8 @@ class FuncCodegen
 		case ast
 			when AST::ExpressionGroup
 				convert(ast.scope, var)
+			when AST::TypeAssert
+				convert(ast.value, var)
 			when AST::Lambda
 				ref_n = "v_#{@var_name += 1}"
 

@@ -898,6 +898,21 @@ module AST
 		end
 	end
 
+	class TypeAssert < ExpressionNode
+		attr_accessor :type, :value
+		
+		def initialize(source, value, type)
+			super(source)
+			@value = value
+			@type = type
+		end
+
+		def visit
+			@value = yield @value
+			@type = yield @type
+		end
+	end
+
 	class Literal < ExpressionNode
 		attr_accessor :type, :value, :gen
 		

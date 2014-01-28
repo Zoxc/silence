@@ -792,7 +792,7 @@ class Parser
 		tok == :sym && Operators[tok_val]
 	end
 	
-	def pred_operator(left = unary, min = 0)
+	def pred_operator(left = type_assert, min = 0)
 		loop do
 			break unless is_pred_op
 			op = tok_val
@@ -804,7 +804,7 @@ class Parser
 			step
 			skip :line
 			
-			right = unary
+			right = type_assert
 			
 			loop do
 				break unless is_pred_op
@@ -819,6 +819,19 @@ class Parser
 		end
 		
 		left
+	end
+	
+	def type_assert
+		r = unary
+		if eq(:sym, '::')
+			source do |s|
+				step
+				skip :line
+				AST::TypeAssert.new(s, r, type_expression)
+			end
+		else
+			r
+		end
 	end
 	
 	def unary

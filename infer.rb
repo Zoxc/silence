@@ -438,6 +438,11 @@
 
 			# Values only
 
+			when AST::TypeAssert
+				value = analyze_value(ast.value, args.next)
+				type = analyze_type(ast.type, args.next)
+				unify(value, type)
+				Result.new(value, true)
 			when AST::ValueTuple
 				if args.lvalue
 					raise TypeError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
