@@ -30,7 +30,10 @@ class FuncCodegen
 	end
 
 	def fowner
-		@func.fowner
+		case @func
+			when AST::Function, AST::Lambda
+				@func.fowner
+		end
 	end
 
 	def new_label
@@ -246,7 +249,7 @@ class FuncCodegen
 	end
 
 	def func_data(obj)
-		if fowner.declared.owner == obj.declared.owner && !obj.props[:shared]
+		if fowner && fowner.declared.owner == obj.declared.owner && !obj.props[:shared]
 			self_ref
 		else
 			"nullptr"
@@ -322,7 +325,7 @@ class FuncCodegen
 			when AST::Ref
 				owner = ast.obj.declared.owner
 
-				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.inside?(@func.fowner.scope)
+				if ast.obj.is_a?(AST::Variable) && fowner && ast.obj.declared.inside?(fowner.scope)
 				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 				elsif ast.gen[:type] == :self
 				else
@@ -391,8 +394,8 @@ class FuncCodegen
 	end
 
 	def self_ref
-		return unless @func.fowner.self
-		if @func != @func.fowner
+		return unless (fowner && fowner.self)
+		if @func != fowner
 			"ref.r_self"
 		else
 			"(&v_self)"
@@ -401,7 +404,7 @@ class FuncCodegen
 
 	def ref_field(obj)
 		owner = obj.declared.owner
-		if owner == fowner.declared.owner && owner.is_a?(AST::StructCase)
+		if fowner && owner == fowner.declared.owner && owner.is_a?(AST::StructCase)
 			idx = owner.parent.cases.index(owner)
 			"&#{self_ref}->e_#{idx}.f_#{obj.name}"
 		else
@@ -481,7 +484,7 @@ class FuncCodegen
 			when AST::Ref
 				owner = ast.obj.declared.owner
 
-				if ast.obj.is_a?(AST::Variable) && ast.obj.declared.inside?(@func.fowner.scope)
+				if ast.obj.is_a?(AST::Variable) && fowner && ast.obj.declared.inside?(fowner.scope)
 					if @func.scope.fscope != ast.obj.declared.fscope
 						assign_var(var, make_ptr(ast.gen), "ref.r_#{ast.obj.name}", true)
 					else
@@ -491,8 +494,8 @@ class FuncCodegen
 					# TODO: Turn this into a AST::Field with self as obj
 					assign_var(var, make_ptr(ast.gen[:result]), ref_field(ast.obj), true)
 				elsif ast.gen[:type] == :self
-					type = @func.fowner.ctype.type
-					assign_var(var, make_ptr(type), gen_func(self_ref, @gen.mangle(@func.fowner, @map), type), true)
+					type = fowner.ctype.type
+					assign_var(var, make_ptr(type), gen_func(self_ref, @gen.mangle(fowner, @map), type), true)
 				else
 					# TODO: Also merge the single AST::Field case and this
 					assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
