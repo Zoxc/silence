@@ -1,11 +1,10 @@
-use "lexer"
+use "compiler"
 
 fn parse(input, name)
 	IO.puts("Parsing file: " ~ name)
-	.lexer = Lexer(input)
+	.compiler = Compiler(input)
 
 export fn main() -> c_int
-	IO.puts("Running!")
 	match File.read("test.hsh") as r
 		when Option.Some
 			parse(r.val, "test.hs")

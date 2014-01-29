@@ -35,13 +35,13 @@ class Codegen
 			proc { |s| s },
 			proc { |t|
 				r = map.vars[t]
-				raise "Unable to find type for #{t}\n#{t.stack}\n#{t.source.format}" unless r
+				raise "Unable to find type for #{t}\n#{t.stack} in #{map}\n#{t.source.format}" unless r
 				r.prune
 			},
 			proc { |t|
 				if t.param
 					r = map.params[t.param]
-					raise "Unable to find instance of #{t.ref.scoped_name} #{map}" unless r
+					raise "Unable to find instance of #{t.ref.scoped_name} in #{map}" unless r
 					r.prune
 				end})
 	end
@@ -211,8 +211,12 @@ class Codegen
 		
 		param_types = type.args[Core::Func::Args].tuple_map
 		
-		args = ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} v_#{p.name}" }
-		
+		args = if ast.is_a?(AST::Function) && ast.var_arg
+				param_types.each_with_index.map { |p, i| "#{c_type(p, map)} va_#{i}" }
+			else
+				ast.params.each_with_index.map { |p, i| "#{c_type(param_types[i], map)} v_#{p.name}" }
+			end
+			
 		unless bare
 			args.unshift("#{c_type(result, map)} *result") if !ast.is_a?(AST::Function) || !ast.action_type
 			args.unshift("void *data") 

@@ -4,6 +4,28 @@ use "core/array"
 use "core/io"
 use "core/file"
 
+class Allocator(T)
+	fn alloc[P](size uint) -> *P
+	fn free[P](ptr *P)
+
+class RefConstructable(T)
+	type_func Header
+	shared fn construct(obj *Header, allocator) -> T
+
+instance(T) RefConstructable(*T)
+	alias Header = ()
+	shared fn construct(obj *(), allocator) -> *T
+		return ptr_cast obj
+
+fn allocate[T, Ref](args, allocator) -> Ref
+	.size = size_of[RefConstructable(Ref).Header]() + size_of[Constructor(T).Constructed]()
+	.obj = Allocator(allocator).alloc(size)
+	.result = ptr_cast ptr_idx(obj, 1)
+	Constructor[T].construct(result, args)
+	return RefConstructable[Ref].construct(obj, allocator)
+
+fn destruct(obj)
+	
 struct Mem
 	shared fn alloc(size uint)
 		return ptr_cast C.malloc(size)
@@ -14,6 +36,20 @@ struct Mem
 	shared fn free(ptr)
 		C.free(ptr_cast ptr)
 
+instance Allocator(Mem)
+	fn alloc[P](size uint) -> *P
+		return self.alloc(size)
+
+	fn free[P](ptr)
+		self.free(ptr)
+
+fn new[T Constructor] *args
+	return allocate[T](args, Mem())
+
+fn delete(obj)
+	destruct(obj)
+	Mem.free(obj)
+	
 instance Binary(bool)
 	fn not()
 		return if self == true

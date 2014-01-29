@@ -7,7 +7,7 @@ enum Token
 	Id
 	EndOfFile
 
-struct Lexer
+struct ref Lexer
 	struct State
 		pos *char
 		input_end *char

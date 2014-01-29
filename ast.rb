@@ -578,7 +578,7 @@ module AST
 	end
 	
 	class Function < HigherKinded
-		attr_accessor :params, :result, :scope, :type, :ctype, :props, :type_param_count, :action_type, :self, :init_list, :gen_init_list
+		attr_accessor :params, :result, :var_arg, :scope, :type, :ctype, :props, :type_param_count, :action_type, :self, :init_list, :gen_init_list
 		attr_writer :name
 		
 		class Param < Node
@@ -869,7 +869,7 @@ module AST
 	end
 	
 	class ValueTuple < ExpressionNode
-		attr_accessor :nodes
+		attr_accessor :nodes, :gen
 	
 		def initialize(source, nodes)
 			super(source)

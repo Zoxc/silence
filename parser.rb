@@ -484,14 +484,21 @@ class Parser
 		tp = kind_params('[', ']')
 		
 		func = AST::Function.new(AST::Source.new(s.input, s.range), name, tp)
-		
-		if action_type && !eq(:sym, '(')
-			params = []
+
+		if matches(:sym, '*')
+			source do |s|
+				func.params = [AST::Function::Param.new(s, func, match(:id), opt_type_specifier)]
+			end
+			func.var_arg = true
 		else
-			action_type = "#{action_type}_args".to_sym if action_type
-			match(:sym, '(')
-			params = function_params(func)
-			match :sym, ')'
+			if action_type && !eq(:sym, '(')
+				func.params = []
+			else
+				action_type = "#{action_type}_args".to_sym if action_type
+				match(:sym, '(')
+				func.params = function_params(func)
+				match :sym, ')'
+			end
 		end
 
 		if action_type
@@ -526,7 +533,6 @@ class Parser
 		group = group(baseline, AST::FuncScope)
 		
 		func.action_type = action_type
-		func.params = params
 		func.result = result
 		func.scope = group
 		func.props = props

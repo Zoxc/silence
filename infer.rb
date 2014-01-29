@@ -407,6 +407,12 @@
 			when ASTWrap
 				Result.new(ast.type, false)
 
+			# Types only
+
+			when AST::TypeTuple
+				Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false)
+
+
 			when AST::InitEntry
 				field = @obj.declared.require(ast.source, ast.field)
 				raise "Expected field to construct in #{func.declared.owner}\n#{ast.source.format}" unless field.is_a?(AST::Variable) && field.declared == @obj.declared && !field.props[:shared]
@@ -448,7 +454,9 @@
 					raise TypeError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
 					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next(lvalue: true, tuple_lvalue: true)) }), true)
 				else
-					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next) }), true)
+					type = make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next) })
+					ast.gen = type
+					Result.new(type, true)
 				end
 			when AST::Lambda
 				process_func_params(ast.params)
@@ -684,8 +692,6 @@
 						ast.gen = type
 						Result.new(type, true)
 				end
-			when AST::TypeTuple
-				Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_type(n, args.next) }), false)
 			when AST::BinOp
 				assign_op = Core::AssignOps.include?(ast.op)
 				assign_simple = ast.op == '='
@@ -906,7 +912,11 @@
 
 	def get_func_type
 		func = @obj
-		func_args = make_tuple(func.source, func.params.map { |p| @vars[p.var] })
+		func_args = if func.var_arg
+			 	@vars[func.params.first.var]
+			else
+				make_tuple(func.source, func.params.map { |p| @vars[p.var] })
+			end
 		func_result = Types::Ref.new(func.source, Core::Func::Node, {Core::Func::Args => func_args, Core::Func::Result => (@result[func] || unit_type(func.source))})
 	end
 
@@ -947,6 +957,8 @@
 		
 		process_func_params(func.params)
 
+		typeclass_limit(func.params.first.source, Core::Tuple::Node, {Core::Tuple::T => @vars[func.params.first.var]}) if func.var_arg
+		
 		if [:create, :create_args].include? func.action_type
 			scope = func.declared
 			inits = Hash[func.init_list.map { |i| [scope.names[i.field], true] }]
@@ -1013,6 +1025,8 @@
 		unresolved_vars = type_vars
 		
 		case @obj
+			# Type variables in functions will be converted to type parameters, we can ignore them
+			# Type functions by definition has an unknown type, ignore those too
 			when AST::Function, AST::TypeFunction
 				type_vars = type_vars.select { |var| @ctx.occurs_in?(var, type) }
 				unresolved_vars -= type_vars
@@ -1020,19 +1034,14 @@
 				type_vars = []
 		end
 		
-		# TODO: Find a proper way to find type variables which doesn't have definition. Done for TypeFunctionLimits, same needed for FieldLimits?
-		#         Probably not if we can resolve all FieldLimit before this point (added errors for any remaining field limits)
-		#@limits.each do |c|
-		#	@type_vars.delete(c.var.prune) if c.is_a? FieldLimit
-		#end
-		
-		# Remove dependent type variables
+		# Remove type variables which appear in type function constraints in type class limits
 		@dependent_vars, type_vars = @ctx.find_dependent_vars(unresolved_vars, type_vars)
 		unresolved_vars -= @dependent_vars
 		
+		# BROKEN
 		# Find unresolved type variables used in type class constraints
 		# TODO: This allows variable with just p1 types, find a better way to filter type variables
-		unresolved_vars = @ctx.vars_in_typeclass_args(unresolved_vars)
+		#unresolved_vars = @ctx.vars_in_typeclass_args(unresolved_vars)
 		
 		parameterize(type_vars) if @obj.is_a?(AST::Function)
 		

@@ -101,6 +101,44 @@ class FuncCodegen
 		content
 	end
 
+	def handle_action
+		owner = @func.declared.owner
+
+		code = []
+
+		owner.scope.names.values.each do |value|
+			next if !value.is_a?(AST::Variable) || value.props[:shared]
+			field_map = map.copy
+			@gen.map_vars(value, field_map)
+
+			ref = @gen.ref_action(value.ctype.type, field_map, @func.action_type)
+
+			code << ["    #{"#{ref}(#{ref_field(value)});" if ref} // #{@func.action_type} #{value.name}\n"]
+		end
+
+		if owner.enum?
+
+			out = "    switch(#{self_ref}->type) {\n"
+			owner.cases.each_with_index do |w, i|
+				action = w.actions[@func.action_type]
+				if action
+					@gen.gen(action, @map)
+					ref = @gen.mangle(action, @map)
+				end
+
+				out << "        case #{i}:\n"
+				out << "                   #{"#{ref}(#{self_ref});" if ref} // #{@func.action_type} case #{w.name}\n"
+				out << "                   break;\n"
+			end
+			out << "    }\n"
+
+			code << out
+		end
+		code = code.reverse if @func.action_type == :destroy
+		code.unshift "\n    // #{@func.action_type} fields\n"
+		@out << code.join
+	end
+
 	def process
 		ftype = case @func
 			when AST::Function
@@ -108,49 +146,23 @@ class FuncCodegen
 			when AST::Lambda
 				@func.gen
 		end
-		params = ftype.args[Core::Func::Args].tuple_map.zip(@func.params)
-		params = params.map do |type, p|
-			var = RealVar.new("v_#{p.name}", type)
+		ftype = @gen.inst_type(ftype, @map)
+		params_type = ftype.args[Core::Func::Args]
+		params_types = params_type.tuple_map
+
+		if @func.is_a?(AST::Function) && @func.var_arg
+			var = RealVar.new("v_#{@func.params.first.name}", params_type)
 			@current_vars.push(var)
-			var
-		end
-
-		handle_action = proc do
-			owner = @func.declared.owner
-
-			code = []
-
-			owner.scope.names.values.each do |value|
-				next if !value.is_a?(AST::Variable) || value.props[:shared]
-				field_map = map.copy
-				@gen.map_vars(value, field_map)
-
-				ref = @gen.ref_action(value.ctype.type, field_map, @func.action_type)
-
-				code << ["    #{"#{ref}(#{ref_field(value)});" if ref} // #{@func.action_type} #{value.name}\n"]
+			o "#{@gen.c_type(params_type, @map)} #{var.ref};"
+			params_types.size.times { |i| o "#{var.ref}.#{idx i} = va_#{i};" }
+			params = [var]
+		else
+			params = params_types.zip(@func.params)
+			params = params.map do |type, p|
+				var = RealVar.new("v_#{p.name}", type)
+				@current_vars.push(var)
+				var
 			end
-
-			if owner.enum?
-
-				out = "    switch(#{self_ref}->type) {\n"
-				owner.cases.each_with_index do |w, i|
-					action = w.actions[@func.action_type]
-					if action
-						@gen.gen(action, @map)
-						ref = @gen.mangle(action, @map)
-					end
-
-					out << "        case #{i}:\n"
-					out << "                   #{"#{ref}(#{self_ref});" if ref} // #{@func.action_type} case #{w.name}\n"
-					out << "                   break;\n"
-				end
-				out << "    }\n"
-
-				code << out
-			end
-			code = code.reverse if @func.action_type == :destroy
-			code.unshift "\n    // #{@func.action_type} fields\n"
-			@out << code.join
 		end
 
 		if @func.is_a?(AST::Function)
@@ -165,12 +177,12 @@ class FuncCodegen
 				del_var var, false
 			end
 
-			handle_action.() if @func.action_type == :copy
+			handle_action if @func.action_type == :copy
 		end
 
 		convert(@func.scope, nil)
 
-		handle_action.() if @func.is_a?(AST::Function) && @func.action_type == :destroy 
+		handle_action if @func.is_a?(AST::Function) && @func.action_type == :destroy 
 
 		params.reverse.each do |var|
 			pop_var(var)
@@ -676,6 +688,18 @@ class FuncCodegen
 
 				gen_label resume
 				destroy_var(expr.ref, type)
+
+			when AST::ValueTuple
+				args = new_var
+				ast.nodes.each_with_index do |a, i|
+					arg = new_var
+					convert(a, arg)
+					o "(#{args.ref}).#{idx i} = #{arg.ref};"
+					del_var arg, false
+				end
+				assign_var(args, ast.gen, nil)
+				assign_var(var, ast.gen, "#{args.ref}", nil)
+				del_var args, false
 			when AST::ActionCall
 				ptr = new_var
 				convert(ast.obj, ptr)

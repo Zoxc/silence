@@ -6,7 +6,11 @@ class CompileError < Exception
 end
 
 class Silence
-	Debug = ARGV.first == '-d'
+	Args = ARGV.dup
+	Debug = Args.first == '-d'
+	Args.shift if Debug
+	Bare = Args.first == '-b'
+	Args.shift if Bare
 	def self.puts(*args)
 		$stdout.puts(*args) if Debug
 	end
@@ -49,7 +53,7 @@ def parse(files, asts, file)
 	parser.imports.map do |i|
 		i = File.absolute_path(i, File.dirname(file))
 		i += ".hsh" if File.extname(i) == ""
-		raise "Unable to find file '#{fpath i}'\nImported in #{fpath file}" unless File.exist?(i)
+		raise CompileError, "Unable to find file '#{fpath i}'\nImported in #{fpath file}" unless File.exist?(i)
 		parse(files, asts, File.realpath(i))
 	end
 end
@@ -58,21 +62,22 @@ def process(file, parent)
 	files = {}
 	asts = []
 
-	parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__))) unless Silence::Debug
-	parse(files, asts, file)
-	
-	ast = AST::Program.new(AST::GlobalScope.new(asts))
-
-	#puts print_ast(ast)
 	begin
+		parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__))) unless Silence::Bare
+		parse(files, asts, file)
+		
+		ast = AST::Program.new(AST::GlobalScope.new(asts))
+
+		#puts print_ast(ast)
 		ast.run_pass :declare_pass, false, (parent.scope if parent)
 		ast.run_pass :sema, true
 		ast.run_pass :ref_pass
 
 		InferContext.infer_scope(ast.scope, InferArgs)
 		InferContext.infer_scope(Core::Generated, InferArgs)
+
 	rescue CompileError => error
-		$stderr.puts "Fatal errors:", error.message
+		$stderr.puts "Failed to compile file:", error.message
 		$stderr.puts error.backtrace.join("\n")
 		exit
 	end
@@ -87,7 +92,4 @@ def process(file, parent)
 	ast
 end
 
-argv = ARGV.dup
-argv.shift if Silence::Debug
-
-process(File.realpath(argv.first), Core::Program)
+process(File.realpath(Silence::Args.first), Core::Program)
