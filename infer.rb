@@ -570,7 +570,7 @@
 				
 				Result.new(unit_type(ast.source), true)
 			when AST::Return
-				result = analyze_value(ast.value, args.next)
+				result = ast.value ? analyze_value(ast.value, args.next) : unit_type(ast.source)
 				prev = @result[args.func]
 				
 				if prev

@@ -658,7 +658,7 @@ class Parser
 				end
 			when :sym
 				case tok_val
-					when '*', '&', '.', '-', '+'
+					when '*', '&', '.', '-', '+', '!'
 						true
 				end
 		end
@@ -751,7 +751,7 @@ class Parser
 		source do |s|
 			step
 			skip :line
-			AST::Return.new(s, expression)
+			AST::Return.new(s, is_expression ? expression : nil)
 		end
 	end
 	

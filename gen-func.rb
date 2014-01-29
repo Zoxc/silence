@@ -768,7 +768,7 @@ class FuncCodegen
 			when AST::Index
 				convert(ast.obj, var)
 			when AST::Return # TODO: Ensure all variables in scope get's destroyed on return
-				convert(ast.value, RealVar.new("(*result)", nil))
+				convert(ast.value, RealVar.new("(*result)", nil)) if ast.value
 				@current_vars.reverse.each { |v| destroy_var(v.ref, v.type) }
 				o "return;"
 				assign_var(var, Core::Unit.ctype.type, nil)
