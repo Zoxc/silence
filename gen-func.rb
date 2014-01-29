@@ -199,9 +199,9 @@ class FuncCodegen
 			ref.type_params.each_with_index do |p, i|
 				param = obj.type_params[i]
 				raise "Didn't find matching param for '#{p.scoped_name} for typeclass object #{obj.scoped_name}'" unless param
-				param_mapped = map.params[param]
+				param_mapped = map[param]
 				raise "Param '#{p.name}' type not provided" unless param_mapped
-				new_map.params[p] = param_mapped
+				new_map[p] = param_mapped
 			end
 			
 			obj = ref

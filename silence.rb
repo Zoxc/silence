@@ -58,7 +58,7 @@ def process(file, parent)
 	files = {}
 	asts = []
 
-	parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__)))
+	parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__))) unless Silence::Debug
 	parse(files, asts, file)
 	
 	ast = AST::Program.new(AST::GlobalScope.new(asts))

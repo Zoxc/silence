@@ -777,7 +777,7 @@
 					
 					ensure_shared(ref, ast.source, args)
 					
-					RefResult.new(ast, ref, type.args)
+					RefResult.new(ast, ref, type.args.dup)
 				end
 				
 			when AST::Index

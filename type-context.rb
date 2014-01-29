@@ -33,6 +33,7 @@
 			@source = source
 			@typeclass = typeclass
 			@args = args
+			args.freeze
 			@eqs = []
 		end
 		

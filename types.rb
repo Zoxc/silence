@@ -154,6 +154,7 @@ module Types
 			@source = source
 			@ref = ref
 			@args = args
+			args.freeze
 			@plain = plain
 
 			case ref
