@@ -8,7 +8,7 @@
 	end
 	
 	def ensure_level(src, type, level)
-		raise TypeError.new("#{level.to_s.capitalize} type required. Type '#{type.text}' is a #{type.ref.level} type\n#{src.format}" ) if LevelMap[level] > LevelMap[type.ref.level]
+		raise CompileError.new("#{level.to_s.capitalize} type required. Type '#{type.text}' is a #{type.ref.level} type\n#{src.format}" ) if LevelMap[level] > LevelMap[type.ref.level]
 	end
 	
 	def reduce_level(src, type, level)
@@ -221,13 +221,13 @@
 	def unify(a, b, loc = proc { "" })
 		a = a.prune
 		b = b.prune
-		error = proc { raise TypeError.new(errmsg(a, b) + loc.()) }
+		error = proc { raise CompileError.new(errmsg(a, b) + loc.()) }
 		
 		if a.is_a? Types::Variable
 			# Don't unify type variables with themselves TODO: Can this happen?
 			return if a == b 
 			
-			raise TypeError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
+			raise CompileError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
 			a.instance = b
 			a.source = a.source || b.source
 			return
@@ -394,7 +394,7 @@
 				
 				true
 			elsif c.args.values.all? { |t| t.fixed_type? }
-				raise TypeError.new("Unable to find an instance of the type class '#{c}'\n#{c.source.format}")
+				raise CompileError.new("Unable to find an instance of the type class '#{c}'\n#{c.source.format}")
 			end
 		end or
 		

@@ -2,6 +2,7 @@ struct C
 	struct bare FILE
 
 	shared import fn malloc(size uint) -> *()
+	shared import fn realloc(mem *(), size uint) -> *()
 	shared import fn free(mem *())
 
 	shared import fn memcpy(dst *(), src *(), len uint)

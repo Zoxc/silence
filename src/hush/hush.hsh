@@ -2,7 +2,8 @@ use "compiler"
 
 fn parse(input, name)
 	IO.puts("Parsing file: " ~ name)
-	.compiler = Compiler(input)
+	.file = SrcFile(input, name)
+	.compiler = Compiler(&file)
 
 export fn main() -> c_int
 	match File.read("test.hsh") as r

@@ -2,7 +2,7 @@ require 'pathname'
 require 'rbconfig'
 IsWindows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw/)
 
-class CompileError < Exception
+class CompileError < StandardError
 end
 
 class Silence
@@ -78,7 +78,7 @@ def process(file, parent)
 
 	rescue CompileError => error
 		$stderr.puts "Failed to compile file:", error.message
-		$stderr.puts error.backtrace.join("\n")
+		$stderr.puts error.backtrace.join("\n") if Silence::Debug
 		exit
 	end
 	

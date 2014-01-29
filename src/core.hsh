@@ -6,6 +6,7 @@ use "core/file"
 
 class Allocator(T)
 	fn alloc[P](size uint) -> *P
+	fn realloc[P](ptr *P, old_size uint, new_size uint) -> *P
 	fn free[P](ptr *P)
 
 class RefConstructable(T)
@@ -30,6 +31,9 @@ struct Mem
 	shared fn alloc(size uint)
 		return ptr_cast C.malloc(size)
 
+	shared fn realloc[T](ptr *T, old_size uint, new_size uint) -> *T
+		return ptr_cast C.realloc(ptr_cast ptr, new_size)
+
 	shared fn copy[T](src *T, dst *T, size)
 		C.memcpy(ptr_cast dst, ptr_cast src, size)
 
@@ -40,7 +44,10 @@ instance Allocator(Mem)
 	fn alloc[P](size uint) -> *P
 		return self.alloc(size)
 
-	fn free[P](ptr)
+	fn realloc[P](ptr *P, old_size uint, new_size uint) -> *P
+		return self.realloc(ptr, old_size, new_size)
+
+	fn free[P](ptr *P)
 		self.free(ptr)
 
 fn new[T Constructor = Reference(R).Type, R] *args -> R

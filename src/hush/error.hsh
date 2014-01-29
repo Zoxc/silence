@@ -1,0 +1,15 @@
+use "source"
+
+struct ref Error
+	src *SrcLoc
+
+	when UnknownChars
+	when NullChar
+
+
+	fn str() -> String
+		return match self as err
+			when UnknownChars
+				"Unexpected character(s)"
+			when NullChar
+				"Unexpected null-terminator"

@@ -4,10 +4,7 @@
 	# TODO: How to deal with type specifiers which have limits inside expressions?
 	#            Return a list of limits in analyze_impl and use that to check types?
 	#            Run them after resolving all constraints?
-		
-	class TypeError < CompileError
-	end
-
+	
 	FieldLimit = Struct.new(:source, :var, :type, :name, :args, :ast, :infer_args, :extension, :deref) do
 		def to_s
 			"#{var.real_text} = #{type.text}.#{name} #{"[#{args.map{ |t|t .text }.join(", ")}]" if args}"
@@ -34,7 +31,7 @@
 		case obj
 			when AST::Function, AST::Variable
 				return if obj.declared.owner.is_a?(AST::Program)
-				raise TypeError.new("Can't access member '#{obj.name}' without an instance\n#{source.format}") unless obj.props[:shared]
+				raise CompileError.new("Can't access member '#{obj.name}' without an instance\n#{source.format}") unless obj.props[:shared]
 		end
 	end
 	
@@ -130,11 +127,11 @@
 		params = ref.type_params
 		limit = ref.is_a?(AST::Function) ? ref.type_param_count : params.size
 		
-		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{ref.scoped_name}\n#{source.format}") if indices && params.empty?
+		raise CompileError.new("Unexpected type parameter(s) for non-generic object #{ref.scoped_name}\n#{source.format}") if indices && params.empty?
 		
 		indices ||= []
 		
-		raise TypeError.new("Too many type parameter(s) for #{ref.scoped_name}, got #{indices.size} but maximum is #{limit}\n#{source.format}") if limit < indices.size
+		raise CompileError.new("Too many type parameter(s) for #{ref.scoped_name}, got #{indices.size} but maximum is #{limit}\n#{source.format}") if limit < indices.size
 		
 		values = ref.kind_params.values
 		processed = {}
@@ -159,7 +156,7 @@
 		default_param = proc do |param|
 			next parent_args[param] if parent_args.has_key?(param)
 
-			raise TypeError.new("Recursive default type parameter value\n#{param.source.format}") if processed[param]
+			raise CompileError.new("Recursive default type parameter value\n#{param.source.format}") if processed[param]
 		
 			processed[param] = true
 
@@ -188,11 +185,11 @@
 		return unless lvalue
 		case obj
 			when AST::EnumValue
-				raise TypeError.new("The enum value '#{obj.name}' is not a valid l-value\n#{source.format}")
+				raise CompileError.new("The enum value '#{obj.name}' is not a valid l-value\n#{source.format}")
 			when AST::Function
-				raise TypeError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
+				raise CompileError.new("Function '#{obj.name}' is not a valid l-value\n#{source.format}")
 			when AST::TypeParam
-				raise TypeError.new("Type parameter '#{obj.name}' is not a valid l-value\n#{source.format}")
+				raise CompileError.new("Type parameter '#{obj.name}' is not a valid l-value\n#{source.format}")
 		end
 	end
 
@@ -213,7 +210,7 @@
 						indices ||= []
 						indices.unshift(ASTWrap.new(type_class_result))
 					else
-						raise TypeError.new("Unexpected typeclass\n#{source.format}")
+						raise CompileError.new("Unexpected typeclass\n#{source.format}")
 					end
 				end
 			when AST::TypeFunction
@@ -319,7 +316,7 @@
 				if ast.obj.is_a?(AST::TypeParam) && ast.obj.value && ast.obj.type_params.empty?
 					Types::Ref.new(ast.source, ast.obj)
 				else
-					raise TypeError.new("Unable to evaluate reference at compile-time\n#{ast.source.format}")
+					raise CompileError.new("Unable to evaluate reference at compile-time\n#{ast.source.format}")
 				end
 			when AST::Literal
 				case ast.type
@@ -327,10 +324,10 @@
 						# TODO: Ensure ast.result is a fixed_type and a primitive integer
 						Types::Value.new(ast.source, ast.value)
 					else
-						raise TypeError.new("Unable to evaluate literal at compile-time\n#{ast.source.format}")
+						raise CompileError.new("Unable to evaluate literal at compile-time\n#{ast.source.format}")
 				end
 			else
-				raise TypeError.new("Unable to evaluate expression at compile-time (#{ast.class})\n#{ast.source.format}")
+				raise CompileError.new("Unable to evaluate expression at compile-time (#{ast.class})\n#{ast.source.format}")
 		end
 	end
 
@@ -341,7 +338,7 @@
 			type, value = coerce_typeval(result, args, nil)
 
 			if value
-				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{type.source}") unless tp.value
+				raise CompileError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{type.source}") unless tp.value
 				tp_type = inst_type_param.(tp)
 				unify(tp_type, type)
 
@@ -360,7 +357,7 @@
 					infer(obj)
 					Types::Ref.new(result.ast.source, obj, result.args, false)
 				else
-					raise TypeError.new("Expected explicit reference for higher-order type parameter #{tp.scoped_name}\n#{result.src.format}")
+					raise CompileError.new("Expected explicit reference for higher-order type parameter #{tp.scoped_name}\n#{result.src.format}")
 			end
 		end
 	end
@@ -408,13 +405,13 @@
 	
 	def analyze_value(ast, args)
 		type, value = analyze(ast, args)
-		raise TypeError.new("Expected value, but got type '#{type.text}'\n#{type.source.format}") unless value
+		raise CompileError.new("Expected value, but got type '#{type.text}'\n#{type.source.format}") unless value
 		type
 	end
 	
 	def analyze_type(ast, args)
 		type, value = analyze(ast, args)
-		raise TypeError.new("Expected type, but got value of type '#{type.text}'\n#{type.source.format}") if value
+		raise CompileError.new("Expected type, but got value of type '#{type.text}'\n#{type.source.format}") if value
 		type
 	end
 	
@@ -436,7 +433,7 @@
 		case ast
 			when AST::Ref, AST::Field, AST::UnaryOp, AST::ValueTuple, AST::Call
 			else
-				raise TypeError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
+				raise CompileError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
 		end if args.lvalue
 		
 		case ast
@@ -490,7 +487,7 @@
 				Result.new(value, true)
 			when AST::ValueTuple
 				if args.lvalue
-					raise TypeError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
+					raise CompileError.new("Unexpected tuple assignment\n#{ast.source.format}") unless args.tuple_lvalue
 					Result.new(make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next(lvalue: true, tuple_lvalue: true)) }), true)
 				else
 					type = make_tuple(ast.source, ast.nodes.map { |n| analyze_value(n, args.next) })
@@ -632,7 +629,7 @@
 							:call
 						end
 					else
-						raise TypeError.new("A constructor is not a valid l-value\n#{ast.source.format}") if args.lvalue
+						raise CompileError.new("A constructor is not a valid l-value\n#{ast.source.format}") if args.lvalue
 
 						# It's a constructor
 						limit = typeclass_limit(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
@@ -699,7 +696,7 @@
 			when AST::Grouped
 				Result.new(*analyze(ast.node, args.next))
 			when AST::UnaryOp
-				raise TypeError.new("Invalid l-value\n#{ast.source.format}") if (ast.op != '*') && args.lvalue
+				raise CompileError.new("Invalid l-value\n#{ast.source.format}") if (ast.op != '*') && args.lvalue
 				
 				type, value = analyze(ast.node, args.next(lvalue: ast.op == '&'))
 				
@@ -719,13 +716,13 @@
 							Result.new(make_ptr(ast.source, analyze_type(ast.node, args.next)), false)
 						end
 					when '&'
-						raise TypeError.new("Can't get the address of types\n#{ast.source.format}") unless value
+						raise CompileError.new("Can't get the address of types\n#{ast.source.format}") unless value
 						result = make_ptr(ast.source, type)
 						ast.gen = result
 						Result.new(result, true)
 					else
 						map = Core::UnaryOpMap[ast.op]
-						raise TypeError.new("Invalid unary operator '#{ast.op}'\n#{ast.source.format}") unless map
+						raise CompileError.new("Invalid unary operator '#{ast.op}'\n#{ast.source.format}") unless map
 
 						typeclass_limit(ast.source, map[:ref], {map[:param] => type}) 
 						ast.gen = type
@@ -741,7 +738,7 @@
 				lhs, lvalue = coerce_typeval(lresult, next_args)
 				rhs, rvalue = analyze(ast.rhs, args.next)
 				
-				raise TypeError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
+				raise CompileError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
 				
 				if lvalue
 					req_level(ast.source, lhs) if (assign_op && !ast.constructing)
@@ -761,7 +758,7 @@
 					ast.gen = {arg: lhs, result: result, plain_op: plain_op}
 					Result.new(result, true)
 				else
-					raise TypeError.new("Unknown type operator '#{ast.op}'\n#{ast.source.format}") if ast.op != '->'
+					raise CompileError.new("Unknown type operator '#{ast.op}'\n#{ast.source.format}") if ast.op != '->'
 					
 					func_args = case ast.lhs
 						when AST::Grouped
@@ -814,11 +811,11 @@
 					@fields << limit
 					ValueFieldResult.new(limit)
 				else
-					raise TypeError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.is_a?(Types::Ref) && type.ref.is_a?(AST::Complex)
+					raise CompileError.new("Object doesn't have a scope (#{type})\n#{ast.obj.source.format}") unless type.is_a?(Types::Ref) && type.ref.is_a?(AST::Complex)
 					
 					ref, ext = scope_lookup(type.ref, ast.name, nil)
 					
-					raise TypeError.new("'#{ast.name}' is not a member of '#{type.ref.scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
+					raise CompileError.new("'#{ast.name}' is not a member of '#{type.ref.scoped_name}'\n#{ast.source.format}\nScope inferred from:\n#{ast.obj.source.format}") unless ref
 					
 					ensure_shared(ref, ast.source, args)
 					
@@ -836,7 +833,7 @@
 					when RefResult, ValueFieldResult
 						coerce_typeval_impl(result, next_args, indices)
 					else
-						raise TypeError.new("[] operator unsupported\n#{ast.source.format}")
+						raise CompileError.new("[] operator unsupported\n#{ast.source.format}")
 				end
 			else
 				raise "Unknown AST #{ast.class}"
@@ -894,19 +891,19 @@
 						end
 					when Types::Variable
 						# TODO: Find out when this is really required
-						raise TypeError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
+						raise CompileError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
 					else
-						raise TypeError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
+						raise CompileError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 				end
 			end
 
 			next nil unless ref
 
-			raise TypeError.new("Object doesn't have a scope (#{type})\n#{c.ast.source.format}") unless ref.is_a?(AST::Complex)
+			raise CompileError.new("Object doesn't have a scope (#{type})\n#{c.ast.source.format}") unless ref.is_a?(AST::Complex)
 
 			field, extension = scope_lookup(ref, c.name, c.extension[:ref])
 			
-			raise TypeError.new("'#{c.name}' is not a field in '#{ref.scoped_name}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
+			raise CompileError.new("'#{c.name}' is not a field in '#{ref.scoped_name}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}") unless field
 			
 			lvalue_check(c.ast.source, field, c.infer_args.lvalue)
 		
@@ -938,7 +935,7 @@
 		
 		if ast_type
 			type = analyze_type(ast_type, a_args)
-			raise(TypeError.new("'#{type.text}' is not a type class\n#{ast_type.source.format}")) if type.fixed_type?
+			raise(CompileError.new("'#{type.text}' is not a type class\n#{ast_type.source.format}")) if type.fixed_type?
 			unify(type, unify_type)
 		end
 	end
@@ -1043,7 +1040,7 @@
 	end
 	
 	def report_unresolved_vars(vars)
-		raise TypeError, "Unable to find the type of the following expressions in #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
+		raise CompileError, "Unable to find the type of the following expressions in #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
 	end
 	
 	def finalize(type, value)
@@ -1062,7 +1059,7 @@
 		end.()
 
 		@fields.each do |c|
-			raise TypeError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
+			raise CompileError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
 		end
 		
 		type_vars = @ctx.type_vars.dup
@@ -1123,7 +1120,7 @@
 		
 		typeclass = @obj.typeclass.obj
 		a_args = analyze_args.next(instance: true)
-		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
+		raise CompileError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
 		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, a_args)] }]
 		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Ref.new(p.source, p)] }]), false)
 	end

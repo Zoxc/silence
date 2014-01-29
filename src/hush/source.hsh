@@ -1,5 +1,14 @@
 use "../core"
 
-struct ref Src
+struct ref SrcFile
+	content String
+	path String
+
+	action create(content String, path) : 
+		content <- content.c_term(),
+		path <- path
+
+struct ref SrcLoc
+	file *SrcFile
 	start *char
 	stop *char

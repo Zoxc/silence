@@ -51,14 +51,22 @@ struct ref Lexer
 		fn eq(c char)
 			return *pos() == c
 
+	compiler *Compiler
 	tok State
-	content String 
+	file *SrcFile
 	i Input
 	jump_table Table(256, () -> ())
 
-	action create(str String) :
-		content <- str.c_term(),
-		tok <- State(content.data, ptr_idx(content.data, content.size - 1), &self),
+	fn src() -> *SrcLoc
+		return new(tok.start, tok.stop)
+
+	fn report[T] *args
+		.error = Callable(new[T]).apply(Cell(src(), args))
+		compiler.errors.push error
+
+	action create(file) :
+		file <- file,
+		tok <- State(file.content.data, ptr_idx(file.content.data, file.content.size - 1), &self),
 		i <- Input(&self),
 		jump_table <- undef()
 
@@ -90,7 +98,8 @@ struct ref Lexer
 			tok.type = Token.EndOfFile
 			tok.end()
 		else
-			IO.puts("Unexpected null-terminator")
+			tok.end()
+			report[Error.NullChar]()
 			i.step()
 			step()
 
@@ -105,6 +114,6 @@ struct ref Lexer
 
 		tok.end()
 
-		IO.puts("Unknown character(s): '" ~ tok.str() ~ "'")
+		report[Error.UnknownChars]()
 
 		step()

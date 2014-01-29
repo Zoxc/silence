@@ -1,0 +1,9 @@
+use "lexer"
+use "error"
+
+struct ref Compiler
+	lexer Lexer
+	errors Array(*Error)
+
+	action create(file) :
+		lexer <- Lexer(file)
