@@ -451,7 +451,10 @@
 
 			when AST::InitEntry
 				field = @obj.declared.require(ast.source, ast.field)
-				raise "Expected field to construct in #{func.declared.owner}\n#{ast.source.format}" unless field.is_a?(AST::Variable) && field.declared == @obj.declared && !field.props[:shared]
+				is_field = field.is_a?(AST::Variable) && !field.props[:shared]
+				is_owner_field = field.declared == @obj.declared || (@obj.declared.owner.is_a?(AST::StructCase) && field.declared.owner == @obj.declared.owner.parent)
+				
+				raise "Expected field to construct in #{@obj.declared.owner.scoped_name}, got #{field.scoped_name}\n#{ast.source.format}" unless is_field && is_owner_field
 				
 				parent_args = Hash[AST.type_params(field, false).map { |p| [p, map_type(p)] }]
 
@@ -996,10 +999,18 @@
 		typeclass_limit(func.params.first.source, Core::Tuple::Node, {Core::Tuple::T => @vars[func.params.first.var]}) if func.var_arg
 		
 		if [:create, :create_args].include? func.action_type
-			scope = func.declared
-			inits = Hash[func.init_list.map { |i| [scope.names[i.field], true] }]
+			get_field = proc do |name|
+				r = owner.scope.names[name]
+				next r if r
+				owner.parent.scope.names[name] if owner.is_a?(AST::StructCase)
+			end
+			
+			inits = Hash[func.init_list.map { |i| [get_field.(i.field), true] }]
 
-			func.gen_init_list = scope.nodes.map do |ast|
+			nodes = owner.scope.names.values
+			(nodes = owner.parent.scope.names.values + nodes) if owner.is_a?(AST::StructCase)
+
+			func.gen_init_list = nodes.map do |ast|
 				case ast
 					when AST::VariableDecl
 						if !ast.var.props[:shared] && !inits[ast.var]

@@ -68,6 +68,10 @@ module Types
 			text
 		end
 		
+		def text_tuple
+			["*{#{text}}"]
+		end
+		
 		def require_pruned
 		end
 	end
@@ -178,6 +182,19 @@ module Types
 			!param && @args.values.all? { |v| v.fixed_type? }
 		end
 		
+		def text_tuple
+			case @ref
+				when Core::Unit
+					[]
+				when Core::Cell::Node
+					[@args[Core::Cell::Val], *@args[Core::Cell::Next].text_tuple]
+				when param
+					[self]
+				else
+					super
+			end
+		end
+
 		def tuple_map
 			case @ref
 				when Core::Unit
@@ -198,7 +215,7 @@ module Types
 				when Core::Ptr::Node
 					"*#{@args[Core::Ptr::Type].text}"
 				when Core::Unit, Core::Cell::Node
-					"(#{tuple_map.map(&:text).join(', ')})"
+					"(#{text_tuple.join(', ')})"
 				else
 					"#{"!" unless @plain}#{@ref.scoped_name}#{"(#{@args.map { |k, v| "#{k.name}: #{v.text}" }.join(", ")})" if @args.size > 0}"
 			end
