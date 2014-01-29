@@ -31,8 +31,7 @@ class Codegen
 	end
 	
 	def inst_type(type, map)
-		TypeContext.inst_type(type,
-			proc { |s| s },
+		inst_args = TypeContext::InstArgs.new(proc { |s| s },
 			proc { |t|
 				r = map.vars[t]
 				raise "Unable to find type for #{t}\n#{t.stack} in #{map}\n#{t.source.format}" unless r
@@ -44,11 +43,13 @@ class Codegen
 					raise "Unable to find instance of #{t.ref.scoped_name} in #{map}" unless r
 					r.prune
 				end})
+
+		TypeContext.inst_type(type, inst_args)
 	end
 	
 	def map_vars(ref, map)
 		ctx = TypeContext.new(nil)
-		inst_args = ctx.inst_map(Core.src, ref, map.params)
+		inst_args, inst_map = ctx.inst_map(Core.src, ref, map.params)
 		map.vars = Hash[ref.ctype.dependent_vars.map { |var| [var, ctx.inst_type(inst_args, var)] }]
 		ctx.reduce(ref)
 		

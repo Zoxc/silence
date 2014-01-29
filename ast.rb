@@ -134,24 +134,6 @@ module AST
 	class ExpressionNode < Node
 	end
 	
-	class Variable < Node
-		attr_accessor :name, :type, :ctype, :props, :type_params, :decl
-		
-		def initialize(source, name, declared, type, props, decl = nil)
-			super(source)
-			@name = name
-			@declared = declared
-			@type = type
-			@props = props
-			@type_params = []
-			@decl = decl
-		end
-		
-		def visit
-			@type = yield @type
-		end
-	end
-	
 	class Index < Node
 		attr_accessor :obj, :args
 		
@@ -317,22 +299,24 @@ module AST
 	end
 
 	class KindParams < Node
-		attr_accessor :params, :ctx
+		attr_accessor :params, :ctx, :values
 	
-		def initialize(source, params, ctx)
+		def initialize(source, params, ctx, values = {})
 			super(source)
 			@params = params
 			@ctx = ctx
+			@values = values
 		end
 		
 		def visit
 			@ctx.map! { |n| yield n }
 			@params.map! { |n| yield n }
+			@values.each { |k, v| @values[k] = yield v }
 		end
 	end
 	
 	class HigherKinded < Node
-		attr_accessor :type_params, :scope, :kind_params
+		attr_accessor :type_params, :type_params_values, :scope, :kind_params
 		
 		def initialize(source, kind_params)
 			super(source)
@@ -381,11 +365,29 @@ module AST
 		end
 	end
 	
+	class Variable < HigherKinded
+		attr_accessor :name, :type, :ctype, :props, :decl
+		
+		def initialize(source, name, declared, type, props, decl = nil)
+			super(source, AST::KindParams.new(source, [], []))
+			@name = name
+			@declared = declared
+			@type = type
+			@props = props
+			@type_params = []
+			@decl = decl
+		end
+		
+		def visit
+			@type = yield @type
+		end
+	end
+	
 	def self.type_params(ast, plain = true)
 		case ast
 			when AST::Program
 				[]
-			when AST::TypeParam, AST::TypeClassInstance, AST::Enum
+			when AST::TypeParam, AST::TypeParamValue, AST::TypeClassInstance, AST::Enum
 				plain ? ast.type_params : []
 			else
 				raise "Missing @declared on #{ast.name}\n#{ast.source.format}" unless ast.declared
@@ -395,8 +397,31 @@ module AST
 		end
 	end
 	
+	class TypeParamValue < HigherKinded
+		attr_accessor :name, :owner, :value, :ctype
+		
+		def initialize(source, owner, value)
+			super(source, AST::KindParams.new(source, [], []))
+			@owner = owner
+			@value = value
+		end
+
+		def scoped_name
+			name
+		end
+		
+		def name
+			"@@#{owner.scoped_name}"
+		end
+		
+		def visit
+			super
+			@value = yield @value
+		end
+	end
+	
 	class TypeParam < HigherKinded
-		attr_accessor :name, :type, :ctype, :value
+		attr_accessor :name, :type, :ctype, :value, :default
 		
 		def initialize(source, name, kind_params, type, value)
 			super(source, kind_params)

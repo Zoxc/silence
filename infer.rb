@@ -92,7 +92,7 @@
 	# TODO: Make scoped and typeclass into an enum of NoTypeclasses, ViewTypeclasses, ScopedTypeclasses
 	# TODO: Make lvalue and tuple_lvalue into an enum of NotLValue, TupleLValue, LValue
 	class AnalyzeArgs
-		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended, :func, :unused
+		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended, :func, :unused, :instance
 		def initialize(func)
 			@func = func
 			@lvalue = false
@@ -101,6 +101,7 @@
 			@typeclass = false
 			@scoped = false
 			@unused = false
+			@instance = false
 			@extended = {}
 		end
 		
@@ -108,6 +109,7 @@
 			new = dup
 			new.func = opts[:func] || @func
 			new.typeof = opts[:typeof] || @typeof
+			new.instance = opts[:instance] || @instance
 			new.lvalue = opts[:lvalue] || false
 			new.unused = opts[:unused] || false
 			new.scoped = opts[:scoped] || false
@@ -122,26 +124,64 @@
 		AnalyzeArgs.new(@obj)
 	end
 	
-	def map_type_params(source, ref, parent_args, args)
+	def map_type_params(source, ref, parent_args, indices, args)
 		infer(ref) # Functions' type parameters can increase after inference
 		
 		params = ref.type_params
 		limit = ref.is_a?(AST::Function) ? ref.type_param_count : params.size
 		
-		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{ref.scoped_name}\n#{source.format}") if args && params.empty?
+		raise TypeError.new("Unexpected type parameter(s) for non-generic object #{ref.scoped_name}\n#{source.format}") if indices && params.empty?
 		
-		args ||= []
+		indices ||= []
 		
-		raise TypeError.new("Too many type parameter(s) for #{ref.scoped_name}, got #{args.size} but maximum is #{limit}\n#{source.format}") if limit < args.size
+		raise TypeError.new("Too many type parameter(s) for #{ref.scoped_name}, got #{indices.size} but maximum is #{limit}\n#{source.format}") if limit < indices.size
 		
-		args.each_with_index do |arg, i|
+		values = ref.kind_params.values
+		processed = {}
+
+		default_param = nil
+
+		def_param = proc do |t|
+			t = t.ref
+			if params.include?(t)
+				default_param.(t)
+			else
+				parent_args[t]
+			end
+		end
+
+		inst_type_param = proc do |param|
+			inst_args = @ctx.new_inst_args(TypeContext::Map.new({}, parent_args, source), def_param)
+			@ctx.inst_map_args(param, inst_args, true)
+			@ctx.inst_type(inst_args, param.ctype.type)
+		end
+
+		default_param = proc do |param|
+			next parent_args[param] if parent_args.has_key?(param)
+
+			raise TypeError.new("Recursive default type parameter value\n#{param.source.format}") if processed[param]
+		
+			processed[param] = true
+
+			value = values[param]
+			parent_args[param] = if value
+				inst_type_param.(value)
+			else
+				new_var(source, param.name)
+			end
+		end
+
+		indices.each_with_index do |arg, i|
 			param = params[i]
-			parent_args[param] = coerce_typeparam(param, arg, parent_args)
+			type = coerce_typeparam(param, arg, args, inst_type_param)
+			if parent_args[param]
+				unify(type, parent_args[param])
+			else
+				parent_args[param] = type
+			end
 		end
 		
-		params.each do |param|
-			parent_args[param] ||= new_var(source, param.name)
-		end
+		params.each { |param| default_param.(param) }
 	end
 	
 	def lvalue_check(source, obj, lvalue)
@@ -184,10 +224,10 @@
 				tc_limit = typeclass_limit(source, typeclass_type.ref, typeclass_type.args)
 		end
 		
-		map_type_params(source, obj, parent_args, indices)
-		
-		result, inst_args = inst_ex(source, obj, parent_args)
-		
+		map_type_params(source, obj, parent_args, indices, args)
+
+		result, inst_args = inst_ex(source, obj, parent_args, !args.instance)
+
 		case obj
 			when AST::TypeClass
 				limit = typeclass_limit(source, obj, result.args)
@@ -294,19 +334,15 @@
 		end
 	end
 
-	def coerce_typeparam(tp, ast, parent_args)
-		unexpected_value = proc do |source|
-			raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{source.format}")
-		end
-
-		result = analyze_impl(ast, analyze_args)
+	def coerce_typeparam(tp, ast, args, inst_type_param)
+		result = analyze_impl(ast, args)
 
 		if tp.type_params.empty?
-			type, value = coerce_typeval(result, analyze_args, nil)
+			type, value = coerce_typeval(result, args, nil)
 
 			if value
 				raise TypeError.new("Unexpected value passed as argument for type parameter #{tp.scoped_name}\n#{type.source}") unless tp.value
-				tp_type, inst_args = inst_ex(tp.source, tp, parent_args)
+				tp_type = inst_type_param.(tp)
 				unify(tp_type, type)
 
 				eval_ast(ast)
@@ -804,8 +840,8 @@
 		end
 	end
 	
-	def inst_ex(src, obj, params = {})
-		@ctx.inst_ex(src, obj, params)
+	def inst_ex(*args)
+		@ctx.inst_ex(*args)
 	end
 	
 	def unify(a, b, loc = proc { "" })
@@ -871,7 +907,7 @@
 			
 			lvalue_check(c.ast.source, field, c.infer_args.lvalue)
 		
-			map_type_params(c.source, field, parent_args, c.args)
+			map_type_params(c.source, field, parent_args, c.args, c.infer_args)
 			
 			field_type, inst_args = inst_ex(c.ast.source, field, parent_args)
 
@@ -996,7 +1032,7 @@
 	end
 	
 	def report_unresolved_vars(vars)
-		raise TypeError, "Unresolved vars of #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
+		raise TypeError, "Unable to find the type of the following expressions in #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
 	end
 	
 	def finalize(type, value)
@@ -1048,7 +1084,8 @@
 		Silence.puts("") unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
 		
 		Silence.puts "#{@obj.scoped_name}#{"(#{@obj.type_params.map{|k,v|k.name}.join(",")})" unless @obj.type_params.empty?}  ::  #{type.text}"
-		
+		Silence.puts("Instance of #{@obj.typeclass.obj.scoped_name}(#{TypeContext.print_params(@typeclass)})") if @typeclass
+
 		@ctx.limits.each{|i| Silence.puts "    - #{i}"}
 		@ctx.levels.each{|i| Silence.puts "    - #{i}"}
 		@views.each_pair{|k,v| Silence.puts "    * #{k.text} <= #{v.text}"}
@@ -1074,7 +1111,7 @@
 		end
 		
 		typeclass = @obj.typeclass.obj
-		a_args = analyze_args
+		a_args = analyze_args.next(instance: true)
 		raise TypeError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
 		@typeclass = Hash[@obj.args.each_with_index.map { |arg, i| [typeclass.type_params[i], analyze_type(arg, a_args)] }]
 		finalize(Types::Ref.new(@obj.source, @obj, Hash[@obj.type_params.map { |p| [p, Types::Ref.new(p.source, p)] }]), false)
@@ -1148,6 +1185,9 @@
 				type = new_var(value.source)
 				process_type_constraint(value.type, type)
 				finalize(type, false)
+			when AST::TypeParamValue
+				inst_param = proc { |tp| inst_ex(tp.source, tp, {}).first }
+				finalize(coerce_typeparam(value.owner, value.value, analyze_args, inst_param), value.owner.value)
 			else
 				raise "Unknown value #{value.class}"
 		end
@@ -1155,6 +1195,9 @@
 
 	def process_all
 		raise "process_all before process_req for #{@obj.scoped_name}" unless @obj.ctype
+
+		# Process type parameter values
+		@obj.kind_params.values.values.each { |v| InferContext.process(v, @infer_args) }
 
 		case @obj
 			when AST::TypeClassInstance

@@ -310,34 +310,44 @@ class Parser
 		source do |s|
 			if matches(:sym, f)
 				skip :line
-				params = type_params
+				values = {}
+				params = type_params(values)
 				match(:sym, l)
-				AST::KindParams.new(s, params, type_context)
+				AST::KindParams.new(s, params, type_context, values)
 			else
 				AST::KindParams.new(s, [], [])
 			end
 		end
 	end
 	
-	def type_param
+	def type_param(values)
 		source do |s|
 			name = match(:id)
 			kind = kind_params
 			type, value = if matches(:sym, '::')
+				skip :line
 				[type_expression, true]
 			else
 				[opt_type_specifier, false]
 			end
-			AST::TypeParam.new(s, name, kind, type, value)
+			default = if matches(:sym, '=')
+				skip :line
+				source do |s|
+					[s, value ? expression : type_expression]
+				end
+			end
+			p = AST::TypeParam.new(s, name, kind, type, value)
+			values[p] = AST::TypeParamValue.new(default.first, p, default.last) if default
+			p
 		end
 	end
 	
-	def type_params
+	def type_params(values)
 		r = []
 		return r unless tok == :id
 		
 		loop do
-			r << type_param
+			r << type_param(values)
 			if matches(:sym, ',')
 				skip :line
 			else

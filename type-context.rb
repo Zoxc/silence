@@ -132,15 +132,13 @@
 		end
 	end
 	
-	def src_wrap(src, args)
-		AST::NestedSource.new(src, args.src)
-	end
+	InstArgs = Struct.new(:wrap_src, :get_var, :get_param)
 	
 	def inst_limits(obj, args)
 		limits = obj.ctype.ctx.limits.map do |limit|
-			class_limit = TypeClassLimit.new(src_wrap(limit.source, args), limit.typeclass, Hash[limit.args.map { |k, v| [k, inst_type(args, v)] }])
+			class_limit = TypeClassLimit.new(args.wrap_src.(limit.source), limit.typeclass, Hash[limit.args.map { |k, v| [k, inst_type(args, v)] }])
 			class_limit.eqs = limit.eqs.map do |eq|
-				EqLimit.new(src_wrap(eq.source, args), inst_type(args, eq.var), eq.type_ast)
+				EqLimit.new(args.wrap_src.(eq.source), inst_type(args, eq.var), eq.type_ast)
 			end
 			class_limit
 		end
@@ -149,22 +147,20 @@
 	
 	def inst_levels(obj, args)
 		levels = obj.ctype.ctx.levels.map do |limit|
-			LevelLimit.new(src_wrap(limit.source, args), inst_type(args, limit.type), limit.level)
+			LevelLimit.new(args.wrap_src.(limit.source), inst_type(args, limit.type), limit.level)
 		end
 		@levels.concat(levels)
 	end
 	
-	def self.inst_type(type, src_wrap, map_var, params)
-		inst_type = proc { |t| inst_type(t, src_wrap, map_var, params) }
-
+	def self.inst_type(type, args)
 		type = type.prune
 		case type
 			when Types::Value
-				Types::Value.new(src_wrap.(type.source), type.value)
+				Types::Value.new(args.wrap_src.(type.source), type.value)
 			when Types::Variable
-				map_var.(type)
+				args.get_var.(type)
 			when Types::Ref
-				ref = params.(type)
+				ref = args.get_param.(type)
 
 				if ref
 					if type.args.empty?
@@ -174,24 +170,27 @@
 						# A higher-order type parameter
 						raise unless (ref.is_a?(Types::Ref) && !ref.plain)
 						type_args = type.args.map do |k, v|
-							[ref.ref.type_params[type.ref.type_params.index(k)], inst_type.(v)]
+							[ref.ref.type_params[type.ref.type_params.index(k)], inst_type(v, args)]
 						end
 						parent_args = ref.args.select { |k, v| !ref.ref.type_params.index(k) }.to_a
-						Types::Ref.new(src_wrap.(type.source), ref.ref, Hash[type_args + parent_args], type.plain)
+						Types::Ref.new(args.wrap_src.(type.source), ref.ref, Hash[type_args + parent_args], type.plain)
 					end
 				else
-					Types::Ref.new(src_wrap.(type.source), type.ref, Hash[type.args.map { |k, v| [k, inst_type.(v)] }], type.plain)
+					Types::Ref.new(args.wrap_src.(type.source), type.ref, Hash[type.args.map { |k, v| [k, inst_type(v, args)] }], type.plain)
 				end
 			else
 				raise "Unknown type #{type.class}"
 		end
 	end
 	
+	def new_inst_args(map, get_param = nil)
+		InstArgs.new(proc { |s| AST::NestedSource.new(s, map.src) },
+			proc { |t| map.vars[t] ||= new_var(AST::NestedSource.new(t.source, map.src), t.name) },
+			get_param || proc { |t| map.params[t.ref] })
+	end
+	
 	def inst_type(args, type)
-		self.class.inst_type(type,
-			proc { |s| src_wrap(s, args) },
-			proc { |t| args.vars[t] ||= new_var(src_wrap(t.source, args), t.name) },
-			proc { |t| args.params[t.ref] })
+		self.class.inst_type(type, args)
 	end
 	
 	def inst(src, obj, params = {})
@@ -199,18 +198,24 @@
 		result
 	end
 	
-	def inst_map(src, obj, params)
+	def inst_map_args(obj, inst_args, limits)
 		infer(obj)
-		inst_args = Map.new({}, params, src)
-		inst_limits(obj, inst_args)
-		inst_levels(obj, inst_args)
+		if limits
+			inst_limits(obj, inst_args)
+			inst_levels(obj, inst_args)
+		end
 		inst_args
 	end
 	
-	def inst_ex(src, obj, params = {})
-		inst_args = inst_map(src, obj, params)
+	def inst_map(src, obj, params, limits = true)
+		map = Map.new({}, params, src)
+		return inst_map_args(obj, new_inst_args(map), limits), map
+	end
+	
+	def inst_ex(src, obj, params = {}, limits = true)
+		inst_args, map = inst_map(src, obj, params, limits)
 		
-		return inst_type(inst_args, obj.ctype.type), inst_args
+		return inst_type(inst_args, obj.ctype.type), map
 	end
 	
 	def unify(a, b, loc = proc { "" })
@@ -289,13 +294,13 @@
 	end
 	
 	def self.inst_type_or_die(type, map)
-		inst_type(type,
-			proc { |s| s },
+		inst_args = InstArgs.new(proc { |s| s },
 			proc { |t| raise "Unknown variable type in typeclass constraint of instance #{t}\n#{t.stack}\n#{t.source.format}" },
 			proc { |t|
 				r = map[t.ref]
 				raise "Unable to find instance of #{t.ref.scoped_name} in #{TypeContext::Map.new({}, map, {})}" if t.param && !r
 				r})
+		inst_type(type, inst_args)
 	end
 	
 	def self.find_instance(obj, infer_args, typeclass, args)

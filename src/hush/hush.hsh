@@ -7,7 +7,7 @@ fn parse(input, name)
 export fn main() -> c_int
 	match File.read("test.hsh") as r
 		when Option.Some
-			parse(r.val, "test.hs")
+			parse(r.val, "test.hsh")
 		when Option.Nil
 			IO.puts("Failed to read file")
 	return 0

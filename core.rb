@@ -214,7 +214,7 @@ class Core
 	end.()
 
 	class Func < Core
-		Args = param :Args
+		Args = param(:Args, ref(Tuple::Node))
 		Result = param :Result
 		Node = complex(:Func, [Args, Result])
 	end
@@ -358,7 +358,7 @@ class Core
 		CallableFuncArgs = args
 		CallableFuncApply = apply
 		
-		Nodes << tci(Callable::Node, [AST::BinOp.new(src, ref(args), '->', ref(result))], [args, result], [apply])
+		Nodes << tci(Callable::Node, [AST::Index.new(src, ref(Func::Node), [ref(args), ref(result)])], [args, result], [apply])
 	end.()
 
 	proc do

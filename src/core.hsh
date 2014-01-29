@@ -43,7 +43,7 @@ instance Allocator(Mem)
 	fn free[P](ptr)
 		self.free(ptr)
 
-fn new[T Constructor] *args
+fn new[T Constructor = Reference(R).Type, R] *args -> R
 	return allocate[T](args, Mem())
 
 fn delete(obj)
