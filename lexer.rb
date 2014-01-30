@@ -1,9 +1,6 @@
 require 'strscan'
 
 class Lexer
-	class Error < Exception
-	end
-	
 	BraceIndex = {'(' => 0, '[' => 1, '{' => 2,
 	              ')' => 0, ']' => 1, '}' => 2}
 	
@@ -62,7 +59,7 @@ class Lexer
 	end
 	
 	def expected(v)
-		raise Error, "Expected #{v}, but found #{format_tok(@tok, @tok_val)}\n#{source.format}"
+		raise CompileError, "Expected #{v}, but found #{format_tok(@tok, @tok_val)}\n#{source.format}"
 	end
 	
 	def compare_indent(old, new)
@@ -108,7 +105,7 @@ class Lexer
 				@scanner, @indent_pos, @indent = scanner, indent_pos, indent
 				step
 			when :err
-				raise(Error, "Unable to find indentation size\n#{source(indent_pos, indent).format}\nRelative to baseline:\n#{source(baseline.last, baseline.first).format}")
+				raise(CompileError, "Unable to find indentation size\n#{source(indent_pos, indent).format}\nRelative to baseline:\n#{source(baseline.last, baseline.first).format}")
 		end
 		r
 	end
@@ -134,7 +131,7 @@ class Lexer
 			when :inc
 				step
 			when :err
-				raise(Error, "Mismatching indentation\n#{source(@indent_pos, @indent).format}\nRelative to baseline:\n#{source(block.space.last, block.space.first).format}")
+				raise(CompileError, "Mismatching indentation\n#{source(@indent_pos, @indent).format}\nRelative to baseline:\n#{source(block.space.last, block.space.first).format}")
 		end
 	end
 	
@@ -158,6 +155,9 @@ class Lexer
 		@pos = @scanner.pos
 		case
 			when v = s.scan(/[ \t]+/)
+				find_token
+			when s.scan(/\#/)
+				s.scan(/.*?(\r\n|\n|\r|\z)/)
 				find_token
 			when v = s.scan(/\r\n|\n|\r/)
 				[v, :line, true]
