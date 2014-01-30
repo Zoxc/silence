@@ -656,6 +656,8 @@ class FuncCodegen
 				if ast.else_group
 					convert(ast.else_group, ast.gen[:unused] ? nil : var) 
 					o "goto #{resume};"
+				else
+					o "*(volatile int *)0; // Nothing matched"
 				end
 
 				ast.whens.each_with_index do |w, i|
