@@ -419,6 +419,13 @@ class Codegen
 
 				o << "\n{\n"
 
+				o << "#{name}() = default;\n\n"
+
+				if ast.level != :copyable
+					o << "#{name}(const #{name}&) = delete;\n\n" 
+					o << "#{name}& operator=(const #{name}&) = delete;\n\n" 
+				end
+
 				o << "    _uint type;\n" if ast.enum?
 				
 				ast.scope.names.values.each do |value|

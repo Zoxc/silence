@@ -4,7 +4,7 @@ use "source"
 enum Token
 	None
 	Unknown
-	Id
+	Ident
 	EndOfFile
 
 struct ref Lexer
@@ -31,7 +31,7 @@ struct ref Lexer
 		fn str()
 			return String.from_data(start, ptr_diff(stop, start))
 
-	struct Input
+	struct ref Input
 		lexer *Lexer
 
 		fn pos()
@@ -44,6 +44,9 @@ struct ref Lexer
 
 		fn at_end()
 			return pos() == lexer.tok.input_end
+
+		fn in(a, b)
+			return (a <= c()) & (c() <= b)
 
 		fn c()
 			return *pos()
@@ -83,6 +86,10 @@ struct ref Lexer
 
 		set_chars(0, 255, unknown)
 
+		set_chars("A", "Z", ident)
+		set_chars("a", "z", ident)
+		set_char("_", ident)
+
 		set_char(0, eof)
 
 	fn step()
@@ -103,6 +110,17 @@ struct ref Lexer
 			report[Error.NullChar]()
 			i.step()
 			step()
+
+	fn ident()
+		i.step()
+
+		loop
+			if !(i.in("0", "9") || i.in("A", "Z") || i.in("a", "z") || i.c() == "_")
+				break
+			i.step()
+
+		tok.end()
+		tok.type = Token.Ident
 
 	fn unknown()
 		i.step()

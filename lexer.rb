@@ -176,7 +176,7 @@ class Lexer
 				[v, :int, v.to_i]
 			when v = s.scan(/[A-Za-z_]+\w*/)
 				[v, :id, v.to_sym]
-			when v = s.scan(/==|!=|\+=|&=|^=|\|=|~=|-=|\*=|\/=|%=|~=|::|<-|->|\||>=|<=|>|</)
+			when v = s.scan(/==|!=|\+=|&=|^=|\|=|~=|-=|\*=|\/=|%=|~=|\|\||&&|::|<-|->|\||>=|<=|>|</)
 				[v, :sym, v]
 			when v = s.scan(/[(\[{]/)
 				(block.levels[BraceIndex[v]] += 1) if block

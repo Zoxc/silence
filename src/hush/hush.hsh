@@ -4,6 +4,14 @@ fn parse(input, name)
 	IO.puts("Parsing file: " ~ name)
 	.file = SrcFile(input, name)
 	.compiler = Compiler(&file)
+
+	loop
+		if compiler.lexer.tok.type == Token.EndOfFile
+			break
+
+		IO.puts("Token: " ~ String.from_c(10) ~ compiler.lexer.src().format())
+		compiler.lexer.step()
+
 	compiler.errors.each -> |error|
 		IO.puts("Error: " ~ error.format())
 

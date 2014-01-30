@@ -829,6 +829,8 @@ class Parser
 	Operators = {}
 	pred = proc { |p, *args| args.each { |a| Operators[a] = p }}
 	pred_num = 0
+	pred.(pred_num += 1, '||')
+	pred.(pred_num += 1, '&&')
 	pred.(pred_num += 1, '==', '!=')
 	pred.(pred_num += 1, '|')
 	pred.(pred_num += 1, '^')
