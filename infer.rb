@@ -461,6 +461,9 @@
 				nil
 			when AST::ActionCall
 				type = analyze_type(ast.type, args.next)
+				raise "Unknown action type #{type}" unless type.is_a?(Types::Ref)
+				func = type.ref.actions[ast.action_type]
+				func_type, inst_args = inst_ex(ast.source, func, type.args)
 
 				action_arg = analyze_value(ast.arg, args.next) if ast.arg
 
@@ -1163,6 +1166,8 @@
 						end
 				end
 
+				# TODO: Destroy and copy actions should have the same type context as their parent.
+				#       Currently type constraints on them will be ignored as nothing references them.
 				Core.create_empty_action(value, :destroy) if value.is_a?(AST::Struct) && !value.actions[:destroy]
 				Core.create_empty_action(value, :copy) if value.is_a?(AST::Struct) && value.real_struct.level == :copyable && !value.actions[:copy]
 

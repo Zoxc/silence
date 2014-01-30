@@ -40,6 +40,8 @@ struct Mem
 	shared fn free(ptr)
 		C.free(ptr_cast ptr)
 
+	action create
+
 instance Allocator(Mem)
 	fn alloc[P](size uint) -> *P
 		return self.alloc(size)

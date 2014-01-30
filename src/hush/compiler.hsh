@@ -6,4 +6,4 @@ struct ref Compiler
 	errors Array(*Error)
 
 	action create(file) :
-		lexer <- Lexer(file)
+		lexer <- Lexer(&self, file)

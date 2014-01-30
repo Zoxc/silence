@@ -394,7 +394,7 @@
 				
 				true
 			elsif c.args.values.all? { |t| t.fixed_type? }
-				raise CompileError.new("Unable to find an instance of the type class '#{c}'\n#{c.source.format}")
+				raise CompileError, "Unable to find an instance of the type class '#{c}'\n#{c.source.format}"
 			end
 		end or
 		

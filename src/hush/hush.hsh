@@ -4,6 +4,9 @@ fn parse(input, name)
 	IO.puts("Parsing file: " ~ name)
 	.file = SrcFile(input, name)
 	.compiler = Compiler(&file)
+	IO.puts("err file: " ~ show compiler.errors.size)
+	compiler.errors.each |error|
+		IO.puts("Error: " ~ error.str())
 
 export fn main() -> c_int
 	match File.read("test.hsh") as r

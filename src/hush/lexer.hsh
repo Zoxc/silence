@@ -58,13 +58,14 @@ struct ref Lexer
 	jump_table Table(256, () -> ())
 
 	fn src() -> *SrcLoc
-		return new(tok.start, tok.stop)
+		return new(file, tok.start, tok.stop)
 
 	fn report[T] *args
 		.error = Callable(new[T]).apply(Cell(src(), args))
 		compiler.errors.push error
 
-	action create(file) :
+	action create(compiler, file) :
+		compiler <- compiler,
 		file <- file,
 		tok <- State(file.content.data, ptr_idx(file.content.data, file.content.size - 1), &self),
 		i <- Input(&self),
