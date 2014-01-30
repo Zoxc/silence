@@ -820,7 +820,7 @@ class Parser
 				op = tok_val
 				step
 				skip :line
-				return AST::BinOp.new(src, result, op, assign_operator)
+				return AST::BinOp.new(src, result, op, expression)
 		end if tok == :sym
 		
 		result
