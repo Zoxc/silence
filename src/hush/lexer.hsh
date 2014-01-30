@@ -107,11 +107,10 @@ struct ref Lexer
 	fn unknown()
 		i.step()
 
-		.loop = ->
-			if jump_table(force_cast i.c()) == unknown
-				i.step()
-				loop()
-		loop()
+		loop
+			if jump_table(force_cast i.c()) != unknown
+				break
+			i.step()
 
 		tok.end()
 

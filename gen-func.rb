@@ -9,6 +9,7 @@ class FuncCodegen
 		@var_name = 0
 		@label_name = 0
 		@vars = []
+		@loop = {}
 		@current_vars = []
 		@decl_map = {}
 	end
@@ -805,6 +806,19 @@ class FuncCodegen
 					del_var lhs
 				end
 				del_var rhs
+			when AST::Break
+				# TODO: Destroy active variables (but not above the loop)
+				o "goto #{@loop[ast.gen]};"
+				assign_var(var, Core::Unit.ctype.type, nil)
+			when AST::Loop
+				exit = new_label
+				start = new_label
+				@loop[ast] = exit
+				gen_label start
+				convert(ast.group, nil)
+				o "goto #{start};"
+				gen_label exit
+				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::If
 				cond = new_var
 				el = new_label

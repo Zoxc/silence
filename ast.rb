@@ -806,6 +806,23 @@ module AST
 		end
 	end
 
+	class Loop < ExpressionNode
+		attr_accessor :group
+		
+		def initialize(source, group)
+			super(source)
+			@group = group
+		end
+	
+		def visit
+			@group = yield @group
+		end
+	end
+
+	class Break < ExpressionNode
+		attr_accessor :gen
+	end
+
 	class InitEntry < ExpressionNode
 		attr_accessor :field, :expr, :gen
 		

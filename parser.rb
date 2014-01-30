@@ -661,7 +661,7 @@ class Parser
 		case tok
 			when :id
 				case tok_val
-					when :return, :if, :match
+					when :return, :if, :match, :loop
 						true
 				end
 			when :sym
@@ -679,6 +679,10 @@ class Parser
 					return _match
 				when :return
 					return _return
+				when :break
+					return _break
+				when :loop
+					return _loop
 				when :if
 					return _if
 			end
@@ -784,6 +788,21 @@ class Parser
 		end
 		
 		AST::If.new(src, exp, grp, else_grp)
+	end
+	
+	def _break
+		src = @l.source
+		step
+		AST::Break.new(src)
+	end
+	
+	def _loop
+		baseline = @l.indent
+		src = @l.source
+		step
+		grp = expression_group(baseline)
+
+		AST::Loop.new(src, grp)
 	end
 	
 	def assign_operator

@@ -89,7 +89,7 @@
 	# TODO: Make scoped and typeclass into an enum of NoTypeclasses, ViewTypeclasses, ScopedTypeclasses
 	# TODO: Make lvalue and tuple_lvalue into an enum of NotLValue, TupleLValue, LValue
 	class AnalyzeArgs
-		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended, :func, :unused, :instance
+		attr_accessor :lvalue, :tuple_lvalue, :typeof, :typeclass, :scoped, :extended, :func, :loop, :unused, :instance
 		def initialize(func)
 			@func = func
 			@lvalue = false
@@ -105,6 +105,7 @@
 		def next(opts = {})
 			new = dup
 			new.func = opts[:func] || @func
+			new.loop = opts[:loop] || @loop
 			new.typeof = opts[:typeof] || @typeof
 			new.instance = opts[:instance] || @instance
 			new.lvalue = opts[:lvalue] || false
@@ -580,6 +581,13 @@
 					@result[args.func] = result
 				end
 				
+				Result.new(unit_type(ast.source), true)
+			when AST::Break
+				raise CompileError.new("Break without a loop\n#{ast.source.format}") unless args.loop
+				ast.gen = args.loop
+				Result.new(unit_type(ast.source), true)
+			when AST::Loop
+				analyze_value(ast.group, args.next(loop: ast))
 				Result.new(unit_type(ast.source), true)
 			when AST::If
 				cond = analyze_value(ast.condition, args.next)

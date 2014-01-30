@@ -28,11 +28,10 @@ struct Array(T, A Allocator = Mem)
 		if capacity >= size + n
 			return
 
-		.loop = ->
-			capacity *= 2
-			if(capacity < size + n)
-				loop()
-		loop()
+		loop
+			capacity = 2 * (capacity + 1)
+			if(capacity >= size + n)
+				break
 
 		list = Allocator(allocator).realloc(list, size * unit, capacity * unit)
 
