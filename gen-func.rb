@@ -309,6 +309,26 @@ class FuncCodegen
 		end
 	end
 
+	def get_field_obj(ast, proper)
+		obj_ptr = new_var
+		del_var obj_ptr, false
+		
+		if proper
+			lvalue(ast.obj, obj_ptr, true)
+		else
+			ovar = readonly(ast.obj, obj_ptr)
+		end
+
+		ast.gen[:deref].each do |deref|
+			new_obj_ptr = new_var
+			del_var new_obj_ptr, false
+			direct_call(new_obj_ptr, ref(Core::Reference::Get, {Core::Reference::T => deref[:type]}), obj_ptr.ref, [], deref[:result])
+			obj_ptr = new_obj_ptr
+		end
+
+		return obj_ptr, ovar
+	end
+
 	def extract_func(ast)
 		case ast
 			when AST::Field
@@ -317,9 +337,7 @@ class FuncCodegen
 						extract_func_f(ast.gen[:ref], ast.gen[:args].params)
 					when :field
 						if ast.gen[:ref].is_a?(AST::Function)
-							obj_ptr = new_var
-							del_var obj_ptr, false
-							ovar = readonly(ast.obj, obj_ptr)
+							obj_ptr, ovar = get_field_obj(ast, false)
 							[ref(ast.gen[:ref], ast.gen[:args].params), obj_ptr.ref, ovar]
 						end
 				end
@@ -452,21 +470,8 @@ class FuncCodegen
 					when :single
 						assign_f(var, ast.gen[:result], ast.gen[:ref], ast.gen[:args].params)
 					when :field
-						obj_ptr = new_var
-						if proper
-							lvalue(ast.obj, obj_ptr, true)
-						else
-							ovar = readonly(ast.obj, obj_ptr)
-						end
-						del_var obj_ptr, false
-
-						ast.gen[:deref].each do |deref|
-							new_obj_ptr = new_var
-							del_var new_obj_ptr, false
-							direct_call(new_obj_ptr, ref(Core::Reference::Get, {Core::Reference::T => deref[:type]}), obj_ptr.ref, [], deref[:result])
-							obj_ptr = new_obj_ptr
-						end
-
+						obj_ptr, ovar = get_field_obj(ast, proper)
+						
 						ref = if ast.gen[:ref].is_a?(AST::Function)
 							gen_func(obj_ptr.ref, ref(ast.gen[:ref], ast.gen[:args].params), ast.gen[:result])
 						else
