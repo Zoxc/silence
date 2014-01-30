@@ -782,7 +782,13 @@ class Parser
 		if eq :id, :else
 			baseline = @l.indent
 			step
-			else_grp = expression_group(baseline)
+			if eq :id, :if
+				source do |s|
+					AST::ExpressionGroup.new(s, [_if])
+				end
+			else
+				else_grp = expression_group(baseline)
+			end
 		else
 			@l = state
 		end
