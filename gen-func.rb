@@ -637,13 +637,15 @@ class FuncCodegen
 				when_labels = ast.whens.map { new_label }
 
 				ast.whens.each_with_index do |w, i|
-					test = new_var
-					w_expr = new_var
-					convert(w.type, w_expr)
-					direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), "&#{expr.ref}", [expr.ref, w_expr.ref], Core::Bool.ctype.type)
-					del_var w_expr
-					o "    if(#{test.ref} == Enum_bool_true) goto #{when_labels[i]};"
-					del_var test
+					w.cases.each do |c|
+						test = new_var
+						c_expr = new_var
+						convert(c, c_expr)
+						direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), "&#{expr.ref}", [expr.ref, c_expr.ref], Core::Bool.ctype.type)
+						del_var c_expr
+						o "    if(#{test.ref} == Enum_bool_true) goto #{when_labels[i]};"
+						del_var test
+					end
 				end
 
 				if ast.else_group
@@ -673,11 +675,13 @@ class FuncCodegen
 
 				when_labels = ast.rest.whens.map { new_label }
 
-				idx = proc { |i| type.ref.cases.index(ast.gen[:when_objs][i]) }
+				idx = proc { |i, ci| type.ref.cases.index(ast.gen[:when_objs][i][ci]) }
 
 				o "switch(#{expr.ref}.type) {"
 				ast.rest.whens.each_with_index do |w, i|
-					o "    case #{idx.(i)}: goto #{when_labels[i]};"
+					w.cases.each_with_index do |c, ci|
+						o "    case #{idx.(i, ci)}: goto #{when_labels[i]};"
+					end
 				end
 				o "}"
 

@@ -732,10 +732,10 @@ class Parser
 						when_baseline = @l.indent
 						step
 						skip :line
-						when_type = expression
+						when_cases = expression_list
 						when_group = expression_group(when_baseline)
 
-						whens << AST::MatchWhen.new(s, when_type, when_group)
+						whens << AST::MatchWhen.new(s, when_cases, when_group)
 					end
 
 					break if term.()
@@ -959,22 +959,26 @@ class Parser
 		
 		result
 	end
+
+	def expression_list
+		r = []
+		loop do
+			r << expression
+			if matches :sym, ','
+				skip :line
+			else
+				break
+			end
+		end
+		r
+	end
 	
 	def tuple(s)
 		step
 		skip :line
 		
 		r = []
-		if !eq(:sym, ')')
-			loop do
-				r << expression
-				if matches :sym, ','
-					skip :line
-				else
-					break
-				end
-			end
-		end
+		r = expression_list if !eq(:sym, ')')
 		
 		match :sym, ')'
 		
@@ -990,16 +994,7 @@ class Parser
 		skip :line
 		
 		r = []
-		if !eq(:sym, ']')
-			loop do
-				r << expression
-				if matches :sym, ','
-					skip :line
-				else
-					break
-				end
-			end
-		end
+		r = expression_list if !eq(:sym, ']')
 		
 		match :sym, ']'
 		

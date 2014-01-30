@@ -184,7 +184,7 @@ class Lexer
 				end
 				s.getch
 				[v, :sym, v]
-			when v = s.scan(/[\.*+=\-\|,:&~!^%]/)
+			when v = s.scan(/[\.*+=\-\|,:&~!^%\/]/)
 				[v, :sym, v]
 			when s.eos?
 				@pos = @src.src.size - 1
@@ -196,8 +196,8 @@ class Lexer
 					['', :eos, true]
 				end
 			else
-				puts "Unknown char '#{s.getch()}'"
-				find_token
+				@tok_str = s.getch()
+				raise CompileError, "Unknown char '#{@tok_str}'\n#{source.format}"
 		end
 	end
 	

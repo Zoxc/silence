@@ -516,8 +516,10 @@
 				typeclass_limit(ast.source, Core::Eq::Node, {Core::Eq::T => type})
 
 				cases = ast.whens.map do |w|
-					w_type = analyze_value(w.type, args.next)
-					unify(type, w_type)
+					w.cases.map do |c|
+						c_type = analyze_value(c, args.next)
+						unify(type, c_type)
+					end
 					analyze_value(w.group, args.next)
 				end
 
@@ -534,20 +536,24 @@
 				@vars[ast.rest.binding] = type
 
 				when_objs = ast.rest.whens.map do |w|
-					w_type = analyze_impl(w.type, args.next)
-					obj = case w_type
-						when RefResult
-							raise "Expected union case\n#{w.source.format}" unless w_type.obj.is_a?(AST::StructCase)
-							unify(type, Types::Ref.new(w.type.source, w_type.obj.parent, w_type.args))
-							w_type.obj
-						else
-							raise "Expected union case\n#{w.source.format}"
+					objs = w.cases.map do |c|
+						c_type = analyze_impl(c, args.next)
+						obj = case c_type
+							when RefResult
+								raise "Expected union case\n#{w.source.format}" unless c_type.obj.is_a?(AST::StructCase)
+								unify(type, Types::Ref.new(c.source, c_type.obj.parent, c_type.args))
+								c_type.obj
+							else
+								raise "Expected union case\n#{w.source.format}"
+						end
 					end
 
-					extended = args.extended.dup
-					extended[ast.rest.binding] = obj
+					if objs.size == 1
+						extended = args.extended.dup
+						extended[ast.rest.binding] = objs.first
+					end
 					
-					[obj, analyze_value(w.group, args.next(extended: extended))]
+					[objs, analyze_value(w.group, args.next(extended: extended))]
 				end
 
 				ast.gen = {expr: type, when_objs: when_objs.map(&:first), unused: args.unused}

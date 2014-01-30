@@ -732,16 +732,16 @@ module AST
 	end
 	
 	class MatchWhen < Node
-		attr_accessor :type, :group
+		attr_accessor :cases, :group
 		
-		def initialize(source, type, group)
+		def initialize(source, cases, group)
 			super(source)
-			@type = type
+			@cases = cases
 			@group = group
 		end
 
 		def visit
-			@type = yield @type
+			@cases.map! { |n| yield n }
 			@group = yield @group
 		end
 	end
