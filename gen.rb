@@ -79,7 +79,7 @@ class Codegen
 	
 	def ref_action(type, map, action_type, opt = true)
 		complex, map = fixed_type(type, map)
-		raise "Copying non-copyable!" if complex.level != :copyable && action_type == :copy
+		raise "Copying non-copyable #{complex.scoped_name} in #{@current.scoped_name}!" if complex.level != :copyable && action_type == :copy
 		action = complex.actions[action_type]
 		if action
 			gen(action, map)
@@ -229,6 +229,7 @@ class Codegen
 	def gen(ast, map)
 		list = (@gen[ast] ||= [])
 		return if list.find { |i| map == i }
+		@current = ast
 		list << map
 		Silence.puts "Generating #{ast.scoped_name} - #{map}"
 		case ast

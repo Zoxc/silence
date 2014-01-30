@@ -1007,13 +1007,13 @@
 			nodes = owner.scope.names.values
 			(nodes = owner.parent.scope.names.values + nodes) if owner.is_a?(AST::StructCase)
 
-			func.gen_init_list = nodes.map do |ast|
-				case ast
-					when AST::VariableDecl
-						if !ast.var.props[:shared] && !inits[ast.var]
-							var_type, inst_args = inst_ex(func.source, ast.var, owner.ctype.type.args)
-							typeclass_limit(ast.var.source, Core::Defaultable::Node, {Core::Defaultable::T => var_type})
-							{field: ast.var, type: var_type}
+			func.gen_init_list = nodes.map do |var|
+				case var
+					when AST::Variable
+						if !var.props[:shared] && !inits[var]
+							var_type, inst_args = inst_ex(func.source, var, owner.ctype.type.args)
+							typeclass_limit(var.source, Core::Defaultable::Node, {Core::Defaultable::T => var_type})
+							{field: var, type: var_type}
 						end
 				end
 			end.compact
@@ -1022,8 +1022,6 @@
 		func.init_list.each { |i| analyze_impl(i, a_args) }
 		
 		analyze(func.scope, a_args.next(unused: true))
-		
-		# TODO: make @result default to Unit, so the function can reference itself
 		
 		finalize(get_func_type, true)
 	end

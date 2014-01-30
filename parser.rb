@@ -9,6 +9,14 @@ class Parser
 		@l = Lexer.new(str)
 		@imports = []
 	end
+
+	def push_state(n, v)
+		old = instance_variable_get(n)
+		instance_variable_set(n, v)
+		r = yield
+		instance_variable_set(n, old)
+		r
+	end
 	
 	def tok
 		@l.tok
@@ -704,7 +712,7 @@ class Parser
 			baseline = @l.indent
 			step
 			skip :line
-			exp = chain
+			exp = push_state(:@in_match, true) { expression }
 			if matches(:id, :as)
 				binding_source, binding = source do |s|
 					next s, match(:id)
@@ -1012,7 +1020,9 @@ class Parser
 					when '[', '(', '|', '->'
 						true
 				end
-			when :id, :int, :str
+			when :id
+				!@in_match || tok_val != :as
+			when :int, :str
 				true
 		end
 	end
