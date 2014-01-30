@@ -6,6 +6,9 @@ fileTypes: [hsh]
 uuid: 76d56f58-7ddf-4e60-a4d1-2b9d14a1be3c
 
 patterns:
+- match: "#.*"
+  name: comment.hush
+
 - begin: '"'
   beginCaptures:
     '0':
@@ -81,7 +84,7 @@ patterns:
         name: support.function
   
 # Function with { on next line or whitespace scope
-- begin: ^(\s*)((?:shared|import|export)\s*)*(?:\[.*?\]\s*)?(fn)\s+([A-Za-z_0-9]+)(?:(\[).*(\])\s*)?(\()(.*?)(\))(?:\s*(->))?.*$
+- begin: ^(\s*)((?:shared|import|export)\s*)*(?:\[.*?\]\s*)?(fn)\s+([A-Za-z_0-9]+)(?:(\[).*(\])\s*)?(?:(\()(.*?)(\))|(\*)([A-Za-z_0-9]+))(?:\s*(->))?.*$
   beginCaptures:
     '2':
       name: storage.modifier.hush
@@ -100,7 +103,7 @@ patterns:
     '10':
       name: keyword.operator.hush
     '11':
-      name: storage.type.hush
+      name: variable.hush
   end: ^(?!\1\s)(?!\s*$)(?!\s*{)|(})
   endCaptures:
     '1':
@@ -137,12 +140,20 @@ patterns:
 repository: 
   type:
     patterns:
+      - match: "#.*"
+        name: comment.hush
+      - match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
+        name: constant.numeric.hush
       - match: "[A-Za-z_0-9]+"
         name: storage.type.hush
       - match: "[\\*\\(\\)]|->"
         name: keyword.operator.hush
   expression:
     patterns:
+      - match: "#.*"
+        name: comment.hush
+      - match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
+        name: constant.numeric.hush
       - begin: "^[ \\t]*\\.[A-Za-z_0-9]+"
         end: (?=\s*($|=|;))
         name: variable.hush
@@ -151,7 +162,7 @@ repository:
         captures:
           '1':
             name: keyword.operator.hush
-      - match: \b(if|else|match|return|as|when|typeof)\b
+      - match: \b(if|else|match|return|as|when|typeof|loop|break)\b
         name: keyword.hush
       - match: "[/\\*^&%!()\\[\\]~\\-\\+=,\\.:<>?|]"
         name: keyword.operator.hush

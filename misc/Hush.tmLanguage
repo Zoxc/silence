@@ -11,6 +11,12 @@
 	<key>patterns</key>
 	<array>
 		<dict>
+			<key>match</key>
+			<string>#.*</string>
+			<key>name</key>
+			<string>comment.hush</string>
+		</dict>
+		<dict>
 			<key>begin</key>
 			<string>"</string>
 			<key>beginCaptures</key>
@@ -194,7 +200,7 @@
 		</dict>
 		<dict>
 			<key>begin</key>
-			<string>^(\s*)((?:shared|import|export)\s*)*(?:\[.*?\]\s*)?(fn)\s+([A-Za-z_0-9]+)(?:(\[).*(\])\s*)?(\()(.*?)(\))(?:\s*(-&gt;))?.*$</string>
+			<string>^(\s*)((?:shared|import|export)\s*)*(?:\[.*?\]\s*)?(fn)\s+([A-Za-z_0-9]+)(?:(\[).*(\])\s*)?(?:(\()(.*?)(\))|(\*)([A-Za-z_0-9]+))(?:\s*(-&gt;))?.*$</string>
 			<key>beginCaptures</key>
 			<dict>
 				<key>10</key>
@@ -205,7 +211,7 @@
 				<key>11</key>
 				<dict>
 					<key>name</key>
-					<string>storage.type.hush</string>
+					<string>variable.hush</string>
 				</dict>
 				<key>2</key>
 				<dict>
@@ -334,6 +340,18 @@
 			<key>patterns</key>
 			<array>
 				<dict>
+					<key>match</key>
+					<string>#.*</string>
+					<key>name</key>
+					<string>comment.hush</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>\b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b</string>
+					<key>name</key>
+					<string>constant.numeric.hush</string>
+				</dict>
+				<dict>
 					<key>begin</key>
 					<string>^[ \t]*\.[A-Za-z_0-9]+</string>
 					<key>end</key>
@@ -357,7 +375,7 @@
 				</dict>
 				<dict>
 					<key>match</key>
-					<string>\b(if|else|match|return|as|when|typeof)\b</string>
+					<string>\b(if|else|match|return|as|when|typeof|loop|break)\b</string>
 					<key>name</key>
 					<string>keyword.hush</string>
 				</dict>
@@ -422,6 +440,18 @@
 		<dict>
 			<key>patterns</key>
 			<array>
+				<dict>
+					<key>match</key>
+					<string>#.*</string>
+					<key>name</key>
+					<string>comment.hush</string>
+				</dict>
+				<dict>
+					<key>match</key>
+					<string>\b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b</string>
+					<key>name</key>
+					<string>constant.numeric.hush</string>
+				</dict>
 				<dict>
 					<key>match</key>
 					<string>[A-Za-z_0-9]+</string>
