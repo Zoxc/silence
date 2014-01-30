@@ -419,9 +419,8 @@ class Codegen
 
 				o << "\n{\n"
 
-				o << "#{name}() = default;\n\n"
-
-				if ast.level != :copyable
+				if ast.level != :copyable && !ast.is_a?(AST::StructCase)
+					o << "#{name}() = default;\n\n"
 					o << "#{name}(const #{name}&) = delete;\n\n" 
 					o << "#{name}& operator=(const #{name}&) = delete;\n\n" 
 				end

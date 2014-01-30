@@ -175,10 +175,8 @@ class FuncCodegen
 			end
 
 			@func.init_list.each do |ast|
-				var = new_var
+				var = RealVar.new("*(#{ref_field(ast.gen[:ref])})", params_type)
 				convert(ast.expr, var)
-				o "*(#{ref_field(ast.gen[:ref])}) = #{var.ref}; // construct"
-				del_var var, false
 			end
 
 			handle_action if @func.action_type == :copy
