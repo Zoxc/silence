@@ -42,7 +42,7 @@ def parse(files, asts, file)
 	return if files[file]
 	files[file] = true
 
-	puts "Parsing #{fpath file}"
+	Silence.puts "Parsing #{fpath file}"
 
 	input = File.open(file) { |f| f.read }
 	parser = Parser.new(AST::Input.new(input, fpath(file)))
@@ -82,10 +82,15 @@ def process(file, parent)
 		exit
 	end
 	
+	puts "Generating code..."
 	File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
 
+	puts "Compiling output..."
 	system "g++ -std=gnu++0x -g -Wall -Wno-unused-but-set-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable #{File.expand_path('../hush.cpp', __FILE__)} output.cpp -o output"
-	raise "Failed to compile C++ output" if $?.exitstatus != 0
+	if $?.exitstatus != 0
+		$stderr.puts "Failed to compile C++ output" 
+		exit
+	end
 	puts "Running..."
 	system(IsWindows ? 'output.exe' : './output')
 	
