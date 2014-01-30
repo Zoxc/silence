@@ -156,11 +156,15 @@ class Lexer
 		case
 			when v = s.scan(/[ \t]+/)
 				find_token
-			when s.scan(/\#/)
+			when s.scan(/#/)
 				s.scan(/.*?(\r\n|\n|\r|\z)/)
 				find_token
 			when v = s.scan(/\r\n|\n|\r/)
-				[v, :line, true]
+				if s.scan(/(?=[ \t]*#)/) # Ignore empty line
+					find_token
+				else
+					[v, :line, true]
+				end
 			when v = s.scan(/"/)
 				c = ''
 				while s.scan(/"/) != '"'

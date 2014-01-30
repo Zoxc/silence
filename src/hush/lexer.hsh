@@ -29,7 +29,7 @@ struct ref Lexer
 			stop = pos
 
 		fn str()
-			return String.from_data(start, int_ptr stop - int_ptr start)
+			return String.from_data(start, ptr_diff(stop, start))
 
 	struct Input
 		lexer *Lexer
@@ -91,7 +91,7 @@ struct ref Lexer
 
 		jump_table(force_cast i.c())()
 
-		assert -> int_ptr tok.stop >= int_ptr tok.start
+		assert -> ptr_int tok.stop >= ptr_int tok.start
 		assert -> tok.type != Token.None
 
 	fn eof()

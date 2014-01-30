@@ -8,4 +8,6 @@ struct IO
 		print String.from_data(&l, 1)
 
 	shared fn gets()
-		return Runtime.hush_gets()
+		.r = undef()
+		Runtime.hush_gets(&r)
+		return r

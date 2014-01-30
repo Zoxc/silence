@@ -12,3 +12,96 @@ struct ref SrcLoc
 	file *SrcFile
 	start *char
 	stop *char
+
+	fn size()
+		return ptr_diff(stop, start)
+
+	fn line_nr(pos *char)
+		.c = file.content.data
+		.line uint = 1
+
+		loop
+			if c == pos
+				break
+			if *c == 10
+				line += 1
+			else if *c == 13
+				line += 1
+				if *(ptr_succ c) == 10
+					c = ptr_succ c
+			c = ptr_succ c
+
+		return line
+
+	fn line_start()
+		.file_start = file.content.data
+		.c = start
+
+		loop
+			if c == file_start
+				break
+			if *c == 10
+				if *(ptr_pred c) == 13
+					c = ptr_pred c
+				c = ptr_succ c
+				break
+			c = ptr_pred c
+
+		return c
+
+	fn line_end(c *char)
+		loop
+			if ptr_idx(file.content.data, file.content.size) == c
+				break
+
+			match *c
+				when 10, 13
+					break
+				else
+
+			c = ptr_succ c
+
+		return c
+
+	fn indicator(c *char)
+		.result
+
+		loop
+			if ptr_int c >= ptr_int start
+				break
+
+			result ~= if *c == 9
+				String.from_c(9)
+			else
+				" "
+
+			c = ptr_succ c
+
+		if size() == 1
+			result ~= "^"
+		else
+			c = start
+			loop
+				if (ptr_idx(file.content.data, file.content.size) == c) | (ptr_int c >= ptr_int stop)
+					break
+
+				match *c
+					when 10, 13
+						break
+					else
+
+				result ~= if ptr_int c < ptr_int stop
+				    "~"
+				else
+					" "
+
+				c = ptr_succ c
+
+		return result
+
+	fn format()
+		.line = line_start()
+		.prefix = file.path ~ ":" ~ show line_nr(line) ~ " "
+		.ind = (" " :: String).repeat(prefix.size) ~ indicator(line)
+
+		return prefix ~ String.from_data(line, ptr_diff(line_end(line), line)) ~ String.from_c(10) ~ ind

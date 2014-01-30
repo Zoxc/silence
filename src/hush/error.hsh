@@ -13,3 +13,6 @@ struct ref Error
 				"Unexpected character(s)"
 			when NullChar
 				"Unexpected null-terminator"
+
+	fn format()
+		return str() ~ String.from_c(10) ~ src.format()

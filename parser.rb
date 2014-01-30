@@ -666,7 +666,7 @@ class Parser
 				end
 			when :sym
 				case tok_val
-					when '*', '&', '.', '-', '+', '!'
+					when '*', '&', '.', '-', '+', '!', '|'
 						true
 				end
 		end
@@ -1035,9 +1035,7 @@ class Parser
 		case tok
 			when :sym
 				case tok_val
-					when '|'
-						!@in_lambda_params
-					when '[', '(', '|', '->'
+					when '[', '(', '->'
 						true
 				end
 			when :id

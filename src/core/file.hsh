@@ -1,20 +1,17 @@
 struct File
 	shared fn read(path String)
-		.f = path.c_str |p| C.fopen(p, "r")
+		.f = path.c_str -> |p| C.fopen(p, "r")
 
 		if is_nil_ptr(f)
 			return Option.Nil()
 
 		.result String
 
-		.r = ->
+		loop
 			.c = C.fgetc(f)
-			if c != -1
-				.u char = force_cast c
-				result ~= String.from_data(&u, 1)
-				r()
-
-		r()
+			if c == -1
+				break
+			result ~= String.from_c(force_cast c)
 
 		C.fclose(f)
 

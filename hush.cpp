@@ -18,18 +18,18 @@ struct HushString
     }
 };
 
-extern "C" HushString hush_show_uint(uintptr_t i)
+extern "C" void hush_show_uint(HushString *str, uintptr_t i)
 {
     stringstream s;
     s << i;
-    return HushString(s.str());
+    *str = HushString(s.str());
 }
 
-extern "C" HushString hush_show_int(intptr_t i)
+extern "C" void hush_show_int(HushString *str, intptr_t i)
 {
     stringstream s;
     s << i;
-    return HushString(s.str());
+	*str = HushString(s.str());
 }
 
 extern "C" void hush_puts(char *c, size_t size)
@@ -37,9 +37,9 @@ extern "C" void hush_puts(char *c, size_t size)
     cout << string(c, size);
 }
 
-extern "C" HushString hush_gets()
+extern "C" void hush_gets(HushString *str)
 {
     string s;
     getline(cin, s);
-	return HushString(s);
+	*str = HushString(s);
 }

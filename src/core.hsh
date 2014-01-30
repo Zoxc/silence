@@ -16,12 +16,12 @@ class RefConstructable(T)
 instance(T) RefConstructable(*T)
 	alias Header = ()
 	shared fn construct(obj *(), allocator) -> *T
-		return ptr_cast obj
+		return ptr_cast ptr_succ(obj)
 
 fn allocate[T, Ref](args, allocator) -> Ref
 	.size = size_of[RefConstructable(Ref).Header]() + size_of[Constructor(T).Constructed]()
 	.obj = Allocator(allocator).alloc(size)
-	.result = ptr_cast ptr_idx(obj, 1)
+	.result = ptr_cast ptr_succ(obj)
 	Constructor[T].construct(result, args)
 	return RefConstructable[Ref].construct(obj, allocator)
 
@@ -98,11 +98,15 @@ class Show(T)
 
 instance Show(int)
 	fn show()
-		return Runtime.hush_show_int(self)
+		.r = undef()
+		Runtime.hush_show_int(&r, self)
+		return r
 
 instance Show(uint)
 	fn show()
-		return Runtime.hush_show_uint(self)
+		.r = undef()
+		Runtime.hush_show_uint(&r, self)
+		return r
 
 instance Show(String)
 	fn show()
@@ -137,11 +141,11 @@ struct Option(T)
 fn ptr_cast[R, P](p *P) -> R
 	return force_cast(p)
 
-fn int_ptr[P](p *P)
+fn ptr_int[P](p *P)
 	return force_cast[uint](p)
 
 fn is_nil_ptr(p)
-	return int_ptr(p) == 0
+	return ptr_int(p) == 0
 
 fn nil_ptr[P]() -> *P
 	.z uint = 0
@@ -161,6 +165,15 @@ fn for_range(a, b, f)
 
 fn ptr_idx[T](ptr *T, idx uint) -> *T
 	return force_cast(force_cast ptr + idx * size_of[T]())
+
+fn ptr_pred[T](ptr *T) -> *T
+	return force_cast(force_cast ptr - size_of[T]())
+
+fn ptr_diff[T](lhs *T, rhs *T) -> uint
+	return (force_cast[uint] lhs - force_cast rhs) / size_of[T]()
+
+fn ptr_succ[T](ptr *T) -> *T
+	return force_cast(force_cast ptr + size_of[T]())
 
 instance(T Indexable) Callable(T)
 	alias Result = Indexable(T).Result

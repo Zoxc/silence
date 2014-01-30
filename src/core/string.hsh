@@ -14,6 +14,11 @@ struct String
 	action destroy
 		Mem.free(data)
 
+	shared fn from_c(data char)
+		.new = Mem.alloc(size_of[char]())
+		Mem.copy(&data, new, size_of[char]())
+		return String(new, 1)
+
 	shared fn from_data(data *char, size)
 		.new = Mem.alloc(size)
 		Mem.copy(data, new, size)
@@ -29,6 +34,11 @@ struct String
 
 	fn each(f)
 		times(size, |i| f(*ptr_idx(data, i)))
+
+	fn repeat(t uint) -> String
+		.r
+		times(t, |i| r ~= self)
+		return r
 
 instance StringLiteral(String)
 	fn create(data *char, size)
