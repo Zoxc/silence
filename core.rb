@@ -167,6 +167,19 @@ class Core
 			Generated.nodes << instance
 			run_pass(instance)
 		end
+		
+		def create_enum_str(obj)
+			r = AST::Function.new(src, :str, AST::KindParams.new(src, [], []))
+			r.params = []
+			cases = obj.values.map do |v|
+				AST::MatchWhen.new(src, [AST::Ref.new(src, v)], AST::LocalScope.new([AST::Literal.new(src, :string, v.name.to_s)]))
+			end
+			match = AST::Match.new(src, AST::NameRef.new(src, :self), cases, nil)
+			r.scope = AST::FuncScope.new([AST::Return.new(src, match)])
+			obj.scope.nodes << r
+
+			run_pass(r, obj.scope)
+		end
 	end
 	
 	# Typeclasses which allows you to increase required levels in type parameters

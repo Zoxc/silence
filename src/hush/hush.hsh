@@ -9,7 +9,7 @@ fn parse(input, name)
 		if compiler.lexer.tok.type == Token.EndOfFile
 			break
 
-		IO.puts("Token: " ~ String.from_c(10) ~ compiler.lexer.src().format())
+		IO.puts("Token: " ~ compiler.lexer.tok.type.str() ~ String.from_c(10) ~ compiler.lexer.src().format())
 		compiler.lexer.step()
 
 	compiler.errors.each -> |error|

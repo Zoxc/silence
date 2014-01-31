@@ -574,14 +574,12 @@ module AST
 		end
 	end
 	
-	class Enum < Complex
+	class Enum < Struct
 		attr_accessor :values, :actions, :level
 		
 		def initialize(source, name, values)
 			super(source, name, AST::GlobalScope.new(values), AST::KindParams.new(source, [], []))
 			@values = values
-			@level = :copyable
-			@actions = {}
 		end
 	end
 	

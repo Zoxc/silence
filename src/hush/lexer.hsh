@@ -5,6 +5,7 @@ enum Token
 	None
 	Unknown
 	Ident
+	Number
 	EndOfFile
 
 struct ref Lexer
@@ -86,6 +87,8 @@ struct ref Lexer
 
 		set_chars(0, 255, unknown)
 
+		set_chars("0", "9", number)
+
 		set_chars("A", "Z", ident)
 		set_chars("a", "z", ident)
 		set_char("_", ident)
@@ -110,6 +113,17 @@ struct ref Lexer
 			report[Error.NullChar]()
 			i.step()
 			step()
+
+	fn number()
+		i.step()
+
+		loop
+			if !i.in("0", "9")
+				break
+			i.step()
+
+		tok.end()
+		tok.type = Token.Number
 
 	fn ident()
 		i.step()

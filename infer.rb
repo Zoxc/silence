@@ -516,7 +516,7 @@
 				typeclass_limit(ast.source, Core::Eq::Node, {Core::Eq::T => type})
 
 				cases = ast.whens.map do |w|
-					w.cases.map do |c|
+					w.cases.each do |c|
 						c_type = analyze_value(c, args.next)
 						unify(type, c_type)
 					end
@@ -524,8 +524,8 @@
 				end
 
 				cases += [analyze_value(ast.else_group, args.next)] if ast.else_group
-
-				cases.inject { |m, o| unify(m, o) } unless args.unused
+				
+				cases.inject { |m, o| unify(m, o); m } unless args.unused
 
 				ast.gen = {type: type, unused: args.unused}
 
@@ -562,7 +562,7 @@
 
 				cases += [analyze_value(ast.rest.else_group, args.next)] if ast.rest.else_group
 
-				cases.inject { |m, o| unify(m, o) } unless args.unused
+				cases.inject { |m, o| unify(m, o); m } unless args.unused
 
 				Result.new(args.unused ? unit_type(ast.source) : cases.first, true)
 			when AST::VariableDecl
@@ -1170,6 +1170,7 @@
 				case value
 					when AST::Enum
 						Core.create_enum_eq(value)
+						Core.create_enum_str(value)
 					when AST::StructCase
 						Core.create_constructor_action(value) unless value.actions[:create_args]
 						Core.create_constructor(value)
