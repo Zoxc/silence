@@ -37,7 +37,7 @@ struct Array(T, A Allocator = Mem)
 
 	fn push(val)
 		expand(1)
-		*list = val
+		*ptr_idx(list, size) = val
 		size += 1
 
 	fn ptr(idx uint) -> *T
