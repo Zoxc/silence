@@ -771,6 +771,8 @@
 						result = Types::Ref.new(ast.source, typeclass[:result]) if typeclass[:result]
 					end
 
+					unify(lhs, Types::Ref.new(ast.source, Core::Bool)) if ['or', 'and'].include?(plain_op)
+
 					unify(lhs, rhs)
 					ast.gen = {arg: lhs, result: result, plain_op: plain_op}
 					Result.new(result, true)

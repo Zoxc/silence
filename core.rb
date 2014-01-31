@@ -469,8 +469,6 @@ class Core
 		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
 		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}
 	}
-	OpMap['||'] = OpMap['|']
-	OpMap['&&'] = OpMap['&&']
 	OpMap['!='] = OpMap['==']
 	OpMap['>='] = OpMap['>']
 	OpMap['<='] = OpMap['>']

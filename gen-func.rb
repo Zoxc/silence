@@ -564,8 +564,17 @@ class FuncCodegen
 			direct_call(cmp_op ? cmp_op_var : var, ref(typeclass[:func], {typeclass[:param] => ast.gen[:arg]}), nil, [lhs_arg.ref, rhs_arg.ref], cmp_op ? Types::Ref.new(Core.src, Core::Order) : ast.gen[:result])
 			del_var rhs_arg, false
 			del_var lhs_arg, false
+
+			o "#{var.ref} = #{var.ref} == Enum_bool_true ? Enum_bool_false : Enum_bool_true;" if op =='!='
 		else
-			assign_var(var, ast.gen[:result], lhs + " #{op} " + rhs.ref)
+			case op
+				when 'or'
+					assign_var(var, ast.gen[:result], "((#{lhs}) == Enum_bool_true || #{rhs.ref} == Enum_bool_true) ? Enum_bool_true : Enum_bool_false;")
+				when 'and'
+					assign_var(var, ast.gen[:result], "((#{lhs}) == Enum_bool_true && #{rhs.ref} == Enum_bool_true) ? Enum_bool_true : Enum_bool_false;")
+				else
+					raise "Unknown operator #{op}"
+			end
 		end
 
 		if cmp_op
@@ -583,8 +592,6 @@ class FuncCodegen
 			assign_var(var, ast.gen[:result], "(#{r}) ? Enum_bool_true : Enum_bool_false")
 			del_var cmp_op_var
 		end
-
-		o "#{var.ref} = #{var.ref} == Enum_bool_true ? Enum_bool_false : Enum_bool_true;" if op == '!='
 	end
 	
 	# Values constructed into var are rvalue objects (an unique object with no other references)

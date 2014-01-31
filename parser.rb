@@ -661,7 +661,7 @@ class Parser
 		case tok
 			when :id
 				case tok_val
-					when :return, :if, :match, :loop
+					when :return, :if, :match, :loop, :and, :or, :as
 						true
 				end
 			when :sym
@@ -829,8 +829,8 @@ class Parser
 	Operators = {}
 	pred = proc { |p, *args| args.each { |a| Operators[a] = p }}
 	pred_num = 0
-	pred.(pred_num += 1, '||')
-	pred.(pred_num += 1, '&&')
+	pred.(pred_num += 1, :or)
+	pred.(pred_num += 1, :and)
 	pred.(pred_num += 1, '==', '!=')
 	pred.(pred_num += 1, '|')
 	pred.(pred_num += 1, '^')
@@ -840,7 +840,7 @@ class Parser
 	pred.(pred_num += 1, '*', '/', '%')
 	
 	def is_pred_op
-		tok == :sym && Operators[tok_val]
+		[:sym, :id].include?(tok) && Operators[tok_val]
 	end
 	
 	def pred_operator(left = type_assert, min = 0)
@@ -866,7 +866,7 @@ class Parser
 				right = pred_operator(right, next_pred)
 			end
 			
-			left = AST::BinOp.new(op_src, left, op, right)
+			left = AST::BinOp.new(op_src, left, op.to_s, right)
 		end
 		
 		left
@@ -1041,7 +1041,14 @@ class Parser
 						true
 				end
 			when :id
-				!@in_match || tok_val != :as
+				case tok_val
+					when :or, :and
+						false
+					when :as
+						!@in_match 
+					else
+						true
+				end
 			when :int, :str
 				true
 		end

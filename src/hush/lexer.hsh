@@ -115,7 +115,7 @@ struct ref Lexer
 		i.step()
 
 		loop
-			if !(i.in("0", "9") || i.in("A", "Z") || i.in("a", "z") || i.c() == "_")
+			if !(i.in("0", "9") or i.in("A", "Z") or i.in("a", "z") or i.c() == "_")
 				break
 			i.step()
 

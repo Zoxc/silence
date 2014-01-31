@@ -82,7 +82,7 @@ struct ref SrcLoc
 		else
 			c = start
 			loop
-				if (ptr_idx(file.content.data, file.content.size) == c) | (ptr_int c >= ptr_int stop)
+				if ptr_idx(file.content.data, file.content.size) == c or ptr_int c >= ptr_int stop
 					break
 
 				match *c
