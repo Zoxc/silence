@@ -82,6 +82,9 @@ class Lexer
 		
 		if s.scan(/\r\n|\n|\r/)
 			get_line_indent_impl(s)
+		elsif s.scan(/#/)
+			s.scan(/.*?(\r\n|\n|\r|\z)/)
+			get_line_indent_impl(s)
 		else
 			return s, indent_pos, indent
 		end
@@ -158,13 +161,12 @@ class Lexer
 				find_token
 			when s.scan(/#/)
 				s.scan(/.*?(\r\n|\n|\r|\z)/)
-				find_token
+				@tok = nil
+				prestep
+				get_line_indent
+				handle_line
 			when v = s.scan(/\r\n|\n|\r/)
-				if s.scan(/(?=[ \t]*#)/) # Ignore empty line
-					find_token
-				else
-					[v, :line, true]
-				end
+				[v, :line, true]
 			when v = s.scan(/"/)
 				c = ''
 				while s.scan(/"/) != '"'

@@ -8,6 +8,22 @@ enum Token
 	Number
 	EndOfFile
 
+	# Order binary operators
+
+	Add
+	Sub
+	Mul
+	Div
+	Mod
+
+	# Keep the assigns in the same order as the binary operators
+
+	AssignAdd
+	AssignSub
+	AssignMul
+	AssignDiv
+	AssignMod
+
 struct ref Lexer
 	struct State
 		pos *char
@@ -32,34 +48,24 @@ struct ref Lexer
 		fn str()
 			return String.from_data(start, ptr_diff(stop, start))
 
-	struct ref Input
-		lexer *Lexer
-
-		fn pos()
-			return lexer.tok.pos
-
-		fn step()
-			assert -> !at_end()
-			lexer.tok.pos = ptr_idx(pos(), 1)
-			return *pos()
-
-		fn at_end()
-			return pos() == lexer.tok.input_end
-
-		fn in(a, b)
-			return (a <= c()) & (c() <= b)
-
-		fn c()
-			return *pos()
-
-		fn eq(c char)
-			return *pos() == c
-
 	compiler *Compiler
 	tok State
 	file *SrcFile
-	i Input
 	jump_table Table(256, () -> ())
+
+	fn c()
+		return *tok.pos
+
+	fn at_end()
+		return tok.pos == tok.input_end
+
+	fn step()
+		assert -> !at_end()
+		tok.pos = ptr_idx(tok.pos, 1)
+		return *tok.pos
+
+	fn in(a, b)
+		return (a <= c()) & (c() <= b)
 
 	fn src() -> *SrcLoc
 		return new(file, tok.start, tok.stop)
@@ -72,11 +78,10 @@ struct ref Lexer
 		compiler <- compiler,
 		file <- file,
 		tok <- State(file.content.data, ptr_idx(file.content.data, file.content.size - 1), &self),
-		i <- Input(&self),
 		jump_table <- undef()
 
 		setup_table()
-		step()
+		next_token()
 
 	fn setup_table()
 		.set_char = |i char, f|
@@ -93,59 +98,84 @@ struct ref Lexer
 		set_chars("a", "z", ident)
 		set_char("_", ident)
 
+		set_char(" ", whitespace)
+		set_char(9, whitespace)
+
+
+		set_char("+", assign[Token.Add, Token.AssignAdd])
+
 		set_char(0, eof)
 
-	fn step()
+	fn next_token()
 		tok.type = Token.None
-		tok.start = i.pos()
+		tok.start = tok.pos
 
-		jump_table(force_cast i.c())()
+		jump_table(force_cast c())()
 
 		assert -> ptr_int tok.stop >= ptr_int tok.start
 		assert -> tok.type != Token.None
 
+	fn assign[type :: Token, assign_type :: Token]()
+		step()
+
+		tok.type = if c() == "="
+			step()
+			assign_type
+		else
+			type
+
+		tok.end()
+
 	fn eof()
-		if i.at_end()
+		if at_end()
 			tok.type = Token.EndOfFile
 			tok.end()
 		else
 			tok.end()
 			report[Error.NullChar]()
-			i.step()
 			step()
+			next_token()
 
 	fn number()
-		i.step()
+		step()
 
 		loop
-			if !i.in("0", "9")
+			if !in("0", "9")
 				break
-			i.step()
+			step()
 
 		tok.end()
 		tok.type = Token.Number
 
+	fn whitespace()
+		loop
+			step()
+
+			if c() != " " or c() != 9
+				break
+		next_token()
+
 	fn ident()
-		i.step()
+		step()
 
 		loop
-			if !(i.in("0", "9") or i.in("A", "Z") or i.in("a", "z") or i.c() == "_")
+			if !(in("0", "9") or in("A", "Z") or in("a", "z") or c() == "_")
 				break
-			i.step()
+			step()
 
 		tok.end()
 		tok.type = Token.Ident
 
 	fn unknown()
-		i.step()
+		step()
 
 		loop
-			if jump_table(force_cast i.c()) != unknown
+			if jump_table(force_cast c()) != unknown
 				break
-			i.step()
+			step()
 
 		tok.end()
 
 		report[Error.UnknownChars]()
 
-		step()
+		next_token()

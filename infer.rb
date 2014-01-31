@@ -313,14 +313,25 @@
 
 	def eval_ast(ast)
 		case ast
-			when AST::Ref
-				if ast.obj.is_a?(AST::TypeParam) && ast.obj.value && ast.obj.type_params.empty?
-					Types::Ref.new(ast.source, ast.obj)
-				else
-					raise CompileError.new("Unable to evaluate reference at compile-time\n#{ast.source.format}")
+			when AST::Ref, AST::Field
+				case ast.gen[:type]
+					when :single
+						ref = ast.gen[:ref]
+						case ref
+							when AST::EnumValue
+								Types::Value.new(ast.source, ref.owner.values.index(ref))
+							when AST::TypeParam
+								Types::Ref.new(ast.source, ref)
+						end
+					else
+						raise CompileError.new("Unable to evaluate reference at compile-time\n#{ast.source.format}")
 				end
 			when AST::Literal
 				case ast.type
+					when :string
+						raise CompileError.new("Unable to evaluate string literal at compile-time\n#{ast.source.format}") if ast.value.size != 1
+						# TODO: Ensure ast.result is a fixed_type and a primitive integer
+						Types::Value.new(ast.source, ast.value.ord)
 					when :int
 						# TODO: Ensure ast.result is a fixed_type and a primitive integer
 						Types::Value.new(ast.source, ast.value)
@@ -796,7 +807,7 @@
 			when AST::Ref
 				result = @vars[ast.obj]
 				if result
-					ast.gen = result
+					ast.gen = {type: :var, result: result}
 					BindingResult.new(ast.obj)
 				elsif ast.obj == @obj
 					@result[@obj] = unit_type(@obj.source) unless @result[@obj]

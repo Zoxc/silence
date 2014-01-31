@@ -10,7 +10,7 @@ fn parse(input, name)
 			break
 
 		IO.puts("Token: " ~ compiler.lexer.tok.type.str() ~ String.from_c(10) ~ compiler.lexer.src().format())
-		compiler.lexer.step()
+		compiler.lexer.next_token()
 
 	compiler.errors.each -> |error|
 		IO.puts("Error: " ~ error.format())

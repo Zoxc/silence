@@ -261,8 +261,16 @@ class FuncCodegen
 		if obj.is_a?(AST::TypeParam)
 			# TODO: This should reference read-only memory instead of constructing a new value
 			tvar = new_var
-			direct_call(tvar, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => type}), nil, [map[obj].value.to_s], type)
-			assign_var(tvar, type, nil)
+
+			type = @gen.inst_type(type, @map)
+
+			if type.ref.is_a?(AST::Enum)
+				assign_var(tvar, type, ref(type.ref.values[map[obj].value], {}))
+			else
+				direct_call(tvar, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => type}), nil, [map[obj].value.to_s], type)
+				assign_var(tvar, type, nil)
+			end
+
 			del_var tvar
 			return "&#{tvar.ref}"
 		end
@@ -329,7 +337,7 @@ class FuncCodegen
 
 	def extract_func(ast)
 		case ast
-			when AST::Field
+			when AST::Ref, AST::Field
 				case ast.gen[:type]
 					when :single
 						extract_func_f(ast.gen[:ref], ast.gen[:args].params)
@@ -338,15 +346,6 @@ class FuncCodegen
 							obj_ptr, ovar = get_field_obj(ast, false)
 							[ref(ast.gen[:ref], ast.gen[:args].params), obj_ptr.ref, ovar]
 						end
-				end
-			when AST::Ref
-				owner = ast.obj.declared.owner
-
-				if ast.obj.is_a?(AST::Variable) && fowner && ast.obj.declared.inside?(fowner.scope)
-				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
-				elsif ast.gen[:type] == :self
-				else
-					extract_func_f(ast.gen[:ref], ast.gen[:args].params)
 				end
 		end
 	end
@@ -488,12 +487,13 @@ class FuncCodegen
 			when AST::Ref
 				owner = ast.obj.declared.owner
 
-				if ast.obj.is_a?(AST::Variable) && fowner && ast.obj.declared.inside?(fowner.scope)
-					if @func.scope.fscope != ast.obj.declared.fscope
-						assign_var(var, make_ptr(ast.gen), "ref.r_#{ast.obj.name}", true)
+				if ast.gen[:type] == :var
+					ref = if @func.scope.fscope != ast.obj.declared.fscope
+						"ref.r_#{ast.obj.name}"
 					else
-						assign_var(var, make_ptr(ast.gen), "&v_#{ast.obj.name}", true)
+						"&v_#{ast.obj.name}"
 					end
+					assign_var(var, make_ptr(ast.gen[:result]), ref, true)
 				elsif ast.obj.is_a?(AST::Variable) && owner.is_a?(AST::Complex) && !ast.obj.props[:shared]
 					# TODO: Turn this into a AST::Field with self as obj
 					assign_var(var, make_ptr(ast.gen[:result]), ref_field(ast.obj), true)
