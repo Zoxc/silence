@@ -531,7 +531,7 @@
 						c_type = analyze_value(c, args.next)
 						unify(type, c_type)
 					end
-					analyze_value(w.group, args.next)
+					analyze_value(w.group, args.next(unused: args.unused))
 				end
 
 				cases += [analyze_value(ast.else_group, args.next)] if ast.else_group
@@ -564,7 +564,7 @@
 						extended[ast.rest.binding] = objs.first
 					end
 					
-					[objs, analyze_value(w.group, args.next(extended: extended))]
+					[objs, analyze_value(w.group, args.next(extended: extended, unused: args.unused))]
 				end
 
 				ast.gen = {expr: type, when_objs: when_objs.map(&:first), unused: args.unused}
@@ -610,10 +610,10 @@
 				cond = analyze_value(ast.condition, args.next)
 				unify(cond, Types::Ref.new(ast.source, Core::Bool))
 				
-				l = analyze_value(ast.group, args.next)
+				l = analyze_value(ast.group, args.next(unused: args.unused))
 
 				if ast.else_node
-					r = analyze_value(ast.else_node, args.next)
+					r = analyze_value(ast.else_node, args.next(unused: args.unused))
 					unify(l, r) unless args.unused
 				end
 
