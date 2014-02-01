@@ -3,7 +3,7 @@ struct File
 		.f = path.c_str -> |p| C.fopen(p, "r")
 
 		if is_nil_ptr(f)
-			return Option.Nil()
+			return nil
 
 		.result String
 
@@ -15,4 +15,4 @@ struct File
 
 		C.fclose(f)
 
-		return Option.Some(result)
+		return some result

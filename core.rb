@@ -1,12 +1,19 @@
 class Core
-	Program = AST::Program.new(AST::Scope.new([]))
-	Nodes = Program.scope.nodes
+	Nodes = []
 	Generated = AST::Scope.new([])
 
 	class << self
 		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
 			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST::KindParams.new(src(2), args, ctx))
 			Nodes << r
+			r
+		end
+
+		def base(type, *args)
+			r = args.inject(Silence.get_program) do |m, v|
+				m.scope.require(src(5), v)
+			end
+			raise "Expected #{type}, but got #{r.class}" unless r.is_a?(type)
 			r
 		end
 		
@@ -181,12 +188,12 @@ class Core
 			run_pass(r, obj.scope)
 		end
 	end
-	
+
 	# Typeclasses which allows you to increase required levels in type parameters
 	
 	class Sizeable < Core # TODO: Rename this
-		T = param :T
-		Node = complex(:Sizeable, [T], AST::TypeClass)
+		#T = param :T
+		Node = base AST::TypeClass, :Sizeable
 		
 		t = param :T
 		Instance = tci(Sizeable::Node, [ref(t)], [t])
@@ -194,38 +201,34 @@ class Core
 	end
 	
 	class Copyable < Core
-		T = param :T
-		Node = complex(:Copyable, [T], AST::TypeClass)
+		#T = param :T
+		Node = base AST::TypeClass, :Copyable
+		#Node = complex(:Copyable, [T], AST::TypeClass)
 		
 		t = param :T
 		Instance = tci(Copyable::Node, [ref(t)], [t])
 		Nodes << Instance
 	end
 	
-	
-	Unit = complex :Unit
+	Unit = base AST::Struct, :Unit
 	
 	class Tuple < Core
-		T = param(:T, ref(Copyable::Node))
-		Node = complex(:Tuple, [T], AST::TypeClass)
+		T = base AST::TypeParam, :Tuple, :T
+		Node = base AST::TypeClass, :Tuple
 	end
 	
 	class Cell < Core
-		Val = param(:Val, ref(Copyable::Node))
-		Next = param(:Next, ref(Tuple::Node))
-		fval = AST::VariableDecl.new(src, :val, ref(Val), nil, {})
-		fnext = AST::VariableDecl.new(src, :next, ref(Next), nil, {})
-		Node = complex(:Cell, [Val, Next], AST::Struct, [fval, fnext])
+		Val = base AST::TypeParam, :Cell, :Val
+		Next = base AST::TypeParam, :Cell, :Next
+		Node = base AST::Struct, :Cell
 	end
 	
-	Nodes << tci(Tuple::Node, [ref(Unit)])
-
-	proc do
-		val = param :Val
-		_next = param :Next
-		Nodes << tci(Tuple::Node, [AST::Index.new(src, ref(Cell::Node), [ref(val), ref(_next)])], [val, _next])
-	end.()
-
+	class Option < Core
+		T = base AST::TypeParam, :Option, :T
+		Node = base AST::Struct, :Option
+		None = base AST::StructCase, :Option, :None
+	end
+	
 	class Func < Core
 		Args = param(:Args, ref(Tuple::Node))
 		Result = param :Result
@@ -240,6 +243,7 @@ class Core
 	Int = complex :int
 	UInt = complex :uint
 	CInt = complex :c_int
+	Char = complex :char
 
 	proc do
 		values = []
@@ -249,15 +253,6 @@ class Core
 		Bool.values = values
 		Nodes << Bool
 		Nodes.concat(values)
-	end.()
-
-	String = complex :string
-	Char = complex :char
-	
-	proc do
-		ConstructT = param(:T, ref(Copyable::Node))
-		Construct = func(:construct, {dst: ptr(ref(ConstructT)), src: ref(ConstructT)}, ref(Unit), [ConstructT])
-		Nodes << Construct
 	end.()
 
 	proc do
@@ -280,86 +275,66 @@ class Core
 	end.()
 
 	class Defaultable < Core
-		T = param(:T, ref(Sizeable::Node))
-		
-		Construct = func(:construct, {obj: ptr(ref(T))}, ref(Unit))
-		Construct.props[:shared] = true
-		
-		Node = complex(:Defaultable, [T], AST::TypeClass, [Construct])
+		T = base AST::TypeParam, :Defaultable, :T
+		Construct = base AST::Function, :Defaultable, :construct
+		Node = base AST::TypeClass, :Defaultable
 	end
 
 	class Constructor < Core
-		Constructed = type_func :Constructed
-		Args = type_func(:Args, Tuple::Node)
-		
-		Construct = func(:construct, {obj: ptr(ref(Constructed)), args: ref(Args)}, ref(Unit))
-		Construct.props[:shared] = true
-		
-		T = param :T
-		Node = complex(:Constructor, [T], AST::TypeClass, [Constructed, Args, Construct])
+		Constructed = base AST::TypeFunction, :Constructor, :Constructed
+		Args = base AST::TypeFunction, :Constructor, :Args
+		Construct = base AST::Function, :Constructor, :construct
+		T = base AST::TypeParam, :Constructor, :T
+		Node = base AST::TypeClass, :Constructor
 	end
 
 	class Reference < Core
-		Type = type_func(:Type, Sizeable::Node)
-		
-		Get = func(:get, {}, ptr(ref(Type)))
-
-		T = param :T
-		Node = complex(:Reference, [T], AST::TypeClass, [Type, Get])
+		Type = base AST::TypeFunction, :Reference, :Type
+		Get = base AST::Function, :Reference, :get
+		T = base AST::TypeParam, :Reference, :T
+		Node = base AST::TypeClass, :Reference
 	end
 
 	class Callable < Core
-		Args = type_func(:Args, Tuple::Node)
-		Result = type_func(:Result, Sizeable::Node)
-		
-		Apply = func(:apply, {args: ref(Args)}, ref(Result))
-		
-		T = param :T
-		Node = complex(:Callable, [T], AST::TypeClass, [Args, Result, Apply])
+		Args = base AST::TypeFunction, :Callable, :Args
+		Result = base AST::TypeFunction, :Callable, :Result
+		Apply = base AST::Function, :Callable, :apply
+		T = base AST::TypeParam, :Callable, :T
+		Node = base AST::TypeClass, :Callable
 	end
 
 	class Indexable < Core
-		Index = type_func(:Index, Tuple::Node)
-		Result = type_func(:Result, Sizeable::Node)
-		
-		Ref = func(:ref, {index: ref(Index)}, ptr(ref(Result)))
-		
-		T = param :T
-		Node = complex(:Indexable, [T], AST::TypeClass, [Index, Result, Ref])
+		Index = base AST::TypeFunction, :Indexable, :Index
+		Result = base AST::TypeFunction, :Indexable, :Result
+		Ref = base AST::Function, :Indexable, :ref
+		T = base AST::TypeParam, :Indexable, :T
+		Node = base AST::TypeClass, :Indexable
 	end
 
 	class Eq < Core
-		T = param :T
-		Equal = func(:equal, {lhs: ref(T), rhs: ref(T)}, ref(Bool), [], true)
-		Node = complex(:Eq, [T], AST::TypeClass, [Equal])
+		T = base AST::TypeParam, :Eq, :T
+		Equal = base AST::Function, :Eq, :equal
+		Node = base AST::TypeClass, :Eq
 	end
 
-	proc do
-		values = []
-		Order = AST::Enum.new(src, :Order, values)
-		values << AST::EnumValue.new(src, :Greater, Order)
-		values << AST::EnumValue.new(src, :Equal, Order)
-		values << AST::EnumValue.new(src, :Lesser, Order)
-		Nodes << Order
-	end.()
+	Order = base AST::Enum, :Order
 
 	class Ord < Core
-		T = param :T
-		Cmp = func(:cmp, {gt: ref(T), ls: ref(T)}, ref(Order), [], true)
-		Node = complex(:Ord, [T], AST::TypeClass, [Cmp])
+		T = base AST::TypeParam, :Ord, :T
+		Cmp = base AST::Function, :Ord, :cmp
+		Node = base AST::TypeClass, :Ord
 	end
 
 	class Num < Core
-		T = param :T
-		
-		Neg = func(:neg, {}, ref(T))
-		Add = func(:add, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		Sub = func(:sub, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		Mul = func(:mul, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		Div = func(:div, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		Mod = func(:mod, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		
-		Node = complex(:Num, [T], AST::TypeClass, [Neg, Add, Sub, Mul, Div, Mod])
+		T = base AST::TypeParam, :Num, :T
+		Create = base AST::Function, :Num, :create
+		Neg = base AST::Function, :Num, :neg
+		Add = base AST::Function, :Num, :add
+		Sub = base AST::Function, :Num, :sub
+		Mul = base AST::Function, :Num, :mul
+		Div = base AST::Function, :Num, :div
+		Mod = base AST::Function, :Num, :mod
+		Node = base AST::TypeClass, :Num
 	end
 
 	proc do
@@ -383,25 +358,19 @@ class Core
 		Nodes << inst
 	end.()
 	
-	class IntLiteral < Core
-		T = param(:T, ref(Sizeable::Node))
-		
-		Create = func(:create, {input: ref(Int)}, ref(T))
-		
-		Node = complex(:IntLiteral, [T], AST::TypeClass, [Create])
-	end
-	
 	IntLiterals = {create: {}, default: {}, eq: {}, ord: {}, num: {}, num_not: {}}
 	
 	num_lit = proc do |type|
+		create = func(:create, {i: ref(Int)}, ref(type))
 		neg = func(:neg, {}, ref(type))
 		add = func(:add, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
 		sub = func(:sub, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
 		mul = func(:mul, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
 		div = func(:div, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
 		mod = func(:mod, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
-		num_inst = tci(Num::Node, [ref(type)], [], [neg, add, sub, mul, div, mod])
+		num_inst = tci(Num::Node, [ref(type)], [], [neg, add, sub, mul, div, mod, create])
 		Nodes << num_inst
+		IntLiterals[:create][create] = create
 		IntLiterals[:num_not][neg] = neg
 		IntLiterals[:num][add] = add
 		IntLiterals[:num][sub] = sub
@@ -419,11 +388,6 @@ class Core
 		Nodes << eq_inst
 		IntLiterals[:eq][equal] = equal
 		
-		create = func(:create, {input: ref(Int)}, ref(type))
-		create_inst = tci(IntLiteral::Node, [ref(type)], [], [create])
-		Nodes << create_inst
-		IntLiterals[:create][create] = create
-		
 		construct = func(:construct, {obj: ptr(ref(type))}, ref(Unit))
 		default_inst = tci(Defaultable::Node, [ref(type)], [], [construct])
 		Nodes << default_inst
@@ -436,34 +400,26 @@ class Core
 	num_lit.(UInt)
 	
 	class StringLiteral < Core
-		T = param(:T, ref(Sizeable::Node))
-		
-		Create = func(:create, {data: ptr(ref(Char)), length: ref(UInt)}, ref(T))
-		
-		Node = complex(:StringLiteral, [T], AST::TypeClass, [Create])
+		T = base AST::TypeParam, :StringLiteral, :T
+		Create = base AST::Function, :StringLiteral, :create
+		Node = base AST::TypeClass, :StringLiteral
 	end
 	
 	class Binary < Core
-		T = param :T
-		
-		Not = func(:not, {}, ref(T))
-		Xor = func(:xor, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		And = func(:and, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		Or = func(:or, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		
-		Node = complex(:Binary, [T], AST::TypeClass, [Not, Xor, And, Or])
+		T = base AST::TypeParam, :Binary, :T
+		Not = base AST::Function, :Binary, :not
+		Xor = base AST::Function, :Binary, :xor
+		And = base AST::Function, :Binary, :and
+		Or = base AST::Function, :Binary, :or
+		Node = base AST::TypeClass, :Binary
 	end
 
 	class Joinable < Core
-		T = param :T
-		
-		Join = func(:join, {lhs: ref(T), rhs: ref(T)}, ref(T), [], true)
-		
-		Node = complex(:Joinable, [T], AST::TypeClass, [Join])
+		T = base AST::TypeParam, :Joinable, :T
+		Join = base AST::Function, :Joinable, :join
+		Node = base AST::TypeClass, :Joinable
 	end
 
-	AssignOps = ['+=', '-=', '*=', '/=', '%=', '~=', '^=', '&=', '|=', '=']
-	
 	UnaryOpMap = {
 		'-' => {ref: Num::Node, param: Num::T, func: Num::Neg},
 		'!' => {ref: Binary::Node, param: Binary::T, func: Binary::Not}
@@ -502,7 +458,8 @@ class Core
 			Nodes << inst
 		end.()
 	end
-	
-	Program.run_pass(:declare_pass, false)
-	Program.run_pass(:ref_pass)
+
+	Nodes.each do |n|
+		n.run_pass(:declare_pass, false, Silence.get_program.scope)
+	end
 end

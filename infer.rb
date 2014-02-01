@@ -673,9 +673,12 @@
 				end
 			when AST::Literal
 				result = case ast.type
+					when :nil
+						type = new_var(ast.source)
+						Types::Ref.new(ast.source, Core::Option::Node, {Core::Option::T => type})
 					when :int
 						type = new_var(ast.source)
-						typeclass_limit(ast.source, Core::IntLiteral::Node, {Core::IntLiteral::T => type})
+						typeclass_limit(ast.source, Core::Num::Node, {Core::Num::T => type})
 						type
 					when :string
 						type = new_var(ast.source)
@@ -757,7 +760,7 @@
 						Result.new(type, true)
 				end
 			when AST::BinOp
-				assign_op = Core::AssignOps.include?(ast.op)
+				assign_op = Parser::AssignOps.include?(ast.op)
 				assign_simple = ast.op == '='
 				next_args = args.next(lvalue: assign_op, tuple_lvalue: assign_simple)
 				
@@ -921,7 +924,7 @@
 						end
 					when Types::Variable
 						# TODO: Find out when this is really required
-						raise CompileError.new(@ctx.recmsg(var, type)) if @ctx.occurs_in?(var, type)
+						raise CompileError.new(@ctx.recmsg(var, type)) if TypeContext.occurs_in?(var, type)
 					else
 						raise CompileError.new("'#{type.text}' is not a struct type\n#{c.ast.source.format}#{"\nType inferred from:\n#{type.source.format}" if type.source}")
 				end
@@ -1083,7 +1086,7 @@
 
 		nil while proc do
 			solve_fields
-			@ctx.reduce(@obj)
+			@ctx.reduce(@obj, @obj.is_a?(AST::Complex) ? type.args.values : [])
 		end.()
 
 		@fields.each do |c|
@@ -1100,7 +1103,7 @@
 			# Type variables in functions will be converted to type parameters, we can ignore them
 			# Type functions by definition has an unknown type, ignore those too
 			when AST::Function, AST::TypeFunction
-				type_vars = type_vars.select { |var| @ctx.occurs_in?(var, type) }
+				type_vars = type_vars.select { |var| TypeContext.occurs_in?(var, type) }
 				unresolved_vars -= type_vars
 			else
 				type_vars = []

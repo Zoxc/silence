@@ -270,7 +270,7 @@ class Codegen
 			when Core::IntLiterals[:create][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
-				@out[:func] << o << "\n{\n    *result = v_input;\n}\n\n"
+				@out[:func] << o << "\n{\n    *result = v_i;\n}\n\n"
 			when Core::Table::Ref
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"
@@ -292,16 +292,6 @@ class Codegen
 				@out[:func_forward] << o << ";\n"
 				o << "\n{\n"
 				o << "    *result = v_lhs.data == v_rhs.data && v_lhs.func == v_rhs.func ? Enum_bool_true : Enum_bool_false;\n}\n\n"
-				@out[:func] << o
-			when Core::Construct
-				o = function_proto(ast, map)
-				@out[:func_forward] << o << ";\n"
-				o << "\n{\n"
-				
-				type = map.params[Core::ConstructT]
-				
-				o << "    *v_dst = v_src;\n}\n\n"
-				
 				@out[:func] << o
 			when Core::SizeOf
 				o = function_proto(ast, map)

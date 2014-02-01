@@ -78,11 +78,11 @@
 		var
 	end
 	
-	def occurs_in_list?(t, list)
+	def self.occurs_in_list?(t, list)
 		list.any? { |arg| occurs_in?(t, arg.prune) }
 	end
 	
-	def occurs_in?(a, b)
+	def TypeContext.occurs_in?(a, b)
 		a.require_pruned
 		b.require_pruned
 		
@@ -227,7 +227,7 @@
 			# Don't unify type variables with themselves TODO: Can this happen?
 			return if a == b 
 			
-			raise CompileError.new(recmsg(a, b) + loc.()) if occurs_in?(a, b)
+			raise CompileError.new(recmsg(a, b) + loc.()) if TypeContext.occurs_in?(a, b)
 			a.instance = b
 			a.source = a.source || b.source
 			return
@@ -303,7 +303,7 @@
 		inst_type(type, inst_args)
 	end
 	
-	def self.find_instance(obj, infer_args, typeclass, args)
+	def self.find_instance(obj, infer_args, typeclass, args, tps = [])
 		#TODO: Find all matching instances and error if multiple are appliable
 		#      If one instance is more specific than the other (or an instance of), use the most specific one.
 		#      If we can't tell if we want the specific one, keep the constraint around until it has a fixed type.
@@ -312,6 +312,11 @@
 		map = nil
 		[typeclass.instances.find do |inst|
 			next if inst == obj # Instances can't find themselves
+
+			# If the instance depend on a type parameter, ignore it
+			if tps.any? { |tp| args.values.any? { |a| a == tp } }
+				next
+			end
 			
 			InferContext.infer(inst, infer_args)
 			result, map = is_instance?(args.values, inst.ctype.typeclass.values)
@@ -320,7 +325,7 @@
 
 			inst.ctype.ctx.limits.all? do |limit|
 				args = Hash[limit.args.map { |k, t| [k, inst_type_or_die(t, map)] }]
-				find_instance(obj, infer_args, limit.typeclass, args).first
+				find_instance(obj, infer_args, limit.typeclass, args, tps).first
 			end
 		end, map]
 	end
@@ -375,7 +380,7 @@
 		end
 	end
 	
-	def reduce(obj)
+	def reduce(obj, tps = [])
 		reduce_limits or
 
 		# TODO: Add support for superclasses and remove type class constraints that is implied by the superclass of another
@@ -383,7 +388,7 @@
 		@limits.reject! do |c|
 			next if (obj && obj.declared && obj.declared.inside?(c.typeclass.scope)) # Don't search for a typeclass instance inside typeclass declarations
 			
-			inst, map = TypeContext.find_instance(obj, @infer_args, c.typeclass, c.args)
+			inst, map = TypeContext.find_instance(obj, @infer_args, c.typeclass, c.args, tps)
 			if inst
 				# Resolve the type functions
 				c.eqs.each do |eq| 
@@ -406,9 +411,9 @@
 		map[var] = false # It's not dependent if recursive
 		
 		@limits.each do |c|
-			if c.eqs.any? { |eq| occurs_in?(var, eq.var.prune) }
+			if c.eqs.any? { |eq| TypeContext.occurs_in?(var, eq.var.prune) }
 				# All type variables in the arguments to the type class must be dependent for the type function result to be so too
-				type_vars = vars.select { |var| occurs_in_list?(var, c.args.values) }
+				type_vars = vars.select { |var| TypeContext.occurs_in_list?(var, c.args.values) }
 				dependent = type_vars.all? { |var| dependent_var(map, var, vars) }
 				(return map[var] = true) if dependent
 			end
@@ -425,7 +430,7 @@
 	
 	def vars_in_typeclass_args(vars)
 		vars.select do |var|
-			@limits.any? { |c| occurs_in_list?(var, c.args.values) }
+			@limits.any? { |c| TypeContext.occurs_in_list?(var, c.args.values) }
 		end
 	end
 end

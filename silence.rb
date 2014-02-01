@@ -6,6 +6,14 @@ class CompileError < StandardError
 end
 
 class Silence
+	def self.set_program(program)
+		@program = program
+	end
+
+	def self.get_program
+		@program
+	end
+
 	Args = ARGV.dup
 	Debug = Args.first == '-d'
 	Args.shift if Debug
@@ -17,7 +25,6 @@ class Silence
 end
 
 require_relative 'ast'
-require_relative 'core'
 require_relative 'gen'
 require_relative 'gen-func'
 require_relative 'print'
@@ -25,9 +32,6 @@ require_relative 'types'
 require_relative 'infer'
 require_relative 'type-context'
 require_relative 'parser'
-
-InferArgs = InferContext::InferArgs.new({}, [])
-InferContext.infer_scope(Core::Program.scope, InferArgs)
 
 def fpath(f)
 	f = Pathname.new(f)
@@ -58,9 +62,12 @@ def parse(files, asts, file)
 	end
 end
 
-def process(file, parent)
+def process(file)
 	files = {}
 	asts = []
+
+	infer_args = InferContext::InferArgs.new({}, [])
+
 
 	begin
 		parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__))) unless Silence::Bare
@@ -69,12 +76,17 @@ def process(file, parent)
 		ast = AST::Program.new(AST::GlobalScope.new(asts))
 
 		#puts print_ast(ast)
-		ast.run_pass :declare_pass, false, (parent.scope if parent)
+		ast.run_pass :declare_pass, false
+
+		Silence.set_program(ast)
+		require_relative 'core' # Core requires builtin things to be defined
+		asts.concat Core::Nodes
+
 		ast.run_pass :sema, true
 		ast.run_pass :ref_pass
 
-		InferContext.infer_scope(ast.scope, InferArgs)
-		InferContext.infer_scope(Core::Generated, InferArgs)
+		InferContext.infer_scope(ast.scope, infer_args)
+		InferContext.infer_scope(Core::Generated, infer_args)
 
 	rescue CompileError => error
 		$stderr.puts "Failed to compile file:", error.message
@@ -97,4 +109,4 @@ def process(file, parent)
 	ast
 end
 
-process(File.realpath(Silence::Args.first), Core::Program)
+process(File.realpath(Silence::Args.first))

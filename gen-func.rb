@@ -267,7 +267,7 @@ class FuncCodegen
 			if type.ref.is_a?(AST::Enum)
 				assign_var(tvar, type, ref(type.ref.values[map[obj].value], {}))
 			else
-				direct_call(tvar, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => type}), nil, [map[obj].value.to_s], type)
+				direct_call(tvar, ref(Core::Num::Create, {Core::Num::T => type}), nil, [map[obj].value.to_s], type)
 				assign_var(tvar, type, nil)
 			end
 
@@ -757,16 +757,23 @@ class FuncCodegen
 				@current_vars.push(rvar)
 				assign_var(var, Core::Unit.ctype.type, nil)
 			when AST::Literal
-				assign_var(var, ast.gen, case ast.type
+				assign_var(var, ast.gen, nil)
+				case ast.type
+					when :nil
+						if var
+							args = new_var
+							assign_var(args, Core::Unit.ctype.type, nil)
+							none = Types::Ref.new(Core.src, Core::Option::None, {Core::Option::T => ast.gen.args[Core::Option::T]})
+							direct_call(nil, ref(Core::Constructor::Construct, {Core::Constructor::T => none}), nil, ["&#{var.ref}", args.ref], Core::Unit.ctype.type) 
+							del_var args
+						end
 					when :int
-						direct_call(var, ref(Core::IntLiteral::Create, {Core::IntLiteral::T => ast.gen}), nil, [ast.value.to_s], ast.gen)
-						nil
+						direct_call(var, ref(Core::Num::Create, {Core::Num::T => ast.gen}), nil, [ast.value.to_s], ast.gen)
 					when :string
 						direct_call(var, ref(Core::StringLiteral::Create, {Core::StringLiteral::T => ast.gen}), nil, ["(_char *)#{ast.value.inspect}", "#{ast.value.size}"], ast.gen)
-						nil
 					else
 						raise "Unknown literal type #{ast.type}"
-				end)
+				end
 			when AST::Ref, AST::Field
 				lvalue_to_convert(ast, var)
 			when AST::UnaryOp

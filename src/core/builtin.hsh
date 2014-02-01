@@ -1,0 +1,88 @@
+class Sizeable(T)
+class Copyable(T)
+
+# Tuple types
+
+struct Unit
+
+struct Cell(Val, Next Tuple)
+	val Val
+	next Next
+
+class Tuple(T)
+
+instance Tuple(Unit)
+
+instance(Val, Next) Tuple(Cell(Val, Next))
+
+struct Option(T)
+	when Some
+		val T
+	when None
+
+	fn map(f)
+		return match self as v
+			when Some
+				Some(f(v.val))
+			when None
+				None()
+
+
+class Defaultable(T)
+	shared fn construct(obj *T)
+
+class Constructor(T)
+	type_func Constructed
+	type_func Args Tuple
+
+	shared fn construct(obj *Constructed, args Args)
+
+class Reference(T)
+	type_func Type Sizeable
+
+	fn get() -> *Type
+
+class Callable(T)
+	type_func Result Sizeable
+	type_func Args Tuple
+
+	fn apply(args Args) -> Result
+
+class Indexable(T)
+	type_func Result
+	type_func Index Tuple
+
+	fn ref(index Index) -> *Result
+
+class Eq(T)
+	shared fn equal(lhs T, rhs T) -> bool
+
+enum Order
+	Greater
+	Equal
+	Lesser
+
+class Ord(T)
+	shared fn cmp(gt T, ls T) -> Order
+
+class Num(T)
+	shared fn create(i int) -> T
+
+	fn neg() -> T
+	shared fn add(lhs T, rhs T) -> T
+	shared fn sub(lhs T, rhs T) -> T
+	shared fn mul(lhs T, rhs T) -> T
+	shared fn div(lhs T, rhs T) -> T
+	shared fn mod(lhs T, rhs T) -> T
+
+class Binary(T)
+	fn not() -> T
+	shared fn or(lhs T, rhs T) -> T
+	shared fn xor(lhs T, rhs T) -> T
+	shared fn and(lhs T, rhs T) -> T
+
+class Joinable(T)
+	shared fn join(lhs T, rhs T) -> T
+
+class StringLiteral(T)
+	shared fn create(data *char, size uint) -> T

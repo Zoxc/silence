@@ -8,13 +8,48 @@ enum Token
 	Number
 	EndOfFile
 
-	# Order binary operators
+	Not
+	Comma
+	Dot
+	Colon
+	DoubleColon
+
+	Eq
+	NotEq
+
+	Greater
+	GreaterOrEq
+	Less
+	LessOrEq
+
+	ArrowLeft
+	ArrowRight
+
+	Assign
+
+	# Ordered
+	
+	ParentOpen
+	SquareOpen
+	BraceOpen
+
+	ParentClose
+	SquareClose
+	BraceClose
+
+	# Ordered binary operators
 
 	Add
 	Sub
 	Mul
 	Div
 	Mod
+
+	Or
+	And
+	Xor
+
+	Join
 
 	# Keep the assigns in the same order as the binary operators
 
@@ -23,6 +58,12 @@ enum Token
 	AssignMul
 	AssignDiv
 	AssignMod
+
+	AssignOr
+	AssignAnd
+	AssignXor
+
+	AssignJoin
 
 struct ref Lexer
 	struct State
@@ -52,6 +93,16 @@ struct ref Lexer
 	tok State
 	file *SrcFile
 	jump_table Table(256, () -> ())
+	blocks Array(*Block)
+
+	struct ref Block
+		levels Table(3, uint)
+
+		action create() :
+			levels <- undef()
+			levels(0) = 0
+			levels(1) = 0
+			levels(2) = 0
 
 	fn c()
 		return *tok.pos
@@ -98,11 +149,38 @@ struct ref Lexer
 		set_chars("a", "z", ident)
 		set_char("_", ident)
 
+		set_char("(", bracket_push)
+		set_char("{", bracket_push)
+		set_char("[", bracket_push)
+
+		set_char(")", bracket_pop)
+		set_char("}", bracket_pop)
+		set_char("]", bracket_pop)
+
 		set_char(" ", whitespace)
 		set_char(9, whitespace)
 
+		set_char("=", dual[Token.Assign, "=", Token.Eq])
+		set_char(":", dual[Token.Colon, ":", Token.DoubleColon])
+		set_char("!", dual[Token.Not, ":", Token.NotEq])
+
+		set_char(".", single[Token.Dot])
+		set_char(",", single[Token.Comma])
+
+		set_char(">", assign[Token.Greater, Token.GreaterOrEq])
+		set_char("<", tri[Token.Less, "=", Token.LessOrEq, "-", Token.ArrowLeft])
 
 		set_char("+", assign[Token.Add, Token.AssignAdd])
+		set_char("-", tri[Token.Sub, "=", Token.AssignSub, ">", Token.ArrowRight])
+		set_char("*", assign[Token.Mul, Token.AssignMul])
+		set_char("/", assign[Token.Div, Token.AssignDiv])
+		set_char("%", assign[Token.Mod, Token.AssignMod])
+
+		set_char("|", assign[Token.Or, Token.AssignOr])
+		set_char("&", assign[Token.And, Token.AssignAnd])
+		set_char("^", assign[Token.Xor, Token.AssignXor])
+
+		set_char("~", assign[Token.Join, Token.AssignJoin])
 
 		set_char(0, eof)
 
@@ -115,16 +193,68 @@ struct ref Lexer
 		assert -> ptr_int tok.stop >= ptr_int tok.start
 		assert -> tok.type != Token.None
 
-	fn assign[type :: Token, assign_type :: Token]()
+	fn pop_bracket_level(i)
+
+	fn bracket_data() -> uint
+		.i
+		(tok.type, i) = match c()
+			when "("
+				(Token.ParentOpen, 0)
+			when "["
+				(Token.SquareOpen, 1)
+			when "{"
+				(Token.BraceOpen, 2)
+			when ")"
+				(Token.ParentClose, 0)
+			when "]"
+				(Token.SquareClose, 1)
+			when "}"
+				(Token.BraceClose, 2)
+		step()
+		tok.end()
+		return i
+
+	fn bracket_push()
+		.i = bracket_data()
+		#blocks.last().map -> |b| b.levels[i] += 1
+
+	fn bracket_pop()
+		.i = bracket_data()
+		#blocks.last().map -> |b| pop_bracket_level i
+
+	fn tri[type :: Token, c1 :: char, t1 :: Token, c2 :: char, t2 :: Token]()
 		step()
 
-		tok.type = if c() == "="
+		tok.type = match c()
+			when c1
+				step()
+				t1
+			when c2
+				step()
+				t2
+			else
+				type
+
+		tok.end()
+
+	fn dual[type :: Token, ch :: char, c_type :: Token]()
+		step()
+
+		tok.type = if c() == ch
 			step()
-			assign_type
+			c_type
 		else
 			type
 
 		tok.end()
+
+	fn single[type :: Token]()
+		step()
+		tok.type = type
+		tok.end()
+
+	fn assign[type :: Token, assign_type :: Token]()
+		dual[type, "=", assign_type]()
 
 	fn eof()
 		if at_end()

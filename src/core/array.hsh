@@ -24,16 +24,28 @@ struct Array(T, A Allocator = Mem)
 	fn each(f)
 		times(size, |i| f(*ptr_idx(list, i)))
 
+	fn reverse()
+		.result Array(T, A)
+		result.expand(size)
+		times(size, |i| *ptr_idx(result.list, i) = *ptr_idx(list, size - 1 - i))
+		return result
+
 	fn expand(n)
 		if capacity >= size + n
 			return
 
 		loop
 			capacity = 2 * (capacity + 1)
-			if(capacity >= size + n)
+			if capacity >= size + n
 				break
 
 		list = Allocator(allocator).realloc(list, size * unit, capacity * unit)
+
+	fn last()
+		return if size > 0
+			some(*ptr_idx(list, size - 1))
+		else
+			Option.None()
 
 	fn push(val)
 		expand(1)

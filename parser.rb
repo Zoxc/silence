@@ -5,6 +5,8 @@ require_relative 'print'
 class Parser
 	attr_reader :l, :imports
 	
+	AssignOps = ['+=', '-=', '*=', '/=', '%=', '~=', '^=', '&=', '|=', '=']
+	
 	def initialize(str)
 		@l = Lexer.new(str)
 		@imports = []
@@ -377,7 +379,7 @@ class Parser
 		source do |s|
 			step
 			name = match :id
-			AST::TypeFunction.new(s, name, AST::KindParams.new(s, [], []), nil)
+			AST::TypeFunction.new(s, name, AST::KindParams.new(s, [], []), (type_expression if is_type_expression))
 		end
 	end
 	
@@ -815,7 +817,7 @@ class Parser
 		result = pred_operator
 		
 		case tok_val
-			when *Core::AssignOps
+			when *AssignOps
 				src = @l.source
 				op = tok_val
 				step
@@ -1074,6 +1076,9 @@ class Parser
 					AST::Literal.new(s, :string, match(:str))
 				when :id
 					case tok_val
+						when :nil
+							step
+							AST::Literal.new(s, :nil, nil)
 						when :typeof
 							step
 							AST::TypeOf.new(s, chain)
