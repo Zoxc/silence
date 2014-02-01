@@ -7,6 +7,9 @@ enum Token
 	Ident
 	Number
 	EndOfFile
+	Line
+	Indent
+	Deindent
 
 	Not
 	Comma
@@ -74,6 +77,8 @@ struct ref Lexer
 		type Token
 		start *char
 		stop *char
+
+		num uint
 
 		action create(pos, end, lexer) :
 			pos <- pos,
@@ -160,6 +165,9 @@ struct ref Lexer
 		set_char(" ", whitespace)
 		set_char(9, whitespace)
 
+		set_char(10, single[Token.Line])
+		set_char(13, dual[Token.Line, 10, Token.Line])
+
 		set_char("=", dual[Token.Assign, "=", Token.Eq])
 		set_char(":", dual[Token.Colon, ":", Token.DoubleColon])
 		set_char("!", dual[Token.Not, ":", Token.NotEq])
@@ -193,7 +201,13 @@ struct ref Lexer
 		assert -> ptr_int tok.stop >= ptr_int tok.start
 		assert -> tok.type != Token.None
 
-	fn pop_bracket_level(i)
+	fn pop_bracket_level(brace) -> uint
+		blocks.reverse().each_with_index -> |b, i|
+			if b.levels(brace) > 0
+				b.levels(brace) -= 1
+				blocks = blocks.slice(0, blocks.size - 1 - i)
+				return i
+		return 0
 
 	fn bracket_data() -> uint
 		.i
@@ -216,11 +230,15 @@ struct ref Lexer
 
 	fn bracket_push()
 		.i = bracket_data()
-		#blocks.last().map -> |b| b.levels[i] += 1
+		blocks.last().map -> |b| b.levels(i) += 1
 
 	fn bracket_pop()
 		.i = bracket_data()
-		#blocks.last().map -> |b| pop_bracket_level i
+		blocks.last().map -> |b|
+			.p = pop_bracket_level i
+			if p > 0
+				tok.type = Token.Deindent
+				tok.num = p * 2 - 1
 
 	fn tri[type :: Token, c1 :: char, t1 :: Token, c2 :: char, t2 :: Token]()
 		step()
@@ -258,8 +276,13 @@ struct ref Lexer
 
 	fn eof()
 		if at_end()
-			tok.type = Token.EndOfFile
 			tok.end()
+
+			if blocks.size > 0
+				tok.type = Token.Deindent
+				tok.num = blocks.size * 2
+			else
+				tok.type = Token.EndOfFile
 		else
 			tok.end()
 			report[Error.NullChar]()

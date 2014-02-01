@@ -23,9 +23,9 @@ struct Option(T)
 	fn map(f)
 		return match self as v
 			when Some
-				Some(f(v.val))
+				Option.Some(f(v.val))
 			when None
-				None()
+				Option.None()
 
 
 class Defaultable(T)

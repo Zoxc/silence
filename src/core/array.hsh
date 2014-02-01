@@ -24,10 +24,22 @@ struct Array(T, A Allocator = Mem)
 	fn each(f)
 		times(size, |i| f(*ptr_idx(list, i)))
 
+	fn each_with_index(f)
+		times(size, |i| f(*ptr_idx(list, i), i))
+
 	fn reverse()
-		.result Array(T, A)
+		.result Array
 		result.expand(size)
 		times(size, |i| *ptr_idx(result.list, i) = *ptr_idx(list, size - 1 - i))
+		return result
+
+	fn slice(start, stop)
+		.result Array
+		if start > stop
+			return result
+		.size = stop - start + 1
+		result.expand(size)
+		times(size, |i| *ptr_idx(result.list, i) = *ptr_idx(list, start + i))
 		return result
 
 	fn expand(n)
