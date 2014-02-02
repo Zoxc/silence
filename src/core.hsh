@@ -38,6 +38,9 @@ struct Mem
 	shared fn copy[T](src *T, dst *T, size)
 		C.memcpy(ptr_cast dst, ptr_cast src, size)
 
+	shared fn cmp[T](a *T, b *T, size) -> bool
+		C.memcmp(ptr_cast a, ptr_cast b, size) == 0
+
 	shared fn free(ptr)
 		C.free(ptr_cast ptr)
 
@@ -128,6 +131,18 @@ instance StringLiteral(char)
 instance(T) Eq(*T)
 	fn equal(lhs *T, rhs *T)
 		return force_cast[uint] lhs == force_cast rhs
+
+fn min(a, b)
+	return if a > b
+		b
+	else
+		a
+
+fn max(a, b)
+	return if a < b
+		b
+	else
+		a
 
 fn assert(b)
 	if !b()

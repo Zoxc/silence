@@ -399,7 +399,7 @@
 				
 				true
 			elsif c.args.values.all? { |t| t.fixed_type? }
-				raise CompileError, "Unable to find an instance of the type class '#{c}'\n#{c.source.format}"
+				raise CompileError, "Unable to find an instance of the type class #{c}#{c.args.map { |k,v| "\n        #{k.scoped_name} => #{v}\n#{v.source.format(16)}" }.join}"
 			end
 		end or
 		

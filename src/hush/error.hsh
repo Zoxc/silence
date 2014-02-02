@@ -5,7 +5,8 @@ struct ref Error
 
 	when UnknownChars
 	when NullChar
-
+	when IndentMismatch
+		start *SrcLoc
 
 	fn str() -> String
 		return match self as err
@@ -13,6 +14,15 @@ struct ref Error
 				"Unexpected character(s)"
 			when NullChar
 				"Unexpected null-terminator"
+			when IndentMismatch
+				"Mismatching indentation"
+
+	fn trailing() -> String
+		return match self as err
+			when IndentMismatch
+				String.from_c(10) ~ "Relative to baseline:" ~ String.from_c(10) ~ err.start.format()
+			else
+				""
 
 	fn format()
-		return str() ~ String.from_c(10) ~ src.format()
+		return str() ~ String.from_c(10) ~ src.format() ~ trailing()

@@ -604,7 +604,7 @@
 				ast.gen = args.loop
 				Result.new(unit_type(ast.source), true)
 			when AST::Loop
-				analyze_value(ast.group, args.next(loop: ast))
+				analyze_value(ast.group, args.next(loop: ast, unused: true))
 				Result.new(unit_type(ast.source), true)
 			when AST::If
 				cond = analyze_value(ast.condition, args.next)

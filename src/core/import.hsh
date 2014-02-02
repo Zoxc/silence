@@ -5,6 +5,7 @@ struct C
 	shared import fn realloc(mem *(), size uint) -> *()
 	shared import fn free(mem *())
 
+	shared import fn memcmp(a *(), b *(), len uint) -> c_int
 	shared import fn memcpy(dst *(), src *(), len uint)
 
 	shared import fn fopen(file *char, mode *char) -> *FILE

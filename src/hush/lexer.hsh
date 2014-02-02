@@ -30,8 +30,6 @@ enum Token
 
 	Assign
 
-	# Ordered
-	
 	ParentOpen
 	SquareOpen
 	BraceOpen
@@ -69,6 +67,20 @@ enum Token
 	AssignJoin
 
 struct ref Lexer
+	struct Indent
+		start *char
+		stop *char
+
+		fn size()
+			return ptr_diff(stop, start)
+
+		fn subset(other Indent)
+			.s = size()
+			if other.size() < s
+				return false
+			other = Indent(other.start, ptr_idx(other.start, s))
+			return Mem.cmp(start, other.start, s)
+
 	struct State
 		pos *char
 		input_end *char
@@ -77,16 +89,21 @@ struct ref Lexer
 		type Token
 		start *char
 		stop *char
+		last_ended *char
+
+		indent Indent
 
 		num uint
 
 		action create(pos, end, lexer) :
 			pos <- pos,
+			last_ended <- pos,
 			input_end <- end,
 			lexer <- lexer,
 			type <- Token.None,
 			start <- undef(),
-			stop <- undef()
+			stop <- undef(),
+			indent <- undef()
 
 		fn end()
 			stop = pos
@@ -94,20 +111,25 @@ struct ref Lexer
 		fn str()
 			return String.from_data(start, ptr_diff(stop, start))
 
+	struct ref Block
+		levels Table(3, uint)
+		indent Indent
+
+		action create(indent) :
+			indent <- indent,
+			levels <- undef()
+			levels(0) = 0
+			levels(1) = 0
+			levels(2) = 0
+
+		fn ignore()
+			return levels(0) > 0 or levels(1) > 0 or levels(2) > 0
+
 	compiler *Compiler
 	tok State
 	file *SrcFile
 	jump_table Table(256, () -> ())
 	blocks Array(*Block)
-
-	struct ref Block
-		levels Table(3, uint)
-
-		action create() :
-			levels <- undef()
-			levels(0) = 0
-			levels(1) = 0
-			levels(2) = 0
 
 	fn c()
 		return *tok.pos
@@ -123,11 +145,14 @@ struct ref Lexer
 	fn in(a, b)
 		return (a <= c()) & (c() <= b)
 
+	fn make_src(start, stop) -> *SrcLoc
+		return new(file, start, stop)
+
 	fn src() -> *SrcLoc
-		return new(file, tok.start, tok.stop)
+		return make_src(tok.start, tok.stop)
 
 	fn report[T] *args
-		.error = Callable(new[T]).apply(Cell(src(), args))
+		.error = Callable(new[T]).apply(args)
 		compiler.errors.push error
 
 	action create(compiler, file) :
@@ -192,14 +217,126 @@ struct ref Lexer
 
 		set_char(0, eof)
 
-	fn next_token()
+	fn next(process)
+		tok.last_ended = tok.pos
 		tok.type = Token.None
 		tok.start = tok.pos
+		tok.stop = ptr_succ tok.pos
 
-		jump_table(force_cast c())()
+		process()
 
 		assert -> ptr_int tok.stop >= ptr_int tok.start
 		assert -> tok.type != Token.None
+
+	fn process_token()
+		jump_table(force_cast c())()
+
+	fn next_token()
+		assert -> tok.type != Token.Line and tok.type != Token.Deindent
+		next(process_token)
+
+	fn next_token_after_line()
+		assert -> tok.type == Token.Line
+
+		next ->
+			tok.indent = get_line_indent()
+			handle_line()
+
+	fn skip_newline()
+		loop
+			match c()
+				when 0
+					if at_end()
+						break
+					else
+						report[Error.NullChar](make_src(tok.pos, ptr_succ tok.pos))
+						step()
+				when 13
+					step()
+					if c() == 10
+						step()
+					break
+				when 10
+					step()
+					break
+				else
+					step()
+
+	fn get_line_indent() -> Indent
+		.start = tok.pos
+		skip_whitespace()
+
+		return match c()
+			when 13
+				step()
+				if c() == 10
+					step()
+				get_line_indent()
+			when 10
+				step()
+				get_line_indent()
+			when "#"
+				skip_newline()
+				get_line_indent()
+			else
+				Indent(start, tok.pos)
+
+	enum IndentChange
+		Unchanged
+		Increased
+		Decreased
+		Error
+
+	fn compare_indent(old Indent, new Indent)
+		return if old.subset(new)
+			if new.size() > old.size()
+				IndentChange.Increased
+			else
+				IndentChange.Unchanged
+		else if new.subset(old)
+			IndentChange.Decreased
+		else
+			IndentChange.Error
+
+	fn handle_line()
+		.block = undef()
+
+		match blocks.last() as b_
+			when Option.Some
+				block = b_.val
+				if block.ignore()
+					next(process_token)
+					return
+			else
+				next(process_token)
+				return
+
+		match compare_indent(block.indent, tok.indent)
+			when IndentChange.Unchanged, IndentChange.Decreased
+				blocks.pop()
+				.i = 1
+				loop
+					match blocks.last() as b
+						when Option.Some
+							if b.val.ignore()
+								break
+							match compare_indent(b.val.indent, tok.indent)
+								when IndentChange.Unchanged, IndentChange.Decreased
+								else
+									break
+						else
+							break
+					i += 1
+					blocks.pop()
+				
+				tok.start = tok.pos
+				tok.end()
+				tok.type = Token.Deindent
+				tok.num = i * 2
+			when IndentChange.Increased
+				next(process_token)
+			when IndentChange.Error
+				report[Error.IndentMismatch](make_src(tok.indent.start, tok.indent.stop), make_src(block.indent.start, block.indent.stop))
 
 	fn pop_bracket_level(brace) -> uint
 		blocks.reverse().each_with_index -> |b, i|
@@ -288,10 +425,10 @@ struct ref Lexer
 			else
 				tok.type = Token.EndOfFile
 		else
-			tok.end()
-			report[Error.NullChar]()
 			step()
-			next_token()
+			tok.end()
+			report[Error.NullChar](src())
+			next(process_token)
 
 	fn number()
 		step()
@@ -304,13 +441,17 @@ struct ref Lexer
 		tok.end()
 		tok.type = Token.Number
 
-	fn whitespace()
+	fn skip_whitespace()
 		loop
-			step()
-
 			if c() != " " or c() != 9
 				break
-		next_token()
+
+			step()
+
+	fn whitespace()
+		step()
+		skip_whitespace()
+		next(process_token)
 
 	fn ident()
 		step()
@@ -333,6 +474,6 @@ struct ref Lexer
 
 		tok.end()
 
-		report[Error.UnknownChars]()
+		report[Error.UnknownChars](src())
 
-		next_token()
+		next(process_token)

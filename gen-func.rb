@@ -683,7 +683,7 @@ class FuncCodegen
 				ovar = readonly(ast.expr, expr_ptr)
 
 				expr = RealVar.new("v_#{ast.rest.binding.name}", type)
-				o "#{@gen.c_type(type, @map)} &#{expr.name} = *(#{expr_ptr.ref});"
+				o "{ #{@gen.c_type(type, @map)} &#{expr.name} = *(#{expr_ptr.ref});"
 
 				when_labels = ast.rest.whens.map { new_label }
 
@@ -711,6 +711,8 @@ class FuncCodegen
 				gen_label resume
 				del_var ovar if ovar
 				del_var expr_ptr
+				
+				o "}"
 
 			when AST::ValueTuple
 				args = new_var
