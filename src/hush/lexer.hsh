@@ -224,21 +224,25 @@ struct ref Lexer
 				(Token.SquareClose, 1)
 			when "}"
 				(Token.BraceClose, 2)
-		step()
-		tok.end()
 		return i
 
 	fn bracket_push()
 		.i = bracket_data()
+		step()
+		tok.end()
 		blocks.last().map -> |b| b.levels(i) += 1
 
 	fn bracket_pop()
 		.i = bracket_data()
-		blocks.last().map -> |b|
+		if blocks.size > 0
 			.p = pop_bracket_level i
 			if p > 0
+				tok.end()
 				tok.type = Token.Deindent
 				tok.num = p * 2 - 1
+				return
+		step()
+		tok.end()
 
 	fn tri[type :: Token, c1 :: char, t1 :: Token, c2 :: char, t2 :: Token]()
 		step()
