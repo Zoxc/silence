@@ -7,6 +7,8 @@ struct ref Error
 	when NullChar
 	when IndentMismatch
 		start *SrcLoc
+	when UnknownIndent
+		start *SrcLoc
 
 	fn str() -> String
 		return match self as err
@@ -16,10 +18,14 @@ struct ref Error
 				"Unexpected null-terminator"
 			when IndentMismatch
 				"Mismatching indentation"
+			when UnknownIndent
+				"Unable to find indentation size"
 
 	fn trailing() -> String
 		return match self as err
 			when IndentMismatch
+				String.from_c(10) ~ "Relative to baseline:" ~ String.from_c(10) ~ err.start.format()
+			when UnknownIndent
 				String.from_c(10) ~ "Relative to baseline:" ~ String.from_c(10) ~ err.start.format()
 			else
 				""

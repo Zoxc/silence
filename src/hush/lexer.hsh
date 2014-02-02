@@ -242,6 +242,23 @@ struct ref Lexer
 			tok.indent = get_line_indent()
 			handle_line()
 
+	fn indent_newline(baseline Indent)
+		assert -> tok.type == Token.Line
+		.indent = get_line_indent()
+		.r = false
+
+		match compare_indent(baseline, indent)
+			when IndentChange.Increased
+				blocks.push(new(baseline))
+				r = true
+				tok.indent = indent
+				next(process_token)
+			when IndentChange.Error
+				report[Error.UnknownIndent](make_src(indent.start, indent.stop), make_src(baseline.start, baseline.stop))
+			else
+
+		return r
+
 	fn skip_newline()
 		loop
 			match c()
@@ -328,7 +345,7 @@ struct ref Lexer
 							break
 					i += 1
 					blocks.pop()
-				
+
 				tok.start = tok.pos
 				tok.end()
 				tok.type = Token.Deindent
