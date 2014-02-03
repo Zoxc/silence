@@ -1,0 +1,94 @@
+use "lexer"
+
+struct ref Parser
+	lexer *Lexer
+	compiler *Compiler
+
+	action create(lexer) :
+		lexer <- lexer,
+		compiler <- lexer.compiler
+
+	fn tok()
+		return lexer.tok.type
+
+	fn format_token()
+		return tok().str()
+
+	fn step()
+		lexer.next_token()
+
+	fn extend(src *SrcLoc)
+		src.stop = lexer.tok.last_ended
+
+	fn expected(tok Token)
+		lexer.report[Error.ExpectedToken](lexer.src(), tok, format_token())
+
+	fn ensure(v Token)
+		if v == tok()
+			step()
+		else
+			expected(v)
+
+	fn get_ident()
+		return if tok() == Token.Ident
+			some lexer.tok.str()
+		else
+			nil
+
+	fn matches_ident(ident String)
+		return if tok() == Token.Ident
+			ident == lexer.tok.str()
+		else
+			false
+
+	fn program()
+		.r = global_entries -> tok() == Token.EndOfFile
+		if tok() != Token.EndOfFile
+			expected(Token.EndOfFile)
+		return r
+
+	fn sep()
+		ensure(Token.Line)
+
+	fn src(a)
+		.s = lexer.src()
+		a(s)
+		s.stop = lexer.tok.last_ended
+
+	fn global_entries(term)
+		loop
+			if !global_entry()
+					break
+			if term()
+				break
+			sep()
+
+	fn global_entry() -> bool
+		match tok()
+			when Token.Ident
+				IO.puts("Test |" ~ lexer.tok.str() ~ "|")
+				match lexer.tok.str()
+					when "struct"
+						struct()
+					else
+						return false
+			else
+				return false
+
+		return true
+
+	fn struct()
+				IO.puts("in struct" ~ lexer.tok.str())
+		.s = lexer.src()
+		.baseline = lexer.tok.indent
+		step()
+		if matches_ident("ref")
+		else if matches_ident("bare")
+		.name = get_ident()
+		.tp = kind_params()
+		extend s
+		.scope = global_scope(baseline)
+
+	fn kind_params()
+
+	fn global_scope(baseline)

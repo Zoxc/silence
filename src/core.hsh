@@ -39,7 +39,7 @@ struct Mem
 		C.memcpy(ptr_cast dst, ptr_cast src, size)
 
 	shared fn cmp[T](a *T, b *T, size) -> bool
-		C.memcmp(ptr_cast a, ptr_cast b, size) == 0
+		return C.memcmp(ptr_cast a, ptr_cast b, size) == 0
 
 	shared fn free(ptr)
 		C.free(ptr_cast ptr)

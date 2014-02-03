@@ -9,6 +9,9 @@ struct ref Error
 		start *SrcLoc
 	when UnknownIndent
 		start *SrcLoc
+	when ExpectedToken
+		tok Token
+		found String
 
 	fn str() -> String
 		return match self as err
@@ -20,6 +23,8 @@ struct ref Error
 				"Mismatching indentation"
 			when UnknownIndent
 				"Unable to find indentation size"
+			when ExpectedToken
+				"Expected " ~ err.tok.str() ~ ", but found " ~ err.found
 
 	fn trailing() -> String
 		return match self as err

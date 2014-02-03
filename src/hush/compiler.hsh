@@ -1,9 +1,12 @@
 use "lexer"
+use "parser"
 use "error"
 
 struct ref Compiler
 	lexer Lexer
+	parser Parser
 	errors Array(*Error)
 
 	action create(file) :
-		lexer <- Lexer(&self, file)
+		lexer <- Lexer(&self, file),
+		parser <- Parser(&lexer)

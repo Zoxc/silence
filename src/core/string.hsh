@@ -52,3 +52,7 @@ instance Joinable(String)
 		.rhs_pos = ptr_idx(new, lhs.size)
 		Mem.copy(rhs.data, rhs_pos, rhs.size)
 		return String(new, new_size)
+
+instance Eq(String)
+	fn equal(lhs String, rhs String)
+		return lhs.size == rhs.size and Mem.cmp(lhs.data, rhs.data, lhs.size)

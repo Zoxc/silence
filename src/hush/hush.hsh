@@ -5,6 +5,8 @@ fn parse(input, name)
 	.file = SrcFile(input, name)
 	.compiler = Compiler(&file)
 
+	compiler.parser.program()
+
 	loop
 		if compiler.lexer.tok.type == Token.EndOfFile
 			break
