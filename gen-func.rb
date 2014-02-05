@@ -290,6 +290,9 @@ class FuncCodegen
 
 	def readonly(ast, var)
 		case ast
+			when AST::Grouped
+				return readonly(ast.node, var)
+			
 			when AST::Call
 				return readonly(ast.args.first, var) if ast.gen[:type] == :binding
 
@@ -430,6 +433,8 @@ class FuncCodegen
 
 	def lvalue(ast, var, proper = true)
 		case ast
+			when AST::Grouped
+				lvalue(ast.node, var, proper)
 			when AST::Call
 				case ast.gen[:type]
 					when :index
