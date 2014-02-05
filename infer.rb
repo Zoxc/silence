@@ -443,7 +443,7 @@
 	
 	def analyze_impl(ast, args)
 		case ast
-			when AST::Ref, AST::Field, AST::UnaryOp, AST::ValueTuple, AST::Call
+			when AST::Ref, AST::Field, AST::UnaryOp, AST::ValueTuple, AST::Call, AST::Grouped
 			else
 				raise CompileError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
 		end if args.lvalue
@@ -725,7 +725,7 @@
 			# The tricky mix of values and types
 			
 			when AST::Grouped
-				Result.new(*analyze(ast.node, args))
+				analyze_impl(ast.node, args)
 			when AST::UnaryOp
 				raise CompileError.new("Invalid l-value\n#{ast.source.format}") if (ast.op != '*') && args.lvalue
 				
