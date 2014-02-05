@@ -725,7 +725,7 @@
 			# The tricky mix of values and types
 			
 			when AST::Grouped
-				Result.new(*analyze(ast.node, args.next))
+				Result.new(*analyze(ast.node, args))
 			when AST::UnaryOp
 				raise CompileError.new("Invalid l-value\n#{ast.source.format}") if (ast.op != '*') && args.lvalue
 				
