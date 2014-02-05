@@ -195,3 +195,10 @@ instance(T Indexable) Callable(T)
 
 	fn apply(args Args)
 		return *Indexable(self).ref(args)
+
+instance(T Indexable) Indexable(*T)
+	alias Result = Indexable(T).Result
+	alias Index = Indexable(T).Index
+
+	fn ref(index Index)
+		return Indexable(*self).ref(index)
