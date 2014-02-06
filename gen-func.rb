@@ -655,9 +655,12 @@ class FuncCodegen
 					w.cases.each do |c|
 						test = new_var
 						c_expr = new_var
+						e_expr = new_var
+						assign_var(e_expr, ast.gen[:type], expr.ref, true)
 						convert(c, c_expr)
-						direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), "&#{expr.ref}", [expr.ref, c_expr.ref], Core::Bool.ctype.type)
-						del_var c_expr
+						direct_call(test, ref(Core::Eq::Equal, {Core::Eq::T => ast.gen[:type]}), "&#{expr.ref}", [e_expr.ref, c_expr.ref], Core::Bool.ctype.type)
+						del_var e_expr, false
+						del_var c_expr, false
 						o "    if(#{test.ref} == Enum_bool_true) goto #{when_labels[i]};"
 						del_var test
 					end
