@@ -91,6 +91,8 @@ struct ref Lexer
 		stop *char
 		last_ended *char
 
+		blocks Array(*Block, Region)
+
 		indent Indent
 
 		num uint
@@ -103,7 +105,8 @@ struct ref Lexer
 			type <- Token.None,
 			start <- undef(),
 			stop <- undef(),
-			indent <- undef()
+			indent <- undef(),
+			blocks <- Array[*Block, Region](lexer.compiler.region.ref())
 
 		fn end()
 			stop = pos
@@ -129,7 +132,9 @@ struct ref Lexer
 	tok State
 	file *SrcFile
 	jump_table Table(256, () -> ())
-	blocks Array(*Block)
+
+	fn region()
+		return file.region.ref()
 
 	fn c()
 		return *tok.pos
@@ -146,19 +151,19 @@ struct ref Lexer
 		return (a <= c()) & (c() <= b)
 
 	fn make_src(start, stop) -> *SrcLoc
-		return new(file, start, stop)
+		return region().new(file, start, stop)
 
 	fn src() -> *SrcLoc
 		return make_src(tok.start, tok.stop)
 
 	fn report[T] *args
-		.error = Callable(new[T]).apply(args)
+		.error = Callable(region().new[T]).apply(args)
 		compiler.errors.push error
 
 	action create(compiler, file) :
 		compiler <- compiler,
 		file <- file,
-		tok <- State(file.content.data, ptr_idx(file.content.data, file.content.size - 1), &self),
+		tok <- State(file.content.data(), ptr_idx(file.content.data(), file.content.size() - 1), &self),
 		jump_table <- undef()
 
 		setup_table()
@@ -249,7 +254,7 @@ struct ref Lexer
 
 		match compare_indent(baseline, indent)
 			when IndentChange.Increased
-				blocks.push(new(baseline))
+				tok.blocks.push(new(baseline))
 				r = true
 				tok.indent = indent
 				next(process_token)
@@ -318,7 +323,7 @@ struct ref Lexer
 	fn handle_line()
 		.block = undef()
 
-		match blocks.last() as b_
+		match tok.blocks.last() as b_
 			when Option.Some
 				block = b_.val
 				if block.ignore()
@@ -330,10 +335,10 @@ struct ref Lexer
 
 		match compare_indent(block.indent, tok.indent)
 			when IndentChange.Unchanged, IndentChange.Decreased
-				blocks.pop()
+				tok.blocks.pop()
 				.i = 1
 				loop
-					match blocks.last() as b
+					match tok.blocks.last() as b
 						when Option.Some
 							if b.val.ignore()
 								break
@@ -344,7 +349,7 @@ struct ref Lexer
 						else
 							break
 					i += 1
-					blocks.pop()
+					tok.blocks.pop()
 
 				tok.start = tok.pos
 				tok.end()
@@ -356,10 +361,10 @@ struct ref Lexer
 				report[Error.IndentMismatch](make_src(tok.indent.start, tok.indent.stop), make_src(block.indent.start, block.indent.stop))
 
 	fn pop_bracket_level(brace) -> uint
-		blocks.reverse().each_with_index -> |b, i|
+		tok.blocks.reverse().each_with_index -> |b, i|
 			if b.levels(brace) > 0
 				b.levels(brace) -= 1
-				blocks = blocks.slice(0, blocks.size - 1 - i)
+				tok.blocks = tok.blocks.slice(0, tok.blocks.size - 1 - i)
 				return i
 		return 0
 
@@ -384,11 +389,11 @@ struct ref Lexer
 		.i = bracket_data()
 		step()
 		tok.end()
-		blocks.last().map -> |b| b.levels(i) += 1
+		tok.blocks.last().map -> |b| b.levels(i) += 1
 
 	fn bracket_pop()
 		.i = bracket_data()
-		if blocks.size > 0
+		if tok.blocks.size > 0
 			.p = pop_bracket_level i
 			if p > 0
 				tok.end()
@@ -436,9 +441,9 @@ struct ref Lexer
 		if at_end()
 			tok.end()
 
-			if blocks.size > 0
+			if tok.blocks.size > 0
 				tok.type = Token.Deindent
-				tok.num = blocks.size * 2
+				tok.num = tok.blocks.size * 2
 			else
 				tok.type = Token.EndOfFile
 		else

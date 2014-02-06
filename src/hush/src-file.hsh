@@ -1,0 +1,10 @@
+use "../core"
+
+struct ref SrcFile
+	region Region.Base
+	content String
+	path String
+
+	action create(content String, path) : 
+		content <- content.c_term(),
+		path <- path

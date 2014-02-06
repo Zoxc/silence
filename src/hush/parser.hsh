@@ -11,7 +11,7 @@ struct ref Parser
 	fn tok()
 		return lexer.tok.type
 
-	fn format_token()
+	fn format_token() -> String
 		return tok().str()
 
 	fn step()
@@ -21,7 +21,7 @@ struct ref Parser
 		src.stop = lexer.tok.last_ended
 
 	fn expected(tok Token)
-		lexer.report[Error.ExpectedToken](lexer.src(), tok, format_token())
+		lexer.report[Error.ExpectedToken](lexer.src(), tok, format_token().copy(compiler.region.ref()))
 
 	fn ensure(v Token)
 		if v == tok()

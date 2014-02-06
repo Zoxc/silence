@@ -1,6 +1,6 @@
 use "core/import"
-use "core/string"
 use "core/array"
+use "core/string"
 use "core/io"
 use "core/file"
 use "core/builtin"

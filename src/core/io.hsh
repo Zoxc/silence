@@ -1,6 +1,6 @@
 struct IO
 	shared fn print(s String)
-		Runtime.hush_puts(s.data, s.size)
+		Runtime.hush_puts(&s)
 
 	shared fn puts(s String)
 		print s

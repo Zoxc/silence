@@ -1,58 +1,51 @@
-struct String
-	data *char
-	size uint
-	
-	action create :
-		size <- 0,
-		data <- Mem.alloc(0)
-	
-	action copy
-		.new = Mem.alloc(size)
-		Mem.copy(data, new, size)
-		data = new
+struct String(A Allocator = Mem)
+	bytes Array(char, A)
 
-	action destroy
-		Mem.free(data)
+	action create
+	action copy
 
 	shared fn from_c(data char)
-		.new = Mem.alloc(size_of[char]())
-		Mem.copy(&data, new, size_of[char]())
-		return String(new, 1)
+		return from_data(&data, 1)
 
 	shared fn from_data(data *char, size)
-		.new = Mem.alloc(size)
-		Mem.copy(data, new, size)
-		return String(new, size)
+		return String[A](Array[char, A].from_data(data, size))
+
+	fn copy[OA](allocator OA)
+		return String[OA](bytes.copy(allocator))
+
+	fn size()
+		return bytes.size
+
+	fn data()
+		return bytes.list
 
 	fn c_term()
-		.z char = 0
-		return self ~ String.from_data(&z, 1)
+		return self ~ from_c(0)
 
 	fn c_str(f)
 		.str = c_term()
-		return f(str.data)
+		return f(str.bytes.list)
 
-	fn each(f)
-		times(size, |i| f(*ptr_idx(data, i)))
-
-	fn repeat(t uint) -> String
+	fn repeat(t uint)
 		.r
 		times(t, |i| r ~= self)
 		return r
 
-instance StringLiteral(String)
+instance(A Defaultable) StringLiteral(String(A))
 	fn create(data *char, size)
-		return String.from_data(data, size)
+		return String[A].from_data(data, size)
 
-instance Joinable(String)
-	fn join(lhs String, rhs String)
-		.new_size = lhs.size + rhs.size
-		.new = Mem.alloc(new_size)
-		Mem.copy(lhs.data, new, lhs.size)
-		.rhs_pos = ptr_idx(new, lhs.size)
-		Mem.copy(rhs.data, rhs_pos, rhs.size)
-		return String(new, new_size)
+instance(A) Joinable(String(A))
+	fn join(lhs String(A), rhs String(A))
+		return String[A](Joinable.join(lhs.bytes, rhs.bytes))
 
-instance Eq(String)
-	fn equal(lhs String, rhs String)
-		return lhs.size == rhs.size and Mem.cmp(lhs.data, rhs.data, lhs.size)
+instance(A) Eq(String(A))
+	fn equal(lhs String(A), rhs String(A))
+		return lhs.bytes == rhs.bytes
+
+instance(A) Indexable(String(A))
+	alias Result = char
+	alias Index = Cell(uint, Unit)
+
+	fn ref(args Cell(uint, Unit))
+		return self.bytes.ptr(args.val)

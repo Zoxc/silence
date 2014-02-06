@@ -1292,6 +1292,11 @@
 					equal, map = tci_is_instance(m, expected_type)
 					#TODO: Check that all limits in member are also limits in value using map to compare type variables
 
+					#TODO: Limits on functions should apply to typeclass instance, else it's unsound
+					#      How do deal with higher order functions?
+					#          Don't allow type parameters of the function and to mix in a limit
+					#      Does the whole typeclass instance need to be a type context?
+
 					raise TypeError, "#{m == expected_type}Expected type '#{expected_type.text}' for '#{name}' in instance of typeclass #{typeclass.scoped_name}, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless equal
 					
 					#TODO: How to ensure members are a proper instance of the typeclass?

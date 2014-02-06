@@ -11,7 +11,7 @@ struct ref Error
 		start *SrcLoc
 	when ExpectedToken
 		tok Token
-		found String
+		found String(Region)
 
 	fn str() -> String
 		return match self as err
@@ -24,7 +24,7 @@ struct ref Error
 			when UnknownIndent
 				"Unable to find indentation size"
 			when ExpectedToken
-				"Expected " ~ err.tok.str() ~ ", but found " ~ err.found
+				"Expected " ~ err.tok.str() ~ ", but found " ~ err.found.copy(Mem())
 
 	fn trailing() -> String
 		return match self as err

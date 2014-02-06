@@ -7,9 +7,11 @@ struct Array(T, A Allocator = Mem)
 	shared unit = size_of[T]()
 
 	action create :
-			list <- Allocator(allocator).alloc(0),
-			size <- 0,
-			capacity <- 0
+			list <- Allocator(allocator).alloc(0)
+	
+	action create(allocator) :
+			allocator <- allocator,
+			list <- Allocator(allocator).alloc(0)
 	
 	action copy
 		.b = size * unit
@@ -21,25 +23,59 @@ struct Array(T, A Allocator = Mem)
 	action destroy
 		Allocator(allocator).free(list)
 
+	shared fn from_data_a(data *T, size, allocator)
+		.b = size * unit
+		.new = Allocator(allocator).alloc(b)
+		Mem.copy(data, new, b)
+		.result = Array[T, A](allocator)
+		Allocator(allocator).free(result.list)
+		result.list = new
+		result.size = size
+		result.capacity = size
+		return result
+
+	shared fn from_data(data *T, size)
+		return from_data_a(data, size, A())
+
+	fn concat[OA](other Array(T, OA))
+		expand(other.size)
+		times(other.size, |i| self(size + i) = other(i))
+		size += other.size
+
+	fn copy[OA](allocator OA)
+		.r = Array[T, OA](allocator)
+		r.concat self
+		return r
+
+	fn all(f)
+		.i = 0
+		loop
+			if i >= size
+				break
+			if !f(self(i), i)
+				return false
+			i += 1
+		return true
+
 	fn each(f)
-		times(size, |i| f(*ptr_idx(list, i)))
+		times(size, |i| f(self(i)))
 
 	fn each_with_index(f)
-		times(size, |i| f(*ptr_idx(list, i), i))
+		times(size, |i| f(self(i), i))
 
 	fn reverse()
-		.result Array
+		.result = Array[T, A](allocator)
 		result.expand(size)
-		times(size, |i| *ptr_idx(result.list, i) = *ptr_idx(list, size - 1 - i))
+		times(size, |i| result(i) = self(size - 1 - i))
 		return result
 
 	fn slice(start, stop)
-		.result Array
+		.result = Array[T, A](allocator)
 		if start > stop
 			return result
 		.size = stop - start + 1
 		result.expand(size)
-		times(size, |i| *ptr_idx(result.list, i) = *ptr_idx(list, start + i))
+		times(size, |i| result(i) = self(start + i))
 		return result
 
 	fn expand(n)
@@ -55,19 +91,19 @@ struct Array(T, A Allocator = Mem)
 
 	fn last()
 		return if size > 0
-			some(*ptr_idx(list, size - 1))
+			some(self(size - 1))
 		else
 			Option.None()
 
 	fn push(val)
 		expand(1)
-		*ptr_idx(list, size) = val
+		self(size) = val
 		size += 1
 
 	fn pop() -> Option(T)
 		return if size > 0
 			size -= 1
-			some(*ptr_idx(list, size))
+			some(self(size))
 		else
 			nil
 
@@ -77,14 +113,18 @@ struct Array(T, A Allocator = Mem)
 	fn get(idx uint)
 		return *ptr(idx)
 
-instance(T) Callable(Array(T))
-	alias Result = T
-	alias Args = Cell(uint, Unit)
+instance(T Eq, A) Eq(Array(T, A))
+	fn equal(lhs Array(T, A), rhs Array(T, A))
+		if lhs.size != rhs.size
+			return false
+		return lhs.all(|v, i| v == rhs(i))
 
-	fn apply(args Cell(uint, Unit))
-		return self.get(args.val)
+instance(T, A) Joinable(Array(T, A))
+	fn join(lhs Array(T, A), rhs Array(T, A))
+		lhs.concat rhs
+		return lhs
 
-instance(T) Indexable(Array(T))
+instance(T, A) Indexable(Array(T, A))
 	alias Result = T
 	alias Index = Cell(uint, Unit)
 

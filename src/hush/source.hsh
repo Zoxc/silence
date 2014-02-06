@@ -1,12 +1,4 @@
-use "../core"
-
-struct ref SrcFile
-	content String
-	path String
-
-	action create(content String, path) : 
-		content <- content.c_term(),
-		path <- path
+use "src-file"
 
 struct ref SrcLoc
 	file *SrcFile
@@ -17,7 +9,7 @@ struct ref SrcLoc
 		return ptr_diff(stop, start)
 
 	fn line_nr(pos *char)
-		.c = file.content.data
+		.c = file.content.data()
 		.line uint = 1
 
 		loop
@@ -34,7 +26,7 @@ struct ref SrcLoc
 		return line
 
 	fn line_start()
-		.file_start = file.content.data
+		.file_start = file.content.data()
 		.c = start
 
 		loop
@@ -51,7 +43,7 @@ struct ref SrcLoc
 
 	fn line_end(c *char)
 		loop
-			if ptr_idx(file.content.data, file.content.size) == c
+			if ptr_idx(file.content.data(), file.content.size()) == c
 				break
 
 			match *c
@@ -82,7 +74,7 @@ struct ref SrcLoc
 		else
 			c = start
 			loop
-				if ptr_idx(file.content.data, file.content.size) == c or ptr_int c >= ptr_int stop
+				if ptr_idx(file.content.data(), file.content.size()) == c or ptr_int c >= ptr_int stop
 					break
 
 				match *c
@@ -102,6 +94,6 @@ struct ref SrcLoc
 	fn format()
 		.line = line_start()
 		.prefix = file.path ~ ":" ~ show line_nr(line) ~ " "
-		.ind = (" " :: String).repeat(prefix.size) ~ indicator(line)
+		.ind = (" " :: String).repeat(prefix.size()) ~ indicator(line)
 
 		return prefix ~ String.from_data(line, ptr_diff(line_end(line), line)) ~ String.from_c(10) ~ ind

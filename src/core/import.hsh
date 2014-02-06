@@ -16,5 +16,5 @@ struct C
 struct Runtime
 	shared import fn hush_show_uint(str *String, i uint)
 	shared import fn hush_show_int(str *String, i int)
-	shared import fn hush_puts(c *char, size uint)
+	shared import fn hush_puts(str *String)
 	shared import fn hush_gets(str *String)
