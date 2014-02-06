@@ -51,9 +51,14 @@ class Codegen
 		ctx = TypeContext.new(nil)
 		inst_args, inst_map = ctx.inst_map(Core.src, ref, map.params)
 		map.vars = Hash[ref.ctype.dependent_vars.map { |var| [var, ctx.inst_type(inst_args, var)] }]
-		ctx.reduce(ref)
+		nil while ctx.reduce(ref)
 		
-		raise "Unable to reduce vars for map #{map}" unless ctx.limits.empty?
+		unless ctx.limits.empty?
+			puts "limits for #{ref.scoped_name}"
+			ctx.limits.each{|i| puts "    - #{i}"}
+			ctx.levels.each{|i| puts "    - #{i}"}
+			raise "Unable to reduce vars for map #{map}"  
+		end
 	end
 	
 	def format_params(params)
