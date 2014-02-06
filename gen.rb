@@ -176,7 +176,7 @@ class Codegen
 				fields = [map.params[Core::Cell::Val]] + map.params[Core::Cell::Next].tuple_map
 				"_Q#{fields.map {|f| mangle_type(f, map) }.join("_n")}_l"
 			when AST::Lambda
-				"_L#{ast.__id__}"
+				"#{mangle_impl(ast.fowner, map)}___L#{ast.__id__}"
 			else
 				owner = ast.declared.owner
 				name = mangle_name(ast, map)
@@ -347,7 +347,8 @@ class Codegen
 				o << "};\n\n"
 				@out[:struct] << o
 			when AST::Lambda
-				o = "struct #{ast.name}"
+				name = mangle(ast, map)
+				o = "struct #{name}__type"
 				@out[:struct_forward] << o << ";\n"
 				o << "\n{\n"
 				vars = ast.fowner.ctype.vars
@@ -360,7 +361,7 @@ class Codegen
 				o = function_proto(ast, map, false, ast.gen)
 				@out[:func_forward] << o << ";\n"
 				o << "\n{\n"
-				o << "    auto &ref = *(#{ast.name} *)data;\n"
+				o << "    auto &ref = *(#{name}__type *)data;\n"
 				o << FuncCodegen.new(self, ast, map).process
 				o << "\n}\n\n"
 				@out[:func] << o

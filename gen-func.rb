@@ -609,12 +609,13 @@ class FuncCodegen
 			when AST::Lambda
 				ref_n = "v_#{@var_name += 1}"
 
+				name = @gen.mangle(ast, @map)
 				@gen.gen(ast, @map)
-				o "#{ast.name} #{ref_n};"
+				o "#{name}__type #{ref_n};"
 				ast.scope.req_vars.each do |v|
 					o "#{ref_n}.r_#{v.name} = #{v.declared.fscope == @func.scope ? "&v_#{v.name}" : "ref.r_#{v.name}"};\n"
 				end
-				o "#{var.ref}.func = #{@gen.mangle(ast, @map)};"
+				o "#{var.ref}.func = #{name};"
 				o "#{var.ref}.data = &#{ref_n};"
 				assign_var(var, ast.gen, nil)
 			when AST::Scope
