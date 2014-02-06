@@ -1235,6 +1235,27 @@
 		end
 	end
 
+	def tci_is_instance(input, inst)
+		map = {}
+		
+		result = Types.cmp_types(input, inst) do |input, inst|
+			if inst.is_a?(Types::Variable)
+				if map.key? inst
+					[true, map[inst] == input]
+				elsif input.is_a?(Types::Variable)
+					map[inst] = input
+					[true, true]
+				else
+					[true, false]
+				end
+			else
+				[input.is_a?(Types::Variable), false]
+			end
+		end
+		
+		[result, map]
+	end
+	
 	def process_all
 		raise "process_all before process_req for #{@obj.scoped_name}" unless @obj.ctype
 
@@ -1255,14 +1276,23 @@
 					raise(CompileError, "Expected '#{name}' in instance of typeclass #{typeclass.scoped_name}\n#{@obj.source.format}") unless member
 					next if value.is_a? AST::TypeFunction
 					m = infer(member)
+
+					# TODO: Compare kinds of type parameters too
+					raise TypeError, "Wrong type parameter count for '#{name}' in instance of typeclass #{typeclass.scoped_name}, got #{member.type_params.size}, but required #{value.type_params.size}\n#{member.source.format}" unless member.type_params.size == value.type_params.size
+					
+					param_map = @typeclass.dup
+					value.type_params.zip(member.type_params).each do |k,v|
+						param_map[k] = infer(v)
+					end
 					
 					ctx = TypeContext.new(@infer_args)
-					expected_type = ctx.inst(member.source, value, @typeclass)
-					ctx.reduce_limits
-					ctx.reduce(nil)
+					expected_type = ctx.inst(member.source, value, param_map)
+					nil while ctx.reduce(nil)
 					
-					#TODO: Handle tests with type variables here
-					#raise TypeError, "Expected type '#{expected_type.text}' for '#{name}' in instance of typeclass #{typeclass.scoped_name}, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless m == expected_type
+					equal, map = tci_is_instance(m, expected_type)
+					#TODO: Check that all limits in member are also limits in value using map to compare type variables
+
+					raise TypeError, "#{m == expected_type}Expected type '#{expected_type.text}' for '#{name}' in instance of typeclass #{typeclass.scoped_name}, but '#{m.text}' found\n#{member.source.format}\nTypeclass definition\n#{value.source.format}" unless equal
 					
 					#TODO: How to ensure members are a proper instance of the typeclass?
 					#TODO: Figure out how this should work for type parameters in members
