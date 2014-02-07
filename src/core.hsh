@@ -1,9 +1,13 @@
 use "core/import"
 use "core/array"
+use "core/map"
 use "core/string"
 use "core/io"
 use "core/file"
 use "core/builtin"
+
+class Hash(T)
+	fn hash() -> uint
 
 class Allocator(T)
 	fn alloc[P](size uint) -> *P
@@ -62,34 +66,6 @@ fn new[T Constructor = Reference(R).Type, R] *args -> R
 fn delete(obj)
 	destruct(obj)
 	Mem.free(obj)
-	
-instance Binary(bool)
-	fn not()
-		return if self == true
-			false
-		else
-			true
-
-	shared fn and(lhs bool, rhs)
-		return if lhs == true
-			if rhs == true
-				true
-			else
-				false
-		else
-			false
-
-	shared fn or(lhs bool, rhs)
-		return if lhs == true
-			true
-		else
-			if rhs == true
-				true
-			else
-				false
-
-	shared fn xor(lhs bool, rhs)
-		return !(lhs == rhs)
 
 instance(T) Reference(*T)
 	alias Type = T

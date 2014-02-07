@@ -337,6 +337,17 @@ class Core
 		Node = base AST::TypeClass, :Num
 	end
 
+	class Bits < Core
+		T = base AST::TypeParam, :Bits, :T
+		Neg = base AST::Function, :Bits, :neg
+		Xor = base AST::Function, :Bits, :xor
+		And = base AST::Function, :Bits, :and
+		Or = base AST::Function, :Bits, :or
+		ShL = base AST::Function, :Bits, :shl
+		ShR = base AST::Function, :Bits, :shr
+		Node = base AST::TypeClass, :Bits
+	end
+
 	proc do
 		args = param :Args
 		result = param :Result
@@ -358,7 +369,7 @@ class Core
 		Nodes << inst
 	end.()
 	
-	IntLiterals = {create: {}, default: {}, eq: {}, ord: {}, num: {}, num_not: {}}
+	IntLiterals = {create: {}, default: {}, eq: {}, ord: {}, num: {}, num_not: {}, bits: {}, bits_other: {}}
 	
 	num_lit = proc do |type|
 		create = func(:create, {i: ref(Int)}, ref(type))
@@ -377,6 +388,21 @@ class Core
 		IntLiterals[:num][mul] = mul
 		IntLiterals[:num][div] = div
 		IntLiterals[:num][mod] = mod
+		
+		bits_neg = func(:neg, {}, ref(type))
+		xor = func(:xor, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		_or = func(:or, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		_and = func(:and, {lhs: ref(type), rhs: ref(type)}, ref(type), [], true)
+		shl = func(:shl, {lhs: ref(type), rhs: ref(UInt)}, ref(type), [], true)
+		shr = func(:shr, {lhs: ref(type), rhs: ref(UInt)}, ref(type), [], true)
+		bits_inst = tci(Bits::Node, [ref(type)], [], [bits_neg, xor, _and, _or, shl, shr])
+		Nodes << bits_inst
+		IntLiterals[:bits_other][bits_neg] = bits_neg
+		IntLiterals[:bits][xor] = xor
+		IntLiterals[:bits][_or] = _or
+		IntLiterals[:bits][_and] = _and
+		IntLiterals[:bits_other][shl] = shl
+		IntLiterals[:bits_other][shr] = shr
 		
 		cmp = func(:cmp, {gt: ref(type), ls: ref(type)}, ref(Order), [], true)
 		ord_inst = tci(Ord::Node, [ref(type)], [], [cmp])
@@ -405,15 +431,6 @@ class Core
 		Node = base AST::TypeClass, :StringLiteral
 	end
 	
-	class Binary < Core
-		T = base AST::TypeParam, :Binary, :T
-		Not = base AST::Function, :Binary, :not
-		Xor = base AST::Function, :Binary, :xor
-		And = base AST::Function, :Binary, :and
-		Or = base AST::Function, :Binary, :or
-		Node = base AST::TypeClass, :Binary
-	end
-
 	class Joinable < Core
 		T = base AST::TypeParam, :Joinable, :T
 		Join = base AST::Function, :Joinable, :join
@@ -422,7 +439,7 @@ class Core
 
 	UnaryOpMap = {
 		'-' => {ref: Num::Node, param: Num::T, func: Num::Neg},
-		'!' => {ref: Binary::Node, param: Binary::T, func: Binary::Not}
+		'~' => {ref: Bits::Node, param: Bits::T, func: Bits::Neg}
 	}
 
 	OpMap = {
@@ -431,9 +448,11 @@ class Core
 		'*' => {ref: Num::Node, param: Num::T, func: Num::Mul},
 		'/' => {ref: Num::Node, param: Num::T, func: Num::Div},
 		'%' => {ref: Num::Node, param: Num::T, func: Num::Mod},
-		'^' => {ref: Binary::Node, param: Binary::T, func: Binary::Xor},
-		'&' => {ref: Binary::Node, param: Binary::T, func: Binary::And},
-		'|' => {ref: Binary::Node, param: Binary::T, func: Binary::Or},
+		'^' => {ref: Bits::Node, param: Bits::T, func: Bits::Xor},
+		'&' => {ref: Bits::Node, param: Bits::T, func: Bits::And},
+		'|' => {ref: Bits::Node, param: Bits::T, func: Bits::Or},
+		'<<' => {ref: Bits::Node, param: Bits::T, func: Bits::ShL, rhs: Core::UInt},
+		'>>' => {ref: Bits::Node, param: Bits::T, func: Bits::ShR, rhs: Core::UInt},
 		'>' => {ref: Ord::Node, param: Ord::T, func: Ord::Cmp, result: Core::Bool},
 		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
 		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}

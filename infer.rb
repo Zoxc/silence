@@ -729,14 +729,14 @@
 			when AST::UnaryOp
 				raise CompileError.new("Invalid l-value\n#{ast.source.format}") if (ast.op != '*') && args.lvalue
 				
-				type, value = analyze(ast.node, args.next(lvalue: ast.op == '&'))
-				
 				case ast.op
 					when '+'
+						type = analyze_value(ast.node, args.next)
 						typeclass_limit(ast.source, Core::Num::Node, {Core::Num::T => lhs}) 
 						ast.gen = type
 						Result.new(type, true)
 					when '*'
+						type, value = analyze(ast.node, args.next)
 						if value
 							result = new_var(ast.source)
 							ptr = make_ptr(ast.source, result)
@@ -747,11 +747,17 @@
 							Result.new(make_ptr(ast.source, analyze_type(ast.node, args.next)), false)
 						end
 					when '&'
-						raise CompileError.new("Can't get the address of types\n#{ast.source.format}") unless value
+						type = analyze_value(ast.node, args.next)
 						result = make_ptr(ast.source, type)
 						ast.gen = result
 						Result.new(result, true)
+					when '!'
+						type = analyze_value(ast.node, args.next)
+						unify(type, Types::Ref.new(ast.source, Core::Bool))
+						ast.gen = type
+						Result.new(type, true)
 					else
+						type = analyze_value(ast.node, args.next)
 						map = Core::UnaryOpMap[ast.op]
 						raise CompileError.new("Invalid unary operator '#{ast.op}'\n#{ast.source.format}") unless map
 
@@ -783,12 +789,19 @@
 						typeclass_limit(ast.source, typeclass[:ref], {typeclass[:param] => lhs}) 
 
 						result = Types::Ref.new(ast.source, typeclass[:result]) if typeclass[:result]
+
+						if typeclass[:rhs]
+							unify(rhs, Types::Ref.new(ast.source, typeclass[:rhs]))
+						else
+							unify(lhs, rhs)
+						end
+					else
+						unify(lhs, rhs)
 					end
 
 					unify(lhs, Types::Ref.new(ast.source, Core::Bool)) if ['or', 'and'].include?(plain_op)
 
-					unify(lhs, rhs)
-					ast.gen = {arg: lhs, result: result, plain_op: plain_op}
+					ast.gen = {arg: lhs, rhs: rhs, result: result, plain_op: plain_op}
 					Result.new(result, true)
 				else
 					raise CompileError.new("Unknown type operator '#{ast.op}'\n#{ast.source.format}") if ast.op != '->'

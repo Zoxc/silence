@@ -75,11 +75,13 @@ class Num(T)
 	shared fn div(lhs T, rhs T) -> T
 	shared fn mod(lhs T, rhs T) -> T
 
-class Binary(T)
-	fn not() -> T
+class Bits(T)
+	fn neg() -> T
 	shared fn or(lhs T, rhs T) -> T
 	shared fn xor(lhs T, rhs T) -> T
 	shared fn and(lhs T, rhs T) -> T
+	shared fn shr(lhs T, rhs uint) -> T
+	shared fn shl(lhs T, rhs uint) -> T
 
 class Joinable(T)
 	shared fn join(lhs T, rhs T) -> T

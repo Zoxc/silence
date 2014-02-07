@@ -148,7 +148,7 @@ struct ref Lexer
 		return *tok.pos
 
 	fn in(a, b)
-		return (a <= c()) & (c() <= b)
+		return a <= c() and c() <= b
 
 	fn make_src(start, stop) -> *SrcLoc
 		return region().new(file, start, stop)

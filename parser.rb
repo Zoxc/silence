@@ -668,7 +668,7 @@ class Parser
 				end
 			when :sym
 				case tok_val
-					when '*', '&', '.', '-', '+', '!', '|'
+					when '*', '&', '.', '-', '+', '!', '|', '~'
 						true
 				end
 		end
@@ -838,6 +838,7 @@ class Parser
 	pred.(pred_num += 1, '^')
 	pred.(pred_num += 1, '&')
 	pred.(pred_num += 1, '<', '>', '>=', '<=')
+	pred.(pred_num += 1, '<<', '>>')
 	pred.(pred_num += 1, '+', '-', '~')
 	pred.(pred_num += 1, '*', '/', '%')
 	
@@ -888,7 +889,7 @@ class Parser
 	end
 	
 	def unary
-		if tok == :sym and ['&', '*', '-', '+', '!'].include?(tok_val)
+		if tok == :sym and ['&', '*', '-', '+', '!', '~'].include?(tok_val)
 			source do |s|
 				op = tok_val
 				step

@@ -1,0 +1,8 @@
+struct Map(K Hash, V, A Allocator = Mem)
+	struct Entry
+		key K
+		value V
+
+	tbl *Option(Entry)
+	mask uint
+	entries uint

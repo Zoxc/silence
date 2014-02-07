@@ -244,6 +244,32 @@ class Codegen
 				@out[:func_forward] << o << ";\n"
 				o << "\n{\n    auto &v_self = *(#{c_type(ast.ctype.vars[ast.self], map)} *)data;\n"
 				@out[:func] << o << "    *result = -v_self;\n}\n\n"
+			when Core::IntLiterals[:bits_other][ast]
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				o << "\n{\n    "
+				case ast.name
+					when :neg
+						o << "auto &v_self = *(#{c_type(ast.ctype.vars[ast.self], map)} *)data;\n"
+						o << "    *result = ~v_self;"
+					when :shl
+						o << "*result = v_lhs << v_rhs;"
+					when :shr
+						o << "*result = v_lhs << v_rhs;"
+				end
+				@out[:func] << o << "\n}\n\n"
+			when Core::IntLiterals[:bits][ast]
+				o = function_proto(ast, map)
+				@out[:func_forward] << o << ";\n"
+				op = case ast.name
+						when :xor
+							'^'
+						when :and
+							'&'
+						when :or
+							'|'
+					end
+				@out[:func] << o << "\n{\n    *result = v_lhs #{op} v_rhs;\n}\n\n"
 			when Core::IntLiterals[:num][ast]
 				o = function_proto(ast, map)
 				@out[:func_forward] << o << ";\n"

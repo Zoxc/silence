@@ -563,9 +563,9 @@ class FuncCodegen
 			lhs_arg = new_var
 			rhs_arg = new_var
 			copy_var(lhs, lhs_arg.ref, ast.gen[:arg])
-			copy_var(rhs.ref, rhs_arg.ref, ast.gen[:arg])
+			copy_var(rhs.ref, rhs_arg.ref, ast.gen[:rhs])
 			assign_var(lhs_arg, ast.gen[:arg], nil)
-			assign_var(rhs_arg, ast.gen[:arg], nil)
+			assign_var(rhs_arg, ast.gen[:rhs], nil)
 			direct_call(cmp_op ? cmp_op_var : var, ref(typeclass[:func], {typeclass[:param] => ast.gen[:arg]}), nil, [lhs_arg.ref, rhs_arg.ref], cmp_op ? Types::Ref.new(Core.src, Core::Order) : ast.gen[:result])
 			del_var rhs_arg, false
 			del_var lhs_arg, false
@@ -791,6 +791,13 @@ class FuncCodegen
 				case ast.op
 					when '+'
 						convert(ast.node, var)
+					when '!'
+						if var
+							convert(ast.node, var)
+							o "#{var.ref} = #{var.ref} == Enum_bool_true ? Enum_bool_false : Enum_bool_true;"
+						else
+							convert(ast.node, nil)
+						end
 					when '*'
 						lvalue_to_convert(ast, var)
 					when '&'
