@@ -9,10 +9,12 @@ struct Map(K Hash, V, A Allocator = Mem)
 
 	action create(allocator, size) :
 			mask <- size - 1,
-			tbl <- PtrArray(allocator, size)
+			tbl <- PtrArray(allocator)
+			tbl.alloc(size)
 
 			times(size, |i| Constructor[Option.None].construct(&tbl(i), ()))
 	
 	action copy
 
 	action destroy
+		tbl.destroy_n(mask + 1)

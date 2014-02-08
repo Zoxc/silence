@@ -1,35 +1,31 @@
 struct Array(T, A Allocator = Mem)
-	list *T
+	list PtrArray(T, A)
 	size uint
 	capacity uint
-	allocator A
 
 	shared unit = size_of[T]()
 
 	action create :
-			list <- Allocator(allocator).alloc(0)
+			list <- PtrArray(A())
 	
 	action create(allocator) :
-			allocator <- allocator,
-			list <- Allocator(allocator).alloc(0)
+			list <- PtrArray(allocator)
 	
 	action copy
-		.b = size * unit
-		.new = Allocator(allocator).alloc(b)
-		Mem.copy(list, new, b)
-		list = new
+		list = list.copy(size)
 		capacity = size
 
 	action destroy
-		Allocator(allocator).free(list)
+		if capacity > 0
+			list.destroy_n(size)
+
+	fn allocator()
+		return list.allocator
 
 	shared fn from_data_a(data *T, size, allocator)
-		.b = size * unit
-		.new = Allocator(allocator).alloc(b)
-		Mem.copy(data, new, b)
 		.result = Array[T, A](allocator)
-		Allocator(allocator).free(result.list)
-		result.list = new
+		result.list.destroy_n(0)
+		result.list = PtrArray[T, A].from_data(allocator, data, size)
 		result.size = size
 		result.capacity = size
 		return result
@@ -64,13 +60,13 @@ struct Array(T, A Allocator = Mem)
 		times(size, |i| f(self(i), i))
 
 	fn reverse()
-		.result = Array[T, A](allocator)
+		.result = Array[T, A](allocator())
 		result.expand(size)
 		times(size, |i| result(i) = self(size - 1 - i))
 		return result
 
 	fn slice(start, stop)
-		.result = Array[T, A](allocator)
+		.result = Array[T, A](allocator())
 		if start > stop
 			return result
 		.size = stop - start + 1
@@ -79,15 +75,22 @@ struct Array(T, A Allocator = Mem)
 		return result
 
 	fn expand(n)
-		if capacity >= size + n
+		.c = capacity
+
+		if c >= size + n
 			return
 
 		loop
-			capacity = 2 * (capacity + 1)
-			if capacity >= size + n
+			c = 2 * c + 1
+			if c >= size + n
 				break
 
-		list = Allocator(allocator).realloc(list, size * unit, capacity * unit)
+		if capacity == 0
+			list.alloc(c)
+		else
+			list.expand(size, c)
+
+		capacity = c
 
 	fn last()
 		return if size > 0
@@ -107,12 +110,6 @@ struct Array(T, A Allocator = Mem)
 		else
 			nil
 
-	fn ptr(idx uint) -> *T
-		return ptr_idx(list, idx)
-
-	fn get(idx uint)
-		return *ptr(idx)
-
 instance(T Eq, A) Eq(Array(T, A))
 	fn equal(lhs Array(T, A), rhs Array(T, A))
 		if lhs.size != rhs.size
@@ -129,4 +126,4 @@ instance(T, A) Indexable(Array(T, A))
 	alias Index = Cell(uint, Unit)
 
 	fn ref(args Cell(uint, Unit))
-		return self.ptr(args.val)
+		return self.list.ptr(args.val)

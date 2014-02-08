@@ -8,10 +8,10 @@ using namespace std;
 
 struct HushString
 {
-    const char *list;
+	const char *list;
+	struct {} allocator;
     uintptr_t size;
     uintptr_t capacity;
-    struct {} allocator;
 
     HushString(string s)
     {

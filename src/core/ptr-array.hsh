@@ -1,17 +1,36 @@
-struct PtrArray(T, A)
+struct PtrArray(T Copyable, A)
 	data *T
 	allocator A
 
 	shared unit = size_of[T]()
 
-	action create(allocator, size) : 
+	action create(allocator) :
 		allocator <- allocator,
-		data <- Allocator(allocator).alloc(size * unit)
+		data <- nil_ptr()
 	
 	action copy
 
 	action destroy
-		Allocator(allocator).free(data)	
+
+	fn alloc(size) 
+		data = Allocator(allocator).alloc(size * unit)
+	
+	shared fn from_data(allocator, data *T, size uint)
+		.result = PtrArray(allocator)
+		result.alloc(size)
+		Mem.copy(data, result.data, size * unit)
+		times(size, |i| Copyable(result(i)).copy())
+		return result
+
+	fn copy(size uint)
+		return from_data(allocator, data, size)
+
+	fn expand(from uint, to uint)
+		data = Allocator(allocator).realloc(data, from * unit, to * unit)
+
+	fn destroy_n(size uint) -> *T
+		times(size, |i| destroy(&self(i)))
+		Allocator(allocator).free(data)
 
 	fn ptr(idx uint) -> *T
 		return ptr_idx(data, idx)

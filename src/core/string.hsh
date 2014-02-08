@@ -13,18 +13,18 @@ struct String(A Allocator = Mem)
 	fn copy[OA](allocator OA)
 		return String[OA](bytes.copy(allocator))
 
-	fn size()
+	fn size() -> uint
 		return bytes.size
 
-	fn data()
-		return bytes.list
+	fn data() -> *char
+		return bytes.list.data
 
 	fn c_term()
 		return self ~ from_c(0)
 
 	fn c_str(f)
 		.str = c_term()
-		return f(str.bytes.list)
+		return f(str.bytes.list.data)
 
 	fn repeat(t uint)
 		.r
@@ -48,4 +48,4 @@ instance(A) Indexable(String(A))
 	alias Index = Cell(uint, Unit)
 
 	fn ref(args Cell(uint, Unit))
-		return self.bytes.ptr(args.val)
+		return &self.bytes(args.val)
