@@ -1,0 +1,27 @@
+struct PtrArray(T, A)
+	data *T
+	allocator A
+
+	shared unit = size_of[T]()
+
+	action create(allocator, size) : 
+		allocator <- allocator,
+		data <- Allocator(allocator).alloc(size * unit)
+	
+	action copy
+
+	action destroy
+		Allocator(allocator).free(data)	
+
+	fn ptr(idx uint) -> *T
+		return ptr_idx(data, idx)
+
+	fn get(idx uint)
+		return *ptr(idx)
+
+instance(T, A) Indexable(PtrArray(T, A))
+	alias Result = T
+	alias Index = Cell(uint, Unit)
+
+	fn ref(args Cell(uint, Unit))
+		return self.ptr(args.val)

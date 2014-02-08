@@ -85,6 +85,7 @@ def process(file)
 		ast.run_pass :sema, true
 		ast.run_pass :ref_pass
 
+		InferContext.infer_core(infer_args)
 		InferContext.infer_scope(ast.scope, infer_args)
 		InferContext.infer_scope(Core::Generated, infer_args)
 

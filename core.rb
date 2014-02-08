@@ -6,6 +6,7 @@ class Core
 		def complex(name, args = [], klass = AST::Struct, scope = [], ctx = [])
 			r = klass.new(src(2), name, AST::GlobalScope.new(scope), AST::KindParams.new(src(2), args, ctx))
 			Nodes << r
+			create_empty_action(r, :copy, false) if r.is_a?(AST::Struct)
 			r
 		end
 
@@ -41,7 +42,7 @@ class Core
 			r = AST::Function.new(src(2), fname, AST::KindParams.new(src(2), params, []))
 			r.params = args.each.map { |name, type| AST::Function::Param.new(src(2), r, name, type) }
 			r.result = result
-			r.scope = AST::LocalScope.new([])
+			r.scope = AST::FuncScope.new([])
 			r.props = {shared: shared}
 			r
 		end
@@ -88,15 +89,17 @@ class Core
 			ast.run_pass(:ref_pass)
 		end
 
-		def create_empty_action(obj, name)
+		def create_empty_action(obj, name, pass = true)
 			r = AST::Function.new(src, nil, AST::KindParams.new(src, [], []))
 			r.action_type = name
 			r.params = []
-			r.result = ref(Core::Unit)
+			r.result = ref(Unit)
 			r.scope = AST::FuncScope.new([])
 			obj.scope.nodes << r
 
-			run_pass(r, obj.scope)
+			obj.actions[name] = r
+
+			run_pass(r, obj.scope) if pass
 		end
 
 		def create_constructor_action(obj)
@@ -109,7 +112,7 @@ class Core
 			r.params = fields.each_with_index.map do |field, i|
 				AST::Function::Param.new(src, r, field.name, nil)
 			end
-			r.result = ref(Core::Unit)
+			r.result = ref(Unit)
 			r.init_list = fields.each_with_index.map do |field, i|
 				AST::InitEntry.new(src, field.name, AST::NameRef.new(src, field.name))
 			end
@@ -130,11 +133,11 @@ class Core
 			
 			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', ref(constructed))), AST::Function::Param.new(src, r, :args, ref(args))]
-			r.result = ref(Core::Unit)
+			r.result = ref(Unit)
 			r.scope = AST::FuncScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create_args, AST::NameRef.new(src, :args))])
 			r.props[:shared] = true
 
-			instance = AST::TypeClassInstance.new(src, ref(Core::Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
+			instance = AST::TypeClassInstance.new(src, ref(Constructor::Node), [type_ref.()], AST::GlobalScope.new([r, args, constructed]), AST::KindParams.new(src, type_params, []))
 			Generated.nodes << instance
 			run_pass(instance)
 		end
@@ -144,10 +147,10 @@ class Core
 
 			r = AST::Function.new(src, :construct, AST::KindParams.new(src, [], []))
 
-			instance = AST::TypeClassInstance.new(src, ref(Core::Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::KindParams.new(src, type_params, []))
+			instance = AST::TypeClassInstance.new(src, ref(Defaultable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::KindParams.new(src, type_params, []))
 		
 			r.params = [AST::Function::Param.new(src, r, :obj, AST::UnaryOp.new(src, '*', type_ref.()))]
-			r.result = ref(Core::Unit)
+			r.result = ref(Unit)
 			r.scope = AST::FuncScope.new([AST::ActionCall.new(src, type_ref.(), AST::NameRef.new(src, :obj), :create)])
 			r.props[:shared] = true
 
@@ -160,13 +163,13 @@ class Core
 
 			r = AST::Function.new(src, :equal, AST::KindParams.new(src, [], []))
 
-			instance = AST::TypeClassInstance.new(src, ref(Core::Eq::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::KindParams.new(src, type_params, []))
+			instance = AST::TypeClassInstance.new(src, ref(Eq::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::KindParams.new(src, type_params, []))
 		
 			r.params = [AST::Function::Param.new(src, r, :lhs, type_ref.()), AST::Function::Param.new(src, r, :rhs, type_ref.())]
-			r.result = ref(Core::Bool)
+			r.result = ref(Bool)
 
-			lhs = AST::Call.new(src, AST::Index.new(src, ref(Core::ForceCast), [ref(Core::UInt)]), [AST::NameRef.new(src, :lhs)])
-			rhs = AST::Call.new(src, ref(Core::ForceCast), [AST::NameRef.new(src, :rhs)])
+			lhs = AST::Call.new(src, AST::Index.new(src, ref(ForceCast), [ref(UInt)]), [AST::NameRef.new(src, :lhs)])
+			rhs = AST::Call.new(src, ref(ForceCast), [AST::NameRef.new(src, :rhs)])
 
 			r.scope = AST::FuncScope.new([AST::Return.new(src, AST::BinOp.new(src, lhs, '==', rhs))])
 			r.props[:shared] = true
@@ -187,27 +190,40 @@ class Core
 
 			run_pass(r, obj.scope)
 		end
+
+		def create_sizable(obj)
+			type_params, type_ref = type_params(obj)
+
+			instance = AST::TypeClassInstance.new(src, ref(Sizeable::Node), [type_ref.()], AST::GlobalScope.new([]), AST::KindParams.new(src, type_params, []))
+		
+			Generated.nodes << instance
+			run_pass(instance)
+		end
+		
+		def create_copyable(obj)
+			type_params, type_ref = type_params(obj)
+
+			r = AST::Function.new(src, :copy, AST::KindParams.new(src, [], []))
+
+			instance = AST::TypeClassInstance.new(src, ref(Copyable::Node), [type_ref.()], AST::GlobalScope.new([r]), AST::KindParams.new(src, type_params, []))
+			r.params = []
+			r.result = ref(Unit)
+			r.scope = AST::FuncScope.new([AST::ActionCall.new(src, type_ref.(), AST::UnaryOp.new(src, '&', AST::NameRef.new(src, :self)), :copy)])
+
+			Generated.nodes << instance
+			run_pass(instance)
+		end
+		
 	end
 
-	# Typeclasses which allows you to increase required levels in type parameters
-	
 	class Sizeable < Core # TODO: Rename this
-		#T = param :T
+		T = base AST::TypeParam, :Sizeable, :T
 		Node = base AST::TypeClass, :Sizeable
-		
-		t = param :T
-		Instance = tci(Sizeable::Node, [ref(t)], [t])
-		Nodes << Instance
 	end
 	
 	class Copyable < Core
-		#T = param :T
+		T = base AST::TypeParam, :Copyable, :T
 		Node = base AST::TypeClass, :Copyable
-		#Node = complex(:Copyable, [T], AST::TypeClass)
-		
-		t = param :T
-		Instance = tci(Copyable::Node, [ref(t)], [t])
-		Nodes << Instance
 	end
 	
 	Unit = base AST::Struct, :Unit
@@ -274,6 +290,13 @@ class Core
 		Nodes << ForceCast
 	end.()
 
+	proc do
+		t = param :T
+		destroy = func(:destroy, {obj: ref(t)}, ref(Unit), [t])
+		destroy.scope.nodes << AST::ActionCall.new(src, ref(t), AST::NameRef.new(src, :obj), :destroy)
+		Nodes << destroy
+	end.()
+	
 	class Defaultable < Core
 		T = base AST::TypeParam, :Defaultable, :T
 		Construct = base AST::Function, :Defaultable, :construct
@@ -368,7 +391,7 @@ class Core
 		inst = tci(Eq::Node, [_func.()], [_args, _result], [FuncEq])
 		Nodes << inst
 	end.()
-	
+
 	IntLiterals = {create: {}, default: {}, eq: {}, ord: {}, num: {}, num_not: {}, bits: {}, bits_other: {}}
 	
 	num_lit = proc do |type|
@@ -451,11 +474,11 @@ class Core
 		'^' => {ref: Bits::Node, param: Bits::T, func: Bits::Xor},
 		'&' => {ref: Bits::Node, param: Bits::T, func: Bits::And},
 		'|' => {ref: Bits::Node, param: Bits::T, func: Bits::Or},
-		'<<' => {ref: Bits::Node, param: Bits::T, func: Bits::ShL, rhs: Core::UInt},
-		'>>' => {ref: Bits::Node, param: Bits::T, func: Bits::ShR, rhs: Core::UInt},
-		'>' => {ref: Ord::Node, param: Ord::T, func: Ord::Cmp, result: Core::Bool},
+		'<<' => {ref: Bits::Node, param: Bits::T, func: Bits::ShL, rhs: UInt},
+		'>>' => {ref: Bits::Node, param: Bits::T, func: Bits::ShR, rhs: UInt},
+		'>' => {ref: Ord::Node, param: Ord::T, func: Ord::Cmp, result: Bool},
 		'~' => {ref: Joinable::Node, param: Joinable::T, func: Joinable::Join},
-		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Core::Bool}
+		'==' => {ref: Eq::Node, param: Eq::T, func: Eq::Equal, result: Bool}
 	}
 	OpMap['!='] = OpMap['==']
 	OpMap['>='] = OpMap['>']

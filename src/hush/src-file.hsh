@@ -1,6 +1,6 @@
 use "../core"
 
-struct ref SrcFile
+struct SrcFile
 	region Region.Base
 	content String
 	path String

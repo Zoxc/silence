@@ -1,6 +1,6 @@
 use "lexer"
 
-struct ref Parser
+struct Parser
 	lexer *Lexer
 	compiler *Compiler
 

@@ -437,23 +437,12 @@ class Parser
 		s = @l.source
 		baseline = @l.indent
 		step
-		ref = case  
-			when matches(:id, :ref)
-				:sizeable
-			when matches(:id, :bare)
-				:opaque
-			else
-				:copyable
-		end
+		sizeable = !matches(:id, :bare)
 		name = match :id
 		tp = kind_params
 		s.extend(@l.last_ended)
-		scope = if ref == :opaque
-				AST::GlobalScope.new([])
-			else
-				global_scope(baseline)
-			end
-		AST::Struct.new(s, name, scope, tp, ref)
+		scope = global_scope(baseline)
+		AST::Struct.new(s, name, scope, tp, sizeable)
 	end
 	
 	def struct_when

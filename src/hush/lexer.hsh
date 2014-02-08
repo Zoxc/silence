@@ -66,11 +66,13 @@ enum Token
 
 	AssignJoin
 
-struct ref Lexer
+struct Lexer
 	struct Indent
 		start *char
 		stop *char
 
+		action copy
+		
 		fn size()
 			return ptr_diff(stop, start)
 
@@ -108,13 +110,15 @@ struct ref Lexer
 			indent <- undef(),
 			blocks <- Array[*Block, Region](lexer.compiler.region.ref())
 
+		action copy
+
 		fn end()
 			stop = pos
 
 		fn str()
 			return String.from_data(start, ptr_diff(stop, start))
 
-	struct ref Block
+	struct Block
 		levels Table(3, uint)
 		indent Indent
 

@@ -1,31 +1,4 @@
 ﻿class TypeContext
-	LevelMap = {opaque: 0, sizeable: 1, copyable: 2}
-	
-	LevelLimit = Struct.new(:source, :type, :level) do
-		def to_s
-			"{#{level.to_s.capitalize}} #{type.text}\n#{source.format(8)}"
-		end
-	end
-	
-	def ensure_level(src, type, level)
-		raise CompileError.new("#{level.to_s.capitalize} type required. Type '#{type.text}' is a #{type.ref.level} type\n#{src.format}" ) if LevelMap[level] > LevelMap[type.ref.level]
-	end
-	
-	def reduce_level(src, type, level)
-		type = type.prune
-		
-		if type.is_a?(Types::Ref) && type.ref.is_a?(AST::Struct)
-			ensure_level(src, type, level)
-			true
-		end
-	end
-	
-	def require_level(src, type, level)
-		unless reduce_level(src, type, level)
-			@levels << LevelLimit.new(src, type, level)
-		end
-	end
-	
 	class TypeClassLimit
 		attr_accessor :source, :typeclass, :args, :eqs
 		
@@ -145,13 +118,6 @@
 		@limits.concat(limits)
 	end
 	
-	def inst_levels(obj, args)
-		levels = obj.ctype.ctx.levels.map do |limit|
-			LevelLimit.new(args.wrap_src.(limit.source), inst_type(args, limit.type), limit.level)
-		end
-		@levels.concat(levels)
-	end
-	
 	def self.inst_type(type, args)
 		type = type.prune
 		case type
@@ -200,10 +166,7 @@
 	
 	def inst_map_args(obj, inst_args, limits)
 		infer(obj)
-		if limits
-			inst_limits(obj, inst_args)
-			inst_levels(obj, inst_args)
-		end
+		inst_limits(obj, inst_args) if limits
 		inst_args
 	end
 	
@@ -361,25 +324,6 @@
 		end
 	end
 	
-	def reduce_levels
-		@levels.reject! do |l|
-			reduced = reduce_level(l.source, l.type, l.level)
-			if reduced
-				true
-			else
-				dup = @levels.find do |ol|
-					next if l == ol
-					l.type == ol.type				
-				end
-				
-				if dup
-					dup.level = [dup.level, l.level].max_by { |v| LevelMap[v] }
-					true
-				end
-			end
-		end
-	end
-	
 	def reduce(obj, tps = [])
 		reduce_limits or
 
@@ -401,9 +345,7 @@
 			elsif c.args.values.all? { |t| t.fixed_type? }
 				raise CompileError, "Unable to find an instance of the type class #{c}#{c.args.map { |k,v| "\n        #{k.scoped_name} => #{v}\n#{v.source.format(16)}" }.join}"
 			end
-		end or
-		
-		reduce_levels
+		end
 	end
 	
 	def dependent_var(map, var, vars)

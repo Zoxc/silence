@@ -522,11 +522,11 @@ module AST
 	end
 	
 	class Struct < Complex
-		attr_accessor :level, :actions, :cases
+		attr_accessor :sizeable, :actions, :cases
 		
-		def initialize(source, name, scope, kind_params, ref = :copyable)
+		def initialize(source, name, scope, kind_params, sizeable = true)
 			super(source, name, scope, kind_params)
-			@level = ref
+			@sizeable = sizeable
 			@actions = {}
 			@cases = []
 		end
@@ -543,9 +543,8 @@ module AST
 	class StructCase < Struct
 		attr_accessor :parent
 		
-		def initialize(*args)
-			super
-			@level = :opaque
+		def initialize(source, name, scope, kind_params)
+			super(source, name, scope, kind_params, false)
 		end
 
 		def real_struct
@@ -575,7 +574,7 @@ module AST
 	end
 	
 	class Enum < Struct
-		attr_accessor :values, :actions, :level
+		attr_accessor :values
 		
 		def initialize(source, name, values)
 			super(source, name, AST::GlobalScope.new(values), AST::KindParams.new(source, [], []))
@@ -850,7 +849,7 @@ module AST
 	end
 	
 	class BinOp < ExpressionNode
-		attr_accessor :lhs, :op, :rhs, :constructing, :gen
+		attr_accessor :lhs, :op, :rhs, :gen
 		
 		def initialize(source, lhs, op, rhs)
 			super(source)

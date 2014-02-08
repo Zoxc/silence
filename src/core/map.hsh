@@ -3,6 +3,16 @@ struct Map(K Hash, V, A Allocator = Mem)
 		key K
 		value V
 
-	tbl *Option(Entry)
+	tbl PtrArray(Option(Entry), A)
 	mask uint
 	entries uint
+
+	action create(allocator, size) :
+			mask <- size - 1,
+			tbl <- PtrArray(allocator, size)
+
+			times(size, |i| Constructor[Option.None].construct(&tbl(i), ()))
+	
+	action copy
+
+	action destroy

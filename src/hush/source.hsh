@@ -1,6 +1,6 @@
 use "src-file"
 
-struct ref SrcLoc
+struct SrcLoc
 	file *SrcFile
 	start *char
 	stop *char

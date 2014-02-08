@@ -82,8 +82,12 @@
 		tcl
 	end
 	
-	def req_level(src, type, level = :copyable)
-		@ctx.require_level(src, type, level)
+	def req_level(src, type, copyable = true)
+		if copyable
+			typeclass_limit(src, Core::Copyable::Node, {Core::Copyable::T => type})
+		else
+			typeclass_limit(src, Core::Sizeable::Node, {Core::Sizeable::T => type})
+		end
 	end
 	
 	# TODO: Make scoped and typeclass into an enum of NoTypeclasses, ViewTypeclasses, ScopedTypeclasses
@@ -473,9 +477,6 @@
 				nil
 			when AST::ActionCall
 				type = analyze_type(ast.type, args.next)
-				raise "Unknown action type #{type}" unless type.is_a?(Types::Ref)
-				func = type.ref.actions[ast.action_type]
-				func_type, inst_args = inst_ex(ast.source, func, type.args)
 
 				action_arg = analyze_value(ast.arg, args.next) if ast.arg
 
@@ -486,6 +487,7 @@
 			when AST::ActionArgs
 				type = analyze_type(ast.obj, args.next).prune
 				raise "Unknown action type #{type}" unless type.is_a?(Types::Ref)
+				raise "Expected struct for action type #{type}" unless type.ref.is_a?(AST::Struct)
 				func = type.ref.actions[ast.action_type]
 				func_type, inst_args = inst_ex(ast.source, func, type.args)
 
@@ -667,7 +669,7 @@
 						:construct
 					end
 					
-					req_level(ast.source, result, :sizeable) # Constraint on Callable.Result / Types must be sizeable for constructor syntax
+					req_level(ast.source, result, false) # Constraint on Callable.Result / Types must be sizeable for constructor syntax
 					
 					Result.new(result, true)
 				end
@@ -778,7 +780,7 @@
 				raise CompileError.new("Left side is #{lvalue ? 'a' : 'of'} type '#{lhs.text}'\n#{ast.lhs.source.format}\nRight side is #{rvalue ? 'a' : 'of'} type '#{rhs.text}'\n#{ast.rhs.source.format}") if lvalue != rvalue
 				
 				if lvalue
-					req_level(ast.source, lhs) if (assign_op && !ast.constructing)
+					req_level(ast.source, lhs) if assign_op
 
 					plain_op = assign_op ? (assign_simple ? '=' : ast.op[0]) : ast.op
 
@@ -1041,6 +1043,8 @@
 
 		typeclass_limit(func.params.first.source, Core::Tuple::Node, {Core::Tuple::T => @vars[func.params.first.var]}) if func.var_arg
 		
+		# TODO: Constraints on actions should apply to the generated typeclass instances too
+
 		if [:create, :create_args].include? func.action_type
 			get_field = proc do |name|
 				r = owner.scope.names[name]
@@ -1063,6 +1067,18 @@
 						end
 				end
 			end.compact
+		end
+
+		if func.action_type == :copy
+			owner.scope.names.values.each do |var|
+				case var
+					when AST::Variable
+						if !var.props[:shared] 
+							var_type, inst_args = inst_ex(func.source, var, owner.ctype.type.args)
+							typeclass_limit(var.source, Core::Copyable::Node, {Core::Copyable::T => var_type})
+						end
+				end
+			end
 		end
 
 		func.init_list.each { |i| analyze_impl(i, a_args) }
@@ -1151,17 +1167,6 @@
 	def process_instance
 		process_type_params
 
-		case @obj
-			when Core::Sizeable::Instance
-				p = @obj.type_params.first
-				p = Types::Ref.new(p.source, p)
-				req_level(Core.src, p, :sizeable)
-			when Core::Copyable::Instance
-				p = @obj.type_params.first
-				p = Types::Ref.new(p.source, p)
-				req_level(Core.src, p, :copyable)
-		end
-		
 		typeclass = @obj.typeclass.obj
 		a_args = analyze_args.next(instance: true)
 		raise CompileError, "Expected #{typeclass.type_params.size} type arguments(s) to typeclass #{typeclass.name}, but #{@obj.args.size} given\n#{@obj.source.format}" if @obj.args.size != typeclass.type_params.size
@@ -1202,19 +1207,23 @@
 						Core.create_constructor_action(value) unless value.actions[:create_args]
 						Core.create_constructor(value)
 					when AST::Struct
-						return if value.level == :opaque
 						unless value.enum?
 							Core.create_constructor_action(value) unless value.actions[:create_args]
 							Core.create_constructor(value) if value.actions[:create_args]
-							Core.create_def_constructor(value) if value.actions[:create]
+							Core.create_def_constructor(value) if value.sizeable && value.actions[:create]
 						end
 				end
 
-				# TODO: Destroy and copy actions should have the same type context as their parent.
-				#       Currently type constraints on them will be ignored as nothing references them.
-				Core.create_empty_action(value, :destroy) if value.is_a?(AST::Struct) && !value.actions[:destroy]
-				Core.create_empty_action(value, :copy) if value.is_a?(AST::Struct) && value.real_struct.level == :copyable && !value.actions[:copy]
+				if value.is_a?(AST::Struct)
+					# TODO: Destroy actions should have the same type context as their parent.
+					#       Currently type constraints on them will be ignored as nothing references them.
+					Core.create_empty_action(value, :destroy) if !value.actions[:destroy]
+					Core.create_empty_action(value, :copy) if value.real_struct.actions[:copy] && !value.actions[:copy]
+					Core.create_empty_action(value, :copy) if value.is_a?(AST::Enum)
 
+					Core.create_sizable(value) if value.sizeable
+					Core.create_copyable(value) if value.sizeable && value.actions[:copy]
+				end
 			when AST::EnumValue
 				infer(value.owner)
 				finalize(value.owner.ctype.type, true)
@@ -1346,6 +1355,15 @@
 	end
 
 	InferArgs = Struct.new :visited, :stack
+
+	def self.infer_core(infer_args)
+		infer(Core::Ptr::Node, infer_args)
+		infer(Core::Func::Node, infer_args)
+		infer(Core::Unit, infer_args)
+		infer(Core::Cell::Node, infer_args)
+		infer(Core::Option::Node, infer_args)
+		infer(Core::Bool, infer_args)
+	end
 
 	def self.infer_scope(scope, infer_args)
 		scope.nodes.each do |value|

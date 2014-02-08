@@ -1,13 +1,18 @@
 class Sizeable(T)
+
 class Copyable(T)
+	fn copy()
 
 # Tuple types
 
 struct Unit
+	action copy
 
 struct Cell(Val, Next Tuple)
 	val Val
 	next Next
+
+	action copy
 
 class Tuple(T)
 
