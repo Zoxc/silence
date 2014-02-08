@@ -12,8 +12,9 @@ struct Array(T, A Allocator = Mem)
 			list <- PtrArray(allocator)
 	
 	action copy
-		list = list.copy(size)
-		capacity = size
+		if capacity > 0
+			list = list.copy(size)
+			capacity = size
 
 	action destroy
 		if capacity > 0
@@ -24,10 +25,11 @@ struct Array(T, A Allocator = Mem)
 
 	shared fn from_data_a(data *T, size, allocator)
 		.result = Array[T, A](allocator)
-		result.list.destroy_n(0)
-		result.list = PtrArray[T, A].from_data(allocator, data, size)
-		result.size = size
-		result.capacity = size
+		if size > 0
+			result.list.destroy_n(0)
+			result.list = PtrArray[T, A].from_data(allocator, data, size)
+			result.size = size
+			result.capacity = size
 		return result
 
 	shared fn from_data(data *T, size)
@@ -35,7 +37,7 @@ struct Array(T, A Allocator = Mem)
 
 	fn concat[OA](other Array(T, OA))
 		expand(other.size)
-		times(other.size, |i| self(size + i) = other(i))
+		times(other.size, |i| list.set(size + i, other(i)))
 		size += other.size
 
 	fn copy[OA](allocator OA)
@@ -62,7 +64,7 @@ struct Array(T, A Allocator = Mem)
 	fn reverse()
 		.result = Array[T, A](allocator())
 		result.expand(size)
-		times(size, |i| result(i) = self(size - 1 - i))
+		times(size, |i| result.list.set(i, self(size - 1 - i)))
 		return result
 
 	fn slice(start, stop)
@@ -71,7 +73,7 @@ struct Array(T, A Allocator = Mem)
 			return result
 		.size = stop - start + 1
 		result.expand(size)
-		times(size, |i| result(i) = self(start + i))
+		times(size, |i| result.list.set(i, self(start + i)))
 		return result
 
 	fn expand(n)
@@ -100,13 +102,15 @@ struct Array(T, A Allocator = Mem)
 
 	fn push(val)
 		expand(1)
-		self(size) = val
+		list.set(size, val)
 		size += 1
 
 	fn pop() -> Option(T)
 		return if size > 0
 			size -= 1
-			some(self(size))
+			.r = some(self(size))
+			list.del(size)
+			r
 		else
 			nil
 

@@ -28,8 +28,15 @@ struct PtrArray(T Copyable, A)
 	fn expand(from uint, to uint)
 		data = Allocator(allocator).realloc(data, from * unit, to * unit)
 
+	fn set(i, val)
+		Mem.copy(&val, ptr(i), unit)
+		Copyable(*ptr(i)).copy()
+
+	fn del(i)
+		destroy(&self(i))
+
 	fn destroy_n(size uint) -> *T
-		times(size, |i| destroy(&self(i)))
+		times(size, |i| del i)
 		Allocator(allocator).free(data)
 
 	fn ptr(idx uint) -> *T
