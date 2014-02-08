@@ -784,12 +784,12 @@ class Parser
 		if eq :id, :else
 			baseline = @l.indent
 			step
-			if eq :id, :if
+			else_grp = if eq :id, :if
 				source do |s|
-					AST::ExpressionGroup.new(s, [_if])
+					AST::ExpressionGroup.new(s, AST::LocalScope.new([_if]))
 				end
 			else
-				else_grp = expression_group(baseline)
+				expression_group(baseline)
 			end
 		else
 			@l = state
