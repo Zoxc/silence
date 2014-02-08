@@ -1131,7 +1131,7 @@
 		# TODO: This allows variable with just p1 types, find a better way to filter type variables
 		#unresolved_vars = @ctx.vars_in_typeclass_args(unresolved_vars)
 		
-		parameterize(type_vars) if @obj.is_a?(AST::Function)
+		parameterize(type_vars) if @obj.is_a?(AST::Function) && !@obj.action_type
 		
 		Silence.puts("") unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
 		
