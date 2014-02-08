@@ -160,11 +160,8 @@ class Lexer
 			when v = s.scan(/[ \t]+/)
 				find_token
 			when s.scan(/#/)
-				s.scan(/.*?(\r\n|\n|\r|\z)/)
-				@tok = nil
-				prestep
-				get_line_indent
-				handle_line
+				s.scan(/.*?(?=\r\n|\n|\r|\z)/)
+				find_token
 			when v = s.scan(/\r\n|\n|\r/)
 				[v, :line, true]
 			when v = s.scan(/"/)
