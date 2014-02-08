@@ -749,7 +749,7 @@
 							Result.new(make_ptr(ast.source, analyze_type(ast.node, args.next)), false)
 						end
 					when '&'
-						type = analyze_value(ast.node, args.next)
+						type = analyze_value(ast.node, args.next(lvalue: true))
 						result = make_ptr(ast.source, type)
 						ast.gen = result
 						Result.new(result, true)
