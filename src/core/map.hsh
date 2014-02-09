@@ -87,7 +87,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 					if slot.val.key == key
 						return found(&slot.val, c)
 				else
-					return free(&slot)
+					return free(&tbl(c))
 
 			c = (c + 1) & mask
 
