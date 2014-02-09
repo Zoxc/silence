@@ -1,20 +1,144 @@
-struct Map(K Hash, V, A Allocator = Mem)
+struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 	struct Entry
 		key K
 		value V
+
+		action copy
 
 	tbl PtrArray(Option(Entry), A)
 	mask uint
 	entries uint
 
-	action create(allocator, size) :
-			mask <- size - 1,
+	action create :
+			tbl <- PtrArray(A())
+	
+	action create(allocator) :
 			tbl <- PtrArray(allocator)
-			tbl.alloc(size)
-
-			times(size, |i| Constructor[Option.None].construct(&tbl(i), ()))
 	
 	action copy
+		if mask > 0
+			tbl = tbl.copy(mask + 1)
 
 	action destroy
-		tbl.destroy_n(mask + 1)
+		if mask > 0
+			tbl.destroy_n(mask + 1)
+
+	fn ensure_tbl()
+		if mask == 0
+			alloc_tbl(8)
+
+	fn alloc_tbl(size)
+		tbl.alloc(size)
+		mask = size - 1
+		times(size, |i| Constructor[Option.None].construct(&tbl(i), ()))
+
+	fn merge(other Map(K, V, A))
+		ensure_tbl()
+
+		.i = 0
+		loop
+			if i > other.mask
+				break
+
+			match other.tbl(i) as slot
+				when Option.Some
+					set(slot.val.key, slot.val.value)
+				else
+
+			i += 1
+
+	fn expand() -> () constraints
+		.new_map = Map[K, V, A](tbl.allocator)
+		new_map.alloc_tbl((mask + 1) * 2)
+		new_map.merge(self)
+		self = new_map
+
+	fn remove_index(key K, i uint)
+		.hash = Hash(key).hash()
+		.free = i
+		.c = i
+
+		entries -= 1
+
+		loop
+			c = (c + 1) & mask
+
+			assert -> c != i # There's no free slot!
+
+			match tbl(c) as slot
+				when Option.Some
+					if Hash(slot.val.key).hash() == hash
+						tbl(free) = tbl(c)
+						free = c
+				else
+					tbl(free) = nil
+					return
+
+	fn search(key K, free, found)
+		ensure_tbl()
+
+		.c = Hash(key).hash() & mask
+
+		assert -> mask >= entries
+
+		loop
+			match tbl(c) as slot
+				when Option.Some
+					if slot.val.key == key
+						return found(&slot.val, c)
+				else
+					return free(&slot)
+
+			c = (c + 1) & mask
+
+	fn each(f)
+		.i = 0
+		loop
+			if i > mask
+				break
+
+			match tbl(i) as slot
+				when Option.Some
+					f(slot.val.key, slot.val.value)
+				else
+
+			i += 1
+
+	fn set(key K, value V)
+		.free = |entry|
+			*entry = some Entry(key, value)
+			entries += 1
+			if entries > mask
+				expand() 
+
+			return false
+		.found = |entry, i|
+			entry.value = value
+			return true
+		return search(key, free, found)
+
+	fn remove(key K)
+		.free = |entry|
+			return nil
+		.found = |entry, i|
+			.r = some entry.value
+			remove_index(key, i)
+			return r
+		return search(key, free, found)
+
+	fn has(key K)
+		.free = |entry|
+			return false
+		.found = |entry, i|
+			return true
+		return search(key, free, found)
+
+	fn get(key K)
+		.free = |entry|
+			return nil
+		.found = |entry, i|
+			return some entry.value
+		return search(key, free, found)
+
+	fn assert_get(key) -> V
+		return get(key).unwrap()

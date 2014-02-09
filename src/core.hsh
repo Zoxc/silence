@@ -10,6 +10,11 @@ use "core/builtin"
 class Hash(T)
 	fn hash() -> uint
 
+instance(T) Hash(*T)
+	fn hash() -> uint
+		.r = force_cast(self)
+		return (r >> 4) ^ r
+
 class Allocator(T)
 	fn alloc[P](size uint) -> *P
 	fn realloc[P](ptr *P, old_size uint, new_size uint) -> *P

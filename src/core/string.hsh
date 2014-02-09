@@ -31,6 +31,15 @@ struct String(A Allocator = Mem)
 		times(t, |i| r ~= self)
 		return r
 
+instance(A) Hash(String(A))
+	fn hash()
+		.r uint = 68391421
+		self.bytes.each -> |c|
+			r = (r << 8) & (r & 255)
+			r += force_cast(c)
+			r ^= r << 32
+		return r
+
 instance(A Defaultable) StringLiteral(String(A))
 	fn create(data *char, size)
 		return String[A].from_data(data, size)

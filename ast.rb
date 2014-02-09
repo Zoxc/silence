@@ -383,18 +383,24 @@ module AST
 		end
 	end
 	
-	def self.type_params(ast, plain = true)
+	def self.owners(ast, plain = true)
 		case ast
 			when AST::Program
 				[]
 			when AST::TypeParam, AST::TypeParamValue, AST::TypeClassInstance, AST::Enum
-				plain ? ast.type_params : []
+				plain ? [ast] : []
 			else
 				raise "Missing @declared on #{ast.name}\n#{ast.source.format}" unless ast.declared
-				result = type_params(ast.declared.owner)
-				result += ast.type_params if plain
+				result = owners(ast.declared.owner)
+				result += [ast] if plain
 				result
 		end
+	end
+	
+	def self.type_params(ast, plain = true)
+		tps = []
+		owners(ast, plain).each { |o| tps.concat o.type_params} 
+		tps
 	end
 	
 	class TypeParamValue < HigherKinded
@@ -600,7 +606,7 @@ module AST
 	end
 	
 	class Function < HigherKinded
-		attr_accessor :params, :result, :var_arg, :scope, :type, :ctype, :props, :type_param_count, :action_type, :self, :init_list, :gen_init_list
+		attr_accessor :params, :constraints, :result, :var_arg, :scope, :type, :ctype, :props, :type_param_count, :action_type, :self, :init_list, :gen_init_list
 		attr_writer :name
 		
 		class Param < Node

@@ -35,7 +35,7 @@ struct PtrArray(T Copyable, A)
 	fn del(i)
 		destroy(&self(i))
 
-	fn destroy_n(size uint) -> *T
+	fn destroy_n(size uint)
 		times(size, |i| del i)
 		Allocator(allocator).free(data)
 

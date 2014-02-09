@@ -25,6 +25,19 @@ struct Option(T)
 		val T
 	when None
 
+	action copy
+
+	fn unwrap_ref()
+		return match self as v
+			when Some
+				&v.val
+			when None
+				assert -> false
+				undef()
+
+	fn unwrap()
+		return *unwrap_ref()
+
 	fn map(f)
 		return match self as v
 			when Some

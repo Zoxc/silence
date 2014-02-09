@@ -155,17 +155,22 @@ class Parser
 		end
 	end
 	
+	def type_context_list
+		r = []
+		loop do
+			r << type_expression
+			if matches(:sym, ',')
+				skip :line
+			else
+				break
+			end
+		end if is_type_expression
+		r
+	end
+
 	def type_context
 		if matches(:id, :where)
-			r = []
-			loop do
-				r << type_expression
-				if matches(:sym, ',')
-					skip :line
-				else
-					return r
-				end
-			end
+			type_context_list
 		else
 			[]
 		end
@@ -258,7 +263,14 @@ class Parser
 					when '('
 						true
 				end
-			when :id, :int, :str
+			when :id
+				case tok_val
+					when :constraints
+						false
+					else
+						true
+				end
+			when :int, :str
 				true
 		end
 	end
@@ -534,6 +546,10 @@ class Parser
 			if matches(:sym, '->')
 				skip :line
 				result = type_expression
+				
+				if matches(:id, :constraints)
+					constraints = type_context_list
+				end
 			end
 		end
 		
@@ -545,6 +561,7 @@ class Parser
 		func.result = result
 		func.scope = group
 		func.props = props
+		func.constraints = constraints
 		func
 	end
 	

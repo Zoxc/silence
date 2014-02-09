@@ -1082,9 +1082,13 @@
 		end
 
 		func.init_list.each { |i| analyze_impl(i, a_args) }
-		
-		analyze(func.scope, a_args.next(unused: true))
-		
+
+		if func.constraints
+			# TODO: Process constraints and check that the implementation matches later
+		else
+			analyze(func.scope, a_args.next(unused: true))
+		end
+			
 		finalize(get_func_type, true)
 	end
 	
@@ -1102,10 +1106,35 @@
 	def report_unresolved_vars(vars)
 		raise CompileError, "Unable to find the type of the following expressions in #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
 	end
+
+	def assume_parents
+		AST.owners(@obj, false).any? do |o|
+			infer(o)
+			@ctx.assume(o.ctype.ctx.limits)
+		end
+	end
+
+	def process_constraints(args)
+		nil while proc do
+			solve_fields or
+			@ctx.reduce(@obj, args) or
+			assume_parents
+		end.()
+
+		@fields.each do |c|
+			raise CompileError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
+		end
+	end
 	
 	def finalize(type, value)
 		type = type.prune
 		@value = value
+
+		@obj.kind_params.ctx.each do |ast|
+			n_args = analyze_args.next(scoped: true)
+			ctype, value = coerce_typeval(analyze_impl(ast, n_args), n_args)
+			raise CompileError, "Expected typeclass\n#{ast.obj.source.format}" unless !value && ctype.ref.is_a?(AST::TypeClass)
+		end
 		
 		# If we are a complex, we can allow to give less strict constraints in case @ctx.reduce refers back to it
 		if @obj.is_a? AST::Complex
@@ -1113,14 +1142,7 @@
 			@obj.ctype = self
 		end
 
-		nil while proc do
-			solve_fields
-			@ctx.reduce(@obj, @obj.is_a?(AST::Complex) ? type.args.values : [])
-		end.()
-
-		@fields.each do |c|
-			raise CompileError.new("Unable to find field '#{c.name}' in type '#{c.type.text}'\n#{c.ast.source.format}#{"\nType inferred from:\n#{c.type.source.format}" if c.var.source}")
-		end
+		process_constraints(@obj.is_a?(AST::Complex) ? type.args.values : [])
 		
 		type_vars = @ctx.type_vars.dup
 		
@@ -1149,13 +1171,12 @@
 		
 		parameterize(type_vars) if @obj.is_a?(AST::Function) && !@obj.action_type
 		
-		Silence.puts("") unless @ctx.limits.empty? && @ctx.levels.empty? && @views.empty?
+		Silence.puts("") unless @ctx.limits.empty? && @views.empty?
 		
 		Silence.puts "#{@obj.scoped_name}#{"(#{@obj.type_params.map{|k,v|k.name}.join(",")})" unless @obj.type_params.empty?}  ::  #{type.text}"
 		Silence.puts("Instance of #{@obj.typeclass.obj.scoped_name}(#{TypeContext.print_params(@typeclass)})") if @typeclass
 
 		@ctx.limits.each{|i| Silence.puts "    - #{i}"}
-		@ctx.levels.each{|i| Silence.puts "    - #{i}"}
 		@views.each_pair{|k,v| Silence.puts "    * #{k.text} <= #{v.text}"}
 		
 		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
@@ -1285,6 +1306,15 @@
 		@obj.kind_params.values.values.each { |v| InferContext.process(v, @infer_args) }
 
 		case @obj
+			when AST::Function
+				if @obj.constraints
+					analyze(@obj.scope, analyze_args.next(unused: true)) 
+					process_constraints([])
+					unless @ctx.limits.size == 0
+						c = @ctx.limits.map{|i| "    - #{i}"}.join("\n")
+						raise(CompileError, "Expected no constraints for #{@obj.scoped_name}\n#{@obj.source.format}\n#{c}") 
+					end
+				end
 			when AST::TypeClassInstance
 				typeclass = @obj.typeclass.obj
 

@@ -13,6 +13,13 @@
 		def eq_limit(source, var, type_ast)
 			@eqs << EqLimit.new(source, var, type_ast)
 		end
+
+		def ==(other)
+			raise unless other.is_a?(TypeClassLimit)
+			typeclass == other.typeclass && args.each.all? do |k, v|
+				other.args[k] == v
+			end
+		end
 		
 		def to_s
 			"#{@typeclass.scoped_name}[#{TypeContext.print_params(@args)}]#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}\n#{source.format(8)}"
@@ -25,7 +32,7 @@
 		end
 	end
 	
-	attr_accessor :type_vars, :limits, :infer_args, :var_allocs, :levels
+	attr_accessor :type_vars, :limits, :infer_args, :var_allocs
 		
 	def initialize(infer_args)
 		@infer_args = infer_args
@@ -33,7 +40,6 @@
 		@type_vars = []
 		@var_name = 1
 		@limits = []
-		@levels = []
 	end
 	
 	def new_var_name
@@ -321,6 +327,14 @@
 		end or
 		@limits.any? do |c|
 			reduce_eqs(c.eqs)
+		end
+	end
+	
+	def assume(limits)
+		limits.any? do |l|
+			@limits.reject! do |c|
+				c.eqs.empty? && c == l
+			end
 		end
 	end
 	
