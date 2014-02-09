@@ -493,7 +493,7 @@ class Core
 		proc do
 			_type = param :Type
 			_size = AST::TypeParam.new(src, :Size, AST::KindParams.new(src, [], []), ref(UInt), true)
-			_index = AST::TypeAlias.new(src, :Index, AST::TypeTuple.new(src, [ref(UInt)]))
+			_index = AST::TypeAlias.new(src, :Index, ref(UInt))
 			_result = AST::TypeAlias.new(src, :Result, ref(_type))
 			Ref = func(:ref, {index: ref(_index)}, ptr(ref(_result)))
 			inst = tci(Indexable::Node, [AST::Index.new(src, ref(Node), [ref(_size), ref(_type)])], [_size, _type], [Ref, _index, _result])

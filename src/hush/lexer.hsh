@@ -125,12 +125,12 @@ struct Lexer
 		action create(indent) :
 			indent <- indent,
 			levels <- undef()
-			levels(0) = 0
-			levels(1) = 0
-			levels(2) = 0
+			levels'0 = 0
+			levels'1 = 0
+			levels'2 = 0
 
 		fn ignore()
-			return levels(0) > 0 or levels(1) > 0 or levels(2) > 0
+			return levels'0 > 0 or levels'1 > 0 or levels'2 > 0
 
 	compiler *Compiler
 	tok State
@@ -175,7 +175,7 @@ struct Lexer
 
 	fn setup_table()
 		.set_char = \i char, f ->
-			jump_table(force_cast i) = f
+			jump_table'force_cast i = f
 
 		.set_chars = \start char, stop, f ->
 			for_range(start, stop, \i -> set_char(i, f))
@@ -238,7 +238,7 @@ struct Lexer
 		assert -> tok.type != Token.None
 
 	fn process_token()
-		jump_table(force_cast c())()
+		(jump_table'force_cast c())()
 
 	fn next_token()
 		assert -> tok.type != Token.Line and tok.type != Token.Deindent
@@ -366,8 +366,8 @@ struct Lexer
 
 	fn pop_bracket_level(brace) -> uint
 		tok.blocks.reverse().each_with_index \b, i ->
-			if b.levels(brace) > 0
-				b.levels(brace) -= 1
+			if b.levels'brace > 0
+				b.levels'brace -= 1
 				tok.blocks = tok.blocks.slice(0, tok.blocks.size - 1 - i)
 				return i
 		return 0
@@ -393,7 +393,7 @@ struct Lexer
 		.i = bracket_data()
 		step()
 		tok.end()
-		tok.blocks.last().map \b -> b.levels(i) += 1
+		tok.blocks.last().map \b -> b.levels'i += 1
 
 	fn bracket_pop()
 		.i = bracket_data()
@@ -494,7 +494,7 @@ struct Lexer
 		step()
 
 		loop
-			if jump_table(force_cast c()) != unknown
+			if jump_table'force_cast c() != unknown
 				break
 			step()
 

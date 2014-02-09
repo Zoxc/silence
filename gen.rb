@@ -307,7 +307,7 @@ class Codegen
 				@out[:func_forward] << o << ";\n"
 				o << "\n{\n"
 				o << "    auto &v_self = *(#{c_type(ast.ctype.vars[ast.self], map)} *)data;\n"
-				o << "    *result = &v_self.array[v_index.f_val];\n}\n\n"
+				o << "    *result = &v_self.array[v_index];\n}\n\n"
 				@out[:func] << o
 			when Core::Table::Node
 				name = mangle(ast, map)

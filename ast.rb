@@ -826,6 +826,21 @@ module AST
 		attr_accessor :gen
 	end
 
+	class Subscript < ExpressionNode
+		attr_accessor :obj, :idx, :gen
+		
+		def initialize(source, obj, idx)
+			super(source)
+			@obj = obj
+			@idx = idx
+		end
+		
+		def visit
+			@obj = yield @obj
+			@idx = yield @idx
+		end
+	end
+
 	class InitEntry < ExpressionNode
 		attr_accessor :field, :expr, :gen
 		

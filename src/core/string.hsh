@@ -37,7 +37,7 @@ instance(A) Hash(String(A))
 		self.bytes.each \c ->
 			r = (r << 8) & (r & 255)
 			r += force_cast(c)
-			r ^= r << 32
+			r ^= r << 16
 		return r
 
 instance(A Defaultable) StringLiteral(String(A))
@@ -54,7 +54,7 @@ instance(A) Eq(String(A))
 
 instance(A) Indexable(String(A))
 	alias Result = char
-	alias Index = Cell(uint, Unit)
+	alias Index = uint
 
-	fn ref(args Cell(uint, Unit))
-		return &self.bytes(args.val)
+	fn ref(i uint)
+		return &self.bytes'i

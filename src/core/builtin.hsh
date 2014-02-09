@@ -68,9 +68,9 @@ class Callable(T)
 
 class Indexable(T)
 	type_func Result
-	type_func Index Tuple
+	type_func Index
 
-	fn ref(index Index) -> *Result
+	fn ref(i Index) -> *Result
 
 class Eq(T)
 	shared fn equal(lhs T, rhs T) -> bool

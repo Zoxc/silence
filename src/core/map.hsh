@@ -30,7 +30,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 	fn alloc_tbl(size)
 		tbl.alloc(size)
 		mask = size - 1
-		times(size, \i -> Constructor[Option.None].construct(&tbl(i), ()))
+		times(size, \i -> Constructor[Option.None].construct(&tbl'i, ()))
 
 	fn merge(other Map(K, V, A))
 		ensure_tbl()
@@ -40,7 +40,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 			if i > other.mask
 				break
 
-			match other.tbl(i) as slot
+			match other.tbl'i as slot
 				when Option.Some
 					set(slot.val.key, slot.val.value)
 				else
@@ -65,13 +65,13 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 
 			assert -> c != i # There's no free slot!
 
-			match tbl(c) as slot
+			match tbl'c as slot
 				when Option.Some
 					if Hash(slot.val.key).hash() == hash
-						tbl(free) = tbl(c)
+						tbl'free = tbl'c
 						free = c
 				else
-					tbl(free) = nil
+					tbl'free = nil
 					return
 
 	fn search(key K, free, found)
@@ -82,12 +82,12 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 		assert -> mask >= entries
 
 		loop
-			match tbl(c) as slot
+			match tbl'c as slot
 				when Option.Some
 					if slot.val.key == key
 						return found(&slot.val, c)
 				else
-					return free(&tbl(c))
+					return free(&tbl'c)
 
 			c = (c + 1) & mask
 
@@ -97,7 +97,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 			if i > mask
 				break
 
-			match tbl(i) as slot
+			match tbl'i as slot
 				when Option.Some
 					f(slot.val.key, slot.val.value)
 				else

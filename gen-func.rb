@@ -394,9 +394,6 @@ class FuncCodegen
 					direct_call(var, ref(Core::Callable::Apply, {Core::Callable::T => ast.gen[:obj_type]}), obj.ref, [args.ref], ast.gen[:result])
 				end
 
-			when :index
-				direct_call(var, ref(Core::Indexable::Ref, {Core::Indexable::T => ast.gen[:obj_type]}), lval, [args.ref], ast.gen[:result])
-		
 			when :construct
 				rvar = var ? var : new_var
 				assign_var(rvar, ast.gen[:result], nil)
@@ -437,16 +434,23 @@ class FuncCodegen
 				lvalue(ast.node, var, proper)
 			when AST::Call
 				case ast.gen[:type]
-					when :index
-						obj_ptr = new_var
-						lvalue(ast.obj, obj_ptr)
-						call_args(ast, var, obj_ptr.ref)
-						del_var obj_ptr
 					when :binding
 						lvalue(ast.args.first, var, proper)
 					else
 						raise
 				end
+
+			when AST::Subscript
+				obj_ptr = new_var
+				lvalue(ast.obj, obj_ptr)
+
+				idx = new_var
+				convert(ast.idx, idx)
+
+				direct_call(var, ref(Core::Indexable::Ref, {Core::Indexable::T => ast.gen[:obj_type]}), obj_ptr.ref, [idx.ref], ast.gen[:result])
+				del_var idx, false
+
+				del_var obj_ptr
 
 			when AST::UnaryOp
 				case ast.op
@@ -785,7 +789,7 @@ class FuncCodegen
 					else
 						raise "Unknown literal type #{ast.type}"
 				end
-			when AST::Ref, AST::Field
+			when AST::Ref, AST::Field, AST::Subscript
 				lvalue_to_convert(ast, var)
 			when AST::UnaryOp
 				case ast.op

@@ -171,13 +171,6 @@ fn ptr_diff[T](lhs *T, rhs *T) -> uint
 fn ptr_succ[T](ptr *T) -> *T
 	return force_cast(force_cast ptr + size_of[T]())
 
-instance(T Indexable) Callable(T)
-	alias Result = Indexable(T).Result
-	alias Args = Indexable(T).Index
-
-	fn apply(args Args)
-		return *Indexable(self).ref(args)
-
 instance(T Indexable) Indexable(*T)
 	alias Result = Indexable(T).Result
 	alias Index = Indexable(T).Index

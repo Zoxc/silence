@@ -447,7 +447,7 @@
 	
 	def analyze_impl(ast, args)
 		case ast
-			when AST::Ref, AST::Field, AST::UnaryOp, AST::ValueTuple, AST::Call, AST::Grouped
+			when AST::Ref, AST::Field, AST::UnaryOp, AST::ValueTuple, AST::Call, AST::Subscript, AST::Grouped
 			else
 				raise CompileError.new("Invalid l-value (#{ast.class.name})\n#{ast.source.format}")
 		end if args.lvalue
@@ -633,6 +633,8 @@
 					ast.gen = {type: :binding, result: obj_result.result}
 					TypeclassBinding.new(obj_result.limit, obj_result.result)
 				else
+					raise CompileError.new("Invalid l-value\n#{ast.source.format}") if args.lvalue
+
 					type, value = coerce_typeval(obj_result, next_args)
 					
 					result = new_var(ast.source)
@@ -641,25 +643,13 @@
 					ast.gen = {args: callable_args, result: result, obj_type: type}
 					
 					ast.gen[:type] = if value
-						if args.lvalue
-							# It's a indexed assignment
-							limit = typeclass_limit(ast.source, Core::Indexable::Node, {Core::Indexable::T => type})
-							limit.eq_limit(ast.source, callable_args, Core::Indexable::Index)
-							limit.eq_limit(ast.source, result, Core::Indexable::Result)
+						# It's a call
+						limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
+						limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
+						limit.eq_limit(ast.source, result, Core::Callable::Result)
 
-							ast.gen[:result] = make_ptr(ast.source, ast.gen[:result]) # We return a pointer
-
-							:index
-						else
-							# It's a call
-							limit = typeclass_limit(ast.source, Core::Callable::Node, {Core::Callable::T => type})
-							limit.eq_limit(ast.source, callable_args, Core::Callable::Args)
-							limit.eq_limit(ast.source, result, Core::Callable::Result)
-
-							:call
-						end
+						:call
 					else
-						raise CompileError.new("A constructor is not a valid l-value\n#{ast.source.format}") if args.lvalue
 
 						# It's a constructor
 						limit = typeclass_limit(ast.source, Core::Constructor::Node, {Core::Constructor::T => type})
@@ -673,6 +663,20 @@
 					
 					Result.new(result, true)
 				end
+			when AST::Subscript
+				obj_type = analyze_value(ast.obj, args.next(lvalue: args.lvalue))
+				idx_type = analyze_value(ast.idx, args.next)
+
+				result = new_var(ast.source)
+				
+				# It's a indexed assignment
+				limit = typeclass_limit(ast.source, Core::Indexable::Node, {Core::Indexable::T => obj_type})
+				limit.eq_limit(ast.source, idx_type, Core::Indexable::Index)
+				limit.eq_limit(ast.source, result, Core::Indexable::Result)
+
+				ast.gen = {result: make_ptr(ast.source, result), obj_type: obj_type}
+
+				Result.new(result, true)
 			when AST::Literal
 				result = case ast.type
 					when :nil

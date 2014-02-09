@@ -903,7 +903,20 @@ class Parser
 				AST::UnaryOp.new(s, op, unary)
 			end
 		else
-			apply
+			subscript
+		end
+	end
+
+	def subscript
+		r = apply
+		if eq(:sym, '\'')
+			source do |s|
+				step
+				skip :line
+				AST::Subscript.new(s, r, subscript)
+			end
+		else
+			r
 		end
 	end
 	
