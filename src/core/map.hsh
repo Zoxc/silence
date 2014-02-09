@@ -30,7 +30,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 	fn alloc_tbl(size)
 		tbl.alloc(size)
 		mask = size - 1
-		times(size, |i| Constructor[Option.None].construct(&tbl(i), ()))
+		times(size, \i -> Constructor[Option.None].construct(&tbl(i), ()))
 
 	fn merge(other Map(K, V, A))
 		ensure_tbl()
@@ -105,38 +105,38 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 			i += 1
 
 	fn set(key K, value V)
-		.free = |entry|
+		.free = \entry ->
 			*entry = some Entry(key, value)
 			entries += 1
 			if entries > mask
 				expand() 
 
 			return false
-		.found = |entry, i|
+		.found = \entry, i ->
 			entry.value = value
 			return true
 		return search(key, free, found)
 
 	fn remove(key K)
-		.free = |entry|
+		.free = \entry ->
 			return nil
-		.found = |entry, i|
+		.found = \entry, i ->
 			.r = some entry.value
 			remove_index(key, i)
 			return r
 		return search(key, free, found)
 
 	fn has(key K)
-		.free = |entry|
+		.free = \entry ->
 			return false
-		.found = |entry, i|
+		.found = \entry, i ->
 			return true
 		return search(key, free, found)
 
 	fn get(key K)
-		.free = |entry|
+		.free = \entry ->
 			return nil
-		.found = |entry, i|
+		.found = \entry, i ->
 			return some entry.value
 		return search(key, free, found)
 

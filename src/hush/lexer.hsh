@@ -174,11 +174,11 @@ struct Lexer
 		next_token()
 
 	fn setup_table()
-		.set_char = |i char, f|
+		.set_char = \i char, f ->
 			jump_table(force_cast i) = f
 
-		.set_chars = |start char, stop, f|
-			for_range(start, stop, |i| set_char(i, f))
+		.set_chars = \start char, stop, f ->
+			for_range(start, stop, \i -> set_char(i, f))
 
 		set_chars(0, 255, unknown)
 
@@ -365,7 +365,7 @@ struct Lexer
 				report[Error.IndentMismatch](make_src(tok.indent.start, tok.indent.stop), make_src(block.indent.start, block.indent.stop))
 
 	fn pop_bracket_level(brace) -> uint
-		tok.blocks.reverse().each_with_index -> |b, i|
+		tok.blocks.reverse().each_with_index \b, i ->
 			if b.levels(brace) > 0
 				b.levels(brace) -= 1
 				tok.blocks = tok.blocks.slice(0, tok.blocks.size - 1 - i)
@@ -393,7 +393,7 @@ struct Lexer
 		.i = bracket_data()
 		step()
 		tok.end()
-		tok.blocks.last().map -> |b| b.levels(i) += 1
+		tok.blocks.last().map \b -> b.levels(i) += 1
 
 	fn bracket_pop()
 		.i = bracket_data()

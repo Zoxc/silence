@@ -19,7 +19,7 @@ struct PtrArray(T Copyable, A)
 		.result = PtrArray(allocator)
 		result.alloc(size)
 		Mem.copy(data, result.data, size * unit)
-		times(size, |i| Copyable(result(i)).copy())
+		times(size, \i -> Copyable(result(i)).copy())
 		return result
 
 	fn copy(size uint)
@@ -36,7 +36,7 @@ struct PtrArray(T Copyable, A)
 		destroy(&self(i))
 
 	fn destroy_n(size uint)
-		times(size, |i| del i)
+		times(size, \i -> del i)
 		Allocator(allocator).free(data)
 
 	fn ptr(idx uint) -> *T

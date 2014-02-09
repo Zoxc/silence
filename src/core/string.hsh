@@ -28,13 +28,13 @@ struct String(A Allocator = Mem)
 
 	fn repeat(t uint)
 		.r
-		times(t, |i| r ~= self)
+		times(t, \i -> r ~= self)
 		return r
 
 instance(A) Hash(String(A))
 	fn hash()
 		.r uint = 68391421
-		self.bytes.each -> |c|
+		self.bytes.each \c ->
 			r = (r << 8) & (r & 255)
 			r += force_cast(c)
 			r ^= r << 32

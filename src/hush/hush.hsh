@@ -19,7 +19,7 @@ fn parse(input, name)
 			else
 				compiler.lexer.next_token()
 
-	compiler.errors.each -> |error|
+	compiler.errors.each \error ->
 		IO.puts("Error: " ~ error.format())
 
 export fn main() -> c_int

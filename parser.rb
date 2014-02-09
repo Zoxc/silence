@@ -674,7 +674,7 @@ class Parser
 				end
 			when :sym
 				case tok_val
-					when '*', '&', '.', '-', '+', '!', '|', '~'
+					when '*', '&', '.', '-', '+', '!', '~'
 						true
 				end
 		end
@@ -1014,24 +1014,15 @@ class Parser
 
 	def lambda
 		baseline = @l.indent
-		lambda = nil
+		r = nil
 
 		source do |s|
-			lambda = AST::Lambda.new(s)
-			matches(:sym, '->')
-
-
-			if matches(:sym, '|')
-				@in_lambda_params = true
-				lambda.params = function_params(lambda)
-				match(:sym, '|')
-				@in_lambda_params = false
-			else
-				lambda.params = []
-			end
+			r = AST::Lambda.new(s)
+			r.params = matches(:sym, '\\') ? function_params(r) : []
+			match(:sym, '->')
 		end
 
-		lambda.scope = if can_be_scope
+		r.scope = if can_be_scope
 			group(baseline, AST::FuncScope)
 		else
 			source do |s|
@@ -1039,14 +1030,14 @@ class Parser
 			end
 		end
 
-		lambda
+		r
 	end
 	
 	def is_factor
 		case tok
 			when :sym
 				case tok_val
-					when '[', '(', '->'
+					when '[', '(', '->', '\\'
 						true
 				end
 			when :id
@@ -1068,7 +1059,7 @@ class Parser
 			case tok
 				when :sym
 					case tok_val
-						when '->', '|'
+						when '->', '\\'
 							lambda
 						when '['
 							array(s)

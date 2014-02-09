@@ -157,7 +157,7 @@ fn times(i, f)
 
 fn for_range(a, b, f)
 	.i uint = force_cast(b - a) + 1
-	times(i, |i| f(a + force_cast i))
+	times(i, \i -> f(a + force_cast i))
 
 fn ptr_idx[T](ptr *T, idx uint) -> *T
 	return force_cast(force_cast ptr + idx * size_of[T]())

@@ -37,7 +37,7 @@ struct Array(T, A Allocator = Mem)
 
 	fn concat[OA](other Array(T, OA))
 		expand(other.size)
-		times(other.size, |i| list.set(size + i, other(i)))
+		times(other.size, \i -> list.set(size + i, other(i)))
 		size += other.size
 
 	fn copy[OA](allocator OA)
@@ -56,15 +56,15 @@ struct Array(T, A Allocator = Mem)
 		return true
 
 	fn each(f)
-		times(size, |i| f(self(i)))
+		times(size, \i -> f(self(i)))
 
 	fn each_with_index(f)
-		times(size, |i| f(self(i), i))
+		times(size, \i -> f(self(i), i))
 
 	fn reverse()
 		.result = Array[T, A](allocator())
 		result.expand(size)
-		times(size, |i| result.list.set(i, self(size - 1 - i)))
+		times(size, \i -> result.list.set(i, self(size - 1 - i)))
 		return result
 
 	fn slice(start, stop)
@@ -73,7 +73,7 @@ struct Array(T, A Allocator = Mem)
 			return result
 		.size = stop - start + 1
 		result.expand(size)
-		times(size, |i| result.list.set(i, self(start + i)))
+		times(size, \i -> result.list.set(i, self(start + i)))
 		return result
 
 	fn expand(n)
@@ -118,7 +118,7 @@ instance(T Eq, A) Eq(Array(T, A))
 	fn equal(lhs Array(T, A), rhs Array(T, A))
 		if lhs.size != rhs.size
 			return false
-		return lhs.all(|v, i| v == rhs(i))
+		return lhs.all(\v, i -> v == rhs(i))
 
 instance(T, A) Joinable(Array(T, A))
 	fn join(lhs Array(T, A), rhs Array(T, A))

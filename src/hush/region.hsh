@@ -5,7 +5,7 @@ struct Region
 		action create
 
 		action destroy
-			ptrs.each(|p| Mem.free p)
+			ptrs.each(\p -> Mem.free p)
 
 		fn ref()
 			return Region(&self)
