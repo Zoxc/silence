@@ -68,15 +68,15 @@ enum Token
 
 struct Lexer
 	struct Indent
-		start *char
-		stop *char
+		char* start
+		char* stop
 
 		action copy
 		
 		fn size()
 			return ptr_diff(stop, start)
 
-		fn subset(other Indent)
+		fn subset(Indent other)
 			.s = size()
 			if other.size() < s
 				return false
@@ -84,20 +84,20 @@ struct Lexer
 			return Mem.cmp(start, other.start, s)
 
 	struct State
-		pos *char
-		input_end *char
+		char* pos
+		char* input_end
 
-		lexer *Lexer
-		type Token
-		start *char
-		stop *char
-		last_ended *char
+		Lexer* lexer
+		Token type 
+		char* start
+		char* stop
+		char* last_ended
 
-		blocks Array(*Block, Region)
+		Array[Block*, Region] blocks 
 
-		indent Indent
+		Indent indent 
 
-		num uint
+		uint num 
 
 		action create(pos, end, lexer) :
 			pos <- pos,
@@ -108,7 +108,7 @@ struct Lexer
 			start <- undef(),
 			stop <- undef(),
 			indent <- undef(),
-			blocks <- Array[*Block, Region](lexer.compiler.region.ref())
+			blocks <- Array[Block*, Region](lexer.compiler.region.ref())
 
 		action copy
 
@@ -119,8 +119,8 @@ struct Lexer
 			return String.from_data(start, ptr_diff(stop, start))
 
 	struct Block
-		levels Table(3, uint)
-		indent Indent
+		Table[3, uint] levels
+		Indent indent
 
 		action create(indent) :
 			indent <- indent,
@@ -132,10 +132,10 @@ struct Lexer
 		fn ignore()
 			return levels'0 > 0 or levels'1 > 0 or levels'2 > 0
 
-	compiler *Compiler
-	tok State
-	file *SrcFile
-	jump_table Table(256, () -> ())
+	Compiler* compiler
+	State tok
+	SrcFile* file
+	Table[256, () -> ()] jump_table 
 
 	fn region()
 		return file.region.ref()
@@ -154,10 +154,10 @@ struct Lexer
 	fn in(a, b)
 		return a <= c() and c() <= b
 
-	fn make_src(start, stop) -> *SrcLoc
+	fn make_src(start, stop) -> SrcLoc*
 		return region().new(file, start, stop)
 
-	fn src() -> *SrcLoc
+	fn src() -> SrcLoc*
 		return make_src(tok.start, tok.stop)
 
 	fn report[T] *args
@@ -174,10 +174,10 @@ struct Lexer
 		next_token()
 
 	fn setup_table()
-		.set_char = \i char, f ->
+		.set_char = \char i, f ->
 			jump_table'force_cast i = f
 
-		.set_chars = \start char, stop, f ->
+		.set_chars = \char start, stop, f ->
 			for_range(start, stop, \i -> set_char(i, f))
 
 		set_chars(0, 255, unknown)
@@ -251,7 +251,7 @@ struct Lexer
 			tok.indent = get_line_indent()
 			handle_line()
 
-	fn indent_newline(baseline Indent)
+	fn indent_newline(Indent baseline)
 		assert -> tok.type == Token.Line
 		.indent = get_line_indent()
 		.r = false
@@ -313,7 +313,7 @@ struct Lexer
 		Decreased
 		Error
 
-	fn compare_indent(old Indent, new Indent)
+	fn compare_indent(Indent old, Indent new)
 		return if old.subset(new)
 			if new.size() > old.size()
 				IndentChange.Increased
@@ -407,7 +407,7 @@ struct Lexer
 		step()
 		tok.end()
 
-	fn tri[type :: Token, c1 :: char, t1 :: Token, c2 :: char, t2 :: Token]()
+	fn tri[Token :: type, char :: c1, Token :: t1, char :: c2, Token :: t2]()
 		step()
 
 		tok.type = match c()
@@ -422,7 +422,7 @@ struct Lexer
 
 		tok.end()
 
-	fn dual[type :: Token, ch :: char, c_type :: Token]()
+	fn dual[Token :: type, char :: ch, Token :: c_type]()
 		step()
 
 		tok.type = if c() == ch
@@ -433,12 +433,12 @@ struct Lexer
 
 		tok.end()
 
-	fn single[type :: Token]()
+	fn single[Token :: type]()
 		step()
 		tok.type = type
 		tok.end()
 
-	fn assign[type :: Token, assign_type :: Token]()
+	fn assign[Token :: type, Token :: assign_type]()
 		dual[type, "=", assign_type]()
 
 	fn eof()

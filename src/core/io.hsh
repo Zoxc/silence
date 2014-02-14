@@ -1,8 +1,8 @@
 struct IO
-	shared fn print(s String)
+	shared fn print(String s)
 		Runtime.hush_puts(&s)
 
-	shared fn puts(s String)
+	shared fn puts(String s)
 		print s
 		.l = 10
 		print String.from_data(&l, 1)

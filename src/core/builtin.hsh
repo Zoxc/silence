@@ -1,6 +1,6 @@
-class Sizeable(T)
+class Sizeable[T]
 
-class Copyable(T)
+class Copyable[T]
 	fn copy()
 
 # Tuple types
@@ -8,21 +8,21 @@ class Copyable(T)
 struct Unit
 	action copy
 
-struct Cell(Val, Next Tuple)
-	val Val
-	next Next
+struct Cell[Val, Tuple Next]
+	Val val
+	Next next
 
 	action copy
 
-class Tuple(T)
+class Tuple[T]
 
-instance Tuple(Unit)
+instance Tuple[Unit]
 
-instance(Val, Next) Tuple(Cell(Val, Next))
+instance[Val, Next] Tuple[Cell[Val, Next]]
 
-struct Option(T)
+struct Option[T]
 	when Some
-		val T
+		T val
 	when None
 
 	action copy
@@ -46,63 +46,63 @@ struct Option(T)
 				Option.None()
 
 
-class Defaultable(T)
-	shared fn construct(obj *T)
+class Defaultable[T]
+	shared fn construct(T* obj)
 
-class Constructor(T)
+class Constructor[T]
 	type_func Constructed
 	type_func Args Tuple
 
-	shared fn construct(obj *Constructed, args Args)
+	shared fn construct(Constructed *obj, Args args)
 
-class Reference(T)
+class Reference[T]
 	type_func Type Sizeable
 
-	fn get() -> *Type
+	fn get() -> Type*
 
-class Callable(T)
+class Callable[T]
 	type_func Result Sizeable
 	type_func Args Tuple
 
-	fn apply(args Args) -> Result
+	fn apply(Args args) -> Result
 
-class Indexable(T)
+class Indexable[T]
 	type_func Result
 	type_func Index
 
-	fn ref(i Index) -> *Result
+	fn ref(Index i) -> Result*
 
-class Eq(T)
-	shared fn equal(lhs T, rhs T) -> bool
+class Eq[T]
+	shared fn equal(T lhs, T rhs) -> bool
 
 enum Order
 	Greater
 	Equal
 	Lesser
 
-class Ord(T)
-	shared fn cmp(gt T, ls T) -> Order
+class Ord[T]
+	shared fn cmp(T gt, T ls) -> Order
 
-class Num(T)
-	shared fn create(i int) -> T
+class Num[T]
+	shared fn create(int i) -> T
 
 	fn neg() -> T
-	shared fn add(lhs T, rhs T) -> T
-	shared fn sub(lhs T, rhs T) -> T
-	shared fn mul(lhs T, rhs T) -> T
-	shared fn div(lhs T, rhs T) -> T
-	shared fn mod(lhs T, rhs T) -> T
+	shared fn add(T lhs, T rhs) -> T
+	shared fn sub(T lhs, T rhs) -> T
+	shared fn mul(T lhs, T rhs) -> T
+	shared fn div(T lhs, T rhs) -> T
+	shared fn mod(T lhs, T rhs) -> T
 
-class Bits(T)
+class Bits[T]
 	fn neg() -> T
-	shared fn or(lhs T, rhs T) -> T
-	shared fn xor(lhs T, rhs T) -> T
-	shared fn and(lhs T, rhs T) -> T
-	shared fn shr(lhs T, rhs uint) -> T
-	shared fn shl(lhs T, rhs uint) -> T
+	shared fn or(T lhs, T rhs) -> T
+	shared fn xor(T lhs, T rhs) -> T
+	shared fn and(T lhs, T rhs) -> T
+	shared fn shr(T lhs, uint rhs) -> T
+	shared fn shl(T lhs, uint rhs) -> T
 
-class Joinable(T)
-	shared fn join(lhs T, rhs T) -> T
+class Joinable[T]
+	shared fn join(T lhs, T rhs) -> T
 
-class StringLiteral(T)
-	shared fn create(data *char, size uint) -> T
+class StringLiteral[T]
+	shared fn create(char* data, uint size) -> T

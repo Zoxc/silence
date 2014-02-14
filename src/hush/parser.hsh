@@ -1,8 +1,8 @@
 use "lexer"
 
 struct Parser
-	lexer *Lexer
-	compiler *Compiler
+	Lexer* lexer
+	Compiler* compiler
 
 	action create(lexer) :
 		lexer <- lexer,
@@ -17,13 +17,13 @@ struct Parser
 	fn step()
 		lexer.next_token()
 
-	fn extend(src *SrcLoc)
+	fn extend(SrcLoc* src)
 		src.stop = lexer.tok.last_ended
 
-	fn expected(tok Token)
+	fn expected(Token tok)
 		lexer.report[Error.ExpectedToken](lexer.src(), tok, format_token().copy(compiler.region.ref()))
 
-	fn ensure(v Token)
+	fn ensure(Token v)
 		if v == tok()
 			step()
 		else
@@ -35,7 +35,7 @@ struct Parser
 		else
 			nil
 
-	fn matches_ident(ident String)
+	fn matches_ident(String ident)
 		return if tok() == Token.Ident
 			ident == lexer.tok.str()
 		else

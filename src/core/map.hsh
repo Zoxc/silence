@@ -1,13 +1,13 @@
-struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
+struct Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
 	struct Entry
-		key K
-		value V
+		K key
+		V value
 
 		action copy
 
-	tbl PtrArray(Option(Entry), A)
-	mask uint
-	entries uint
+	PtrArray[Option[Entry], A] tbl
+	uint mask
+	uint entries
 
 	action create :
 			tbl <- PtrArray(A())
@@ -32,7 +32,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 		mask = size - 1
 		times(size, \i -> Constructor[Option.None].construct(&tbl'i, ()))
 
-	fn merge(other Map(K, V, A))
+	fn merge(Map[K, V, A] other)
 		ensure_tbl()
 
 		.i = 0
@@ -53,7 +53,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 		new_map.merge(self)
 		self = new_map
 
-	fn remove_index(key K, i uint)
+	fn remove_index(K key, uint i)
 		.hash = Hash(key).hash()
 		.free = i
 		.c = i
@@ -74,7 +74,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 					tbl'free = nil
 					return
 
-	fn search(key K, free, found)
+	fn search(K key, free, found)
 		ensure_tbl()
 
 		.c = Hash(key).hash() & mask
@@ -104,7 +104,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 
 			i += 1
 
-	fn set(key K, value V)
+	fn set(key, value)
 		.free = \entry ->
 			*entry = some Entry(key, value)
 			entries += 1
@@ -117,7 +117,7 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 			return true
 		return search(key, free, found)
 
-	fn remove(key K)
+	fn remove(key)
 		.free = \entry ->
 			return nil
 		.found = \entry, i ->
@@ -126,14 +126,14 @@ struct Map(K Hash, V Copyable, A Allocator = Mem) where Eq(K)
 			return r
 		return search(key, free, found)
 
-	fn has(key K)
+	fn has(key)
 		.free = \entry ->
 			return false
 		.found = \entry, i ->
 			return true
 		return search(key, free, found)
 
-	fn get(key K)
+	fn get(key)
 		.free = \entry ->
 			return nil
 		.found = \entry, i ->

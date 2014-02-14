@@ -4,10 +4,10 @@ use "error"
 use "region"
 
 struct Compiler
-	region Region.Base
-	lexer Lexer
-	parser Parser
-	errors Array(*Error)
+	Region.Base region
+	Lexer lexer
+	Parser parser
+	Array[Error*] errors
 
 	action create(file) :
 		lexer <- Lexer(&self, file),

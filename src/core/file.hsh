@@ -1,11 +1,11 @@
 struct File
-	shared fn read(path String)
+	shared fn read(String path)
 		.f = path.c_str \p -> C.fopen(p, "r")
 
 		if is_nil_ptr(f)
 			return nil
 
-		.result String
+		.result
 
 		loop
 			.c = C.fgetc(f)

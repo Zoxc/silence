@@ -1,7 +1,7 @@
-struct Array(T, A Allocator = Mem)
-	list PtrArray(T, A)
-	size uint
-	capacity uint
+struct Array[T, Allocator A = Mem]
+	PtrArray[T, A] list
+	uint size
+	uint capacity
 
 	shared unit = size_of[T]()
 
@@ -23,7 +23,7 @@ struct Array(T, A Allocator = Mem)
 	fn allocator()
 		return list.allocator
 
-	shared fn from_data_a(data *T, size, allocator)
+	shared fn from_data_a(T* data, size, allocator)
 		.result = Array[T, A](allocator)
 		if size > 0
 			result.list.destroy_n(0)
@@ -32,15 +32,15 @@ struct Array(T, A Allocator = Mem)
 			result.capacity = size
 		return result
 
-	shared fn from_data(data *T, size)
+	shared fn from_data(data, size)
 		return from_data_a(data, size, A())
 
-	fn concat[OA](other Array(T, OA))
+	fn concat[OA](Array[T, OA] other)
 		expand(other.size)
 		times(other.size, \i -> list.set(size + i, other'i))
 		size += other.size
 
-	fn copy[OA](allocator OA)
+	fn copy[OA](OA allocator)
 		.r = Array[T, OA](allocator)
 		r.concat self
 		return r
@@ -105,7 +105,7 @@ struct Array(T, A Allocator = Mem)
 		list.set(size, val)
 		size += 1
 
-	fn pop() -> Option(T)
+	fn pop() -> Option[T]
 		return if size > 0
 			size -= 1
 			.r = some(self'size)
@@ -114,20 +114,20 @@ struct Array(T, A Allocator = Mem)
 		else
 			nil
 
-instance(T Eq, A) Eq(Array(T, A))
-	fn equal(lhs Array(T, A), rhs Array(T, A))
+instance[Eq T, A] Eq[Array[T, A]]
+	fn equal(Array[T, A] lhs, Array[T, A] rhs)
 		if lhs.size != rhs.size
 			return false
 		return lhs.all(\v, i -> v == rhs'i)
 
-instance(T, A) Joinable(Array(T, A))
-	fn join(lhs Array(T, A), rhs Array(T, A))
+instance[T, A] Joinable[Array[T, A]]
+	fn join(Array[T, A] lhs, Array[T, A] rhs)
 		lhs.concat rhs
 		return lhs
 
-instance(T, A) Indexable(Array(T, A))
+instance[T, A] Indexable[Array[T, A]]
 	alias Result = T
 	alias Index = uint
 
-	fn ref(i uint)
+	fn ref(uint i)
 		return &self.list'i

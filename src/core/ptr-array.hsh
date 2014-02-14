@@ -1,6 +1,6 @@
-struct PtrArray(T Copyable, A)
-	data *T
-	allocator A
+struct PtrArray[Copyable T, A]
+	T* data
+	A allocator
 
 	shared unit = size_of[T]()
 
@@ -15,17 +15,17 @@ struct PtrArray(T Copyable, A)
 	fn alloc(size) 
 		data = Allocator(allocator).alloc(size * unit)
 	
-	shared fn from_data(allocator, data *T, size uint)
+	shared fn from_data(allocator, T* data, uint size)
 		.result = PtrArray(allocator)
 		result.alloc(size)
 		Mem.copy(data, result.data, size * unit)
 		times(size, \i -> Copyable(result'i).copy())
 		return result
 
-	fn copy(size uint)
+	fn copy(uint size)
 		return from_data(allocator, data, size)
 
-	fn expand(from uint, to uint)
+	fn expand(uint from, uint to)
 		data = Allocator(allocator).realloc(data, from * unit, to * unit)
 
 	fn set(i, val)
@@ -35,19 +35,19 @@ struct PtrArray(T Copyable, A)
 	fn del(i)
 		destroy(&self'i)
 
-	fn destroy_n(size uint)
+	fn destroy_n(uint size)
 		times(size, \i -> del i)
 		Allocator(allocator).free(data)
 
-	fn ptr(idx uint) -> *T
+	fn ptr(uint idx) -> T*
 		return ptr_idx(data, idx)
 
-	fn get(idx uint)
+	fn get(uint idx)
 		return *ptr(idx)
 
-instance(T, A) Indexable(PtrArray(T, A))
+instance[T, A] Indexable[PtrArray[T, A]]
 	alias Result = T
 	alias Index = uint
 
-	fn ref(i uint)
+	fn ref(uint i)
 		return self.ptr(i)

@@ -177,18 +177,11 @@ class Parser
 	end
 
 	def is_type_expression
-		return true if is_type_factor
-		case tok
-			when :sym
-				case tok_val
-					when '*'
-						true
-				end
-		end
+		is_type_factor
 	end
 	
 	def type_expression
-		type_operator
+		type_unary
 	end
 
 	def type_operator(left = type_unary)
@@ -205,45 +198,30 @@ class Parser
 	end
 	
 	def type_unary
-		if eq(:sym, '*')
+		r = type_chain
+
+		while eq(:sym, '*')
 			source do |s|
-				op = tok_val
 				step
-				skip :line
-				AST::UnaryOp.new(s, op, type_unary)
+				r = AST::UnaryOp.new(s, '*', r)
 			end
-		else
-			type_apply
 		end
-	end
-	
-	def type_apply
-		s = @l.source
-		result = type_chain
-		
-		while is_type_factor
-			new_s = @l.source
-			args = [source { |s| new_src = s; type_chain }]
-			s.extend(@l.last_ended)
-			result = AST::Call.new(s, result, args)
-			s = new_s
-		end
-		
-		result
+
+		r
 	end
 	
 	def type_chain
 		result = type_factor
 
-		while tok == :sym && ['(', '.'].include?(tok_val)
+		while tok == :sym && ['[', '.'].include?(tok_val)
 			source do |s|
 				case tok_val
-					when '('
+					when '['
 						step
 						skip :line
 						
 						result = AST::Index.new(s, result, type_parameters)
-						match :sym, ')'
+						match :sym, ']'
 					when '.'
 						step
 						skip :line
@@ -263,14 +241,7 @@ class Parser
 					when '('
 						true
 				end
-			when :id
-				case tok_val
-					when :constraints
-						false
-					else
-						true
-				end
-			when :int, :str
+			when :id, :int, :str
 				true
 		end
 	end
@@ -282,7 +253,7 @@ class Parser
 		r = []
 		if !eq(:sym, ')')
 			loop do
-				r << type_expression
+				r << type_operator
 				if matches :sym, ','
 					skip :line
 				else
@@ -328,13 +299,13 @@ class Parser
 		end
 	end
 
-	def kind_params(f = '(', l = ')')
+	def kind_params
 		source do |s|
-			if matches(:sym, f)
+			if matches(:sym, '[')
 				skip :line
 				values = {}
 				params = type_params(values)
-				match(:sym, l)
+				match(:sym, ']')
 				AST::KindParams.new(s, params, type_context, values)
 			else
 				AST::KindParams.new(s, [], [])
@@ -344,14 +315,22 @@ class Parser
 	
 	def type_param(values)
 		source do |s|
-			name = match(:id)
-			kind = kind_params
-			type, value = if matches(:sym, '::')
+			type = type_expression
+			value = false
+
+			if eq(:id)
+				name = match(:id)
+			elsif matches(:sym, '::')
 				skip :line
-				[type_expression, true]
+				name = match(:id)
+				value = true
 			else
-				[opt_type_specifier, false]
+				raise CompileError, "Expected variable name\n#{type.source.format}" unless type.is_a?(AST::NameRef)
+				name = type.name
+				type = nil
 			end
+
+			kind = kind_params
 			default = if matches(:sym, '=')
 				skip :line
 				source do |s|
@@ -412,9 +391,9 @@ class Parser
 		step
 		tp = kind_params
 		type_class = source { |s| AST::NameRef.new(s, match(:id)) }
-		match(:sym, '(')
+		match(:sym, '[')
 		args = type_parameters
-		match(:sym, ')')
+		match(:sym, ']')
 		s.extend(@l.last_ended)
 		
 		scope = global_scope(baseline)
@@ -479,7 +458,7 @@ class Parser
 	
 	def function_param(func)
 		source do |s|
-			AST::Function::Param.new(s, func, match(:id), opt_type_specifier)
+			AST::Function::Param.new(s, func, *name_opt_type)
 		end
 	end
 	
@@ -487,7 +466,7 @@ class Parser
 		r = []
 		skip :line
 		
-		if tok == :id
+		if is_type_expression
 			loop do
 				r << function_param(func)
 				if matches(:sym, ',')
@@ -502,13 +481,13 @@ class Parser
 	end
 	
 	def function(s, baseline, name, props, action_type)
-		tp = kind_params('[', ']')
+		tp = kind_params
 		
 		func = AST::Function.new(AST::Source.new(s.input, s.range), name, tp)
 
 		if matches(:sym, '*')
 			source do |s|
-				func.params = [AST::Function::Param.new(s, func, match(:id), opt_type_specifier)]
+				func.params = [AST::Function::Param.new(s, func, *name_opt_type)]
 			end
 			func.var_arg = true
 		else
@@ -607,20 +586,14 @@ class Parser
 			if matches(:id, :fn)
 				function s, baseline, match(:id), props, nil
 			else
-				name = match :id
+				name, type = name_opt_type
 				props[:field] = true
 				
 				if matches(:sym, '=')
 					skip :line
 					val = expression
-				else
-					type = type_expression
-
-					if matches(:sym, '=')
-						skip :line
-						val = expression
-					end
 				end
+
 				AST::VariableDecl.new(s, name, type, val, props)
 			end
 		end
@@ -631,7 +604,7 @@ class Parser
 		skip :line
 		
 		loop do
-			r << type_expression
+			r << type_operator
 			if matches(:sym, ',')
 				skip :line
 			else
@@ -642,8 +615,18 @@ class Parser
 		r
 	end
 	
-	def opt_type_specifier
-		type_expression if is_type_expression
+	def name_opt_type
+		type = type_expression
+
+		if eq(:id)
+			name = match(:id)
+		else
+			raise CompileError, "Expected variable name\n#{type.source.format}" unless type.is_a?(AST::NameRef)
+			name = type.name
+			type = nil
+		end
+
+		return name, type
 	end
 	
 	def group(baseline, scope = AST::LocalScope)
@@ -706,8 +689,7 @@ class Parser
 			step
 			skip :line
 			
-			name = match :id
-			type = opt_type_specifier
+			name, type = name_opt_type
 			value = nil
 		
 			if matches(:sym, '=')

@@ -7,30 +7,30 @@ use "core/io"
 use "core/file"
 use "core/builtin"
 
-class Hash(T)
+class Hash[T]
 	fn hash() -> uint
 
-instance(T) Hash(*T)
+instance[T] Hash[T*]
 	fn hash() -> uint
 		.r = force_cast(self)
 		return (r >> 4) ^ r
 
-class Allocator(T)
-	fn alloc[P](size uint) -> *P
-	fn realloc[P](ptr *P, old_size uint, new_size uint) -> *P
-	fn free[P](ptr *P)
+class Allocator[T]
+	fn alloc[P](uint size) -> P*
+	fn realloc[P](P* ptr, uint old_size, uint new_size) -> P*
+	fn free[P](P* ptr)
 
-class RefConstructable(T)
+class RefConstructable[T]
 	type_func Header
-	shared fn construct(obj *Header, allocator) -> T
+	shared fn construct(Header* obj, allocator) -> T
 
-instance(T) RefConstructable(*T)
+instance[T] RefConstructable[T*]
 	alias Header = ()
-	shared fn construct(obj *(), allocator) -> *T
+	shared fn construct(()* obj, allocator) -> T*
 		return ptr_cast ptr_succ(obj)
 
 fn allocate[T, Ref](args, allocator) -> Ref
-	.size = size_of[RefConstructable(Ref).Header]() + size_of[Constructor(T).Constructed]()
+	.size = size_of[RefConstructable[Ref].Header]() + size_of[Constructor[T].Constructed]()
 	.obj = Allocator(allocator).alloc(size)
 	.result = ptr_cast ptr_succ(obj)
 	Constructor[T].construct(result, args)
@@ -39,16 +39,16 @@ fn allocate[T, Ref](args, allocator) -> Ref
 fn destruct(obj)
 	
 struct Mem
-	shared fn alloc(size uint)
+	shared fn alloc(uint size)
 		return ptr_cast C.malloc(size)
 
-	shared fn realloc[T](ptr *T, old_size uint, new_size uint) -> *T
+	shared fn realloc[T](T* ptr, uint old_size , uint new_size) -> T*
 		return ptr_cast C.realloc(ptr_cast ptr, new_size)
 
-	shared fn copy[T](src *T, dst *T, size)
+	shared fn copy[T](T* src, T* dst, size)
 		C.memcpy(ptr_cast dst, ptr_cast src, size)
 
-	shared fn cmp[T](a *T, b *T, size) -> bool
+	shared fn cmp[T](T* a, T* b, size) -> bool
 		return C.memcmp(ptr_cast a, ptr_cast b, size) == 0
 
 	shared fn free(ptr)
@@ -56,62 +56,62 @@ struct Mem
 
 	action create
 
-instance Allocator(Mem)
-	fn alloc[P](size uint) -> *P
+instance Allocator[Mem]
+	fn alloc[P](uint size) -> P*
 		return self.alloc(size)
 
-	fn realloc[P](ptr *P, old_size uint, new_size uint) -> *P
+	fn realloc[P](P* ptr, uint old_size, uint new_size) -> P*
 		return self.realloc(ptr, old_size, new_size)
 
-	fn free[P](ptr *P)
+	fn free[P](P* ptr)
 		self.free(ptr)
 
-fn new[T Constructor = Reference(R).Type, R] *args -> R
+fn new[Constructor T = Reference[R].Type, R] *args -> R
 	return allocate[T](args, Mem())
 
 fn delete(obj)
 	destruct(obj)
 	Mem.free(obj)
 
-instance(T) Reference(*T)
+instance[T] Reference[T*]
 	alias Type = T
 
-	fn get() -> *T
+	fn get() -> T*
 		return self
 
-class Show(T)
+class Show[T]
 	fn show() -> String
 
-instance Show(int)
+instance Show[int]
 	fn show()
 		.r = undef()
 		Runtime.hush_show_int(&r, self)
 		return r
 
-instance Show(uint)
+instance Show[uint]
 	fn show()
 		.r = undef()
 		Runtime.hush_show_uint(&r, self)
 		return r
 
-instance Show(String)
+instance Show[String]
 	fn show()
 		return self
 
 fn show(t)
 	return Show(t).show()
 
-instance StringLiteral(*char)
-	fn create(data *char, size uint)
+instance StringLiteral[char*]
+	fn create(char* data, uint size)
 		return data
 
-instance StringLiteral(char)
-	fn create(data *char, size uint)
+instance StringLiteral[char]
+	fn create(char* data, uint size)
 		assert -> size == 1
 		return *data
 
-instance(T) Eq(*T)
-	fn equal(lhs *T, rhs *T)
+instance[T] Eq[T*]
+	fn equal(T* lhs, T* rhs)
 		return force_cast[uint] lhs == force_cast rhs
 
 fn min(a, b)
@@ -134,17 +134,17 @@ fn assert(b)
 fn some(val)
 	return Option.Some(val)
 
-fn ptr_cast[R, P](p *P) -> R
+fn ptr_cast[R, P](P* p) -> R
 	return force_cast(p)
 
-fn ptr_int[P](p *P)
+fn ptr_int[P](P* p)
 	return force_cast[uint](p)
 
 fn is_nil_ptr(p)
 	return ptr_int(p) == 0
 
-fn nil_ptr[P]() -> *P
-	.z uint = 0
+fn nil_ptr[P]() -> P*
+	.uint z = 0
 	return force_cast z
 
 fn times_impl(i, max, f)
@@ -156,24 +156,24 @@ fn times(i, f)
 	times_impl(i, i, f)
 
 fn for_range(a, b, f)
-	.i uint = force_cast(b - a) + 1
+	.uint i = force_cast(b - a) + 1
 	times(i, \i -> f(a + force_cast i))
 
-fn ptr_idx[T](ptr *T, idx uint) -> *T
+fn ptr_idx[T](T* ptr, uint idx) -> T*
 	return force_cast(force_cast ptr + idx * size_of[T]())
 
-fn ptr_pred[T](ptr *T) -> *T
+fn ptr_pred[T](T* ptr) -> T*
 	return force_cast(force_cast ptr - size_of[T]())
 
-fn ptr_diff[T](lhs *T, rhs *T) -> uint
+fn ptr_diff[T](T* lhs, T* rhs) -> uint
 	return (force_cast[uint] lhs - force_cast rhs) / size_of[T]()
 
-fn ptr_succ[T](ptr *T) -> *T
+fn ptr_succ[T](T* ptr) -> T*
 	return force_cast(force_cast ptr + size_of[T]())
 
-instance(T Indexable) Indexable(*T)
-	alias Result = Indexable(T).Result
-	alias Index = Indexable(T).Index
+instance[Indexable T] Indexable[T*]
+	alias Result = Indexable[T].Result
+	alias Index = Indexable[T].Index
 
-	fn ref(index Index)
+	fn ref(Index index)
 		return Indexable(*self).ref(index)

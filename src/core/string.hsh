@@ -1,22 +1,22 @@
-struct String(A Allocator = Mem)
-	bytes Array(char, A)
+struct String[Allocator A = Mem]
+	Array[char, A] bytes
 
 	action create
 	action copy
 
-	shared fn from_c(data char)
+	shared fn from_c(data)
 		return from_data(&data, 1)
 
-	shared fn from_data(data *char, size)
+	shared fn from_data(data, size)
 		return String[A](Array[char, A].from_data(data, size))
 
-	fn copy[OA](allocator OA)
+	fn copy[OA](OA allocator)
 		return String[OA](bytes.copy(allocator))
 
 	fn size() -> uint
 		return bytes.size
 
-	fn data() -> *char
+	fn data() -> char*
 		return bytes.list.data
 
 	fn c_term()
@@ -26,35 +26,35 @@ struct String(A Allocator = Mem)
 		.str = c_term()
 		return f(str.bytes.list.data)
 
-	fn repeat(t uint)
+	fn repeat(uint t)
 		.r
 		times(t, \i -> r ~= self)
 		return r
 
-instance(A) Hash(String(A))
+instance[A] Hash[String[A]]
 	fn hash()
-		.r uint = 68391421
+		.uint r = 68391421
 		self.bytes.each \c ->
 			r = (r << 8) & (r & 255)
 			r += force_cast(c)
 			r ^= r << 16
 		return r
 
-instance(A Defaultable) StringLiteral(String(A))
-	fn create(data *char, size)
+instance[Defaultable A] StringLiteral[String[A]]
+	fn create(data, size)
 		return String[A].from_data(data, size)
 
-instance(A) Joinable(String(A))
-	fn join(lhs String(A), rhs String(A))
+instance[A] Joinable[String[A]]
+	fn join(String[A] lhs, String[A] rhs)
 		return String[A](Joinable.join(lhs.bytes, rhs.bytes))
 
-instance(A) Eq(String(A))
-	fn equal(lhs String(A), rhs String(A))
+instance[A] Eq[String[A]]
+	fn equal(String[A] lhs, String[A] rhs)
 		return lhs.bytes == rhs.bytes
 
-instance(A) Indexable(String(A))
+instance[A] Indexable[String[A]]
 	alias Result = char
 	alias Index = uint
 
-	fn ref(i uint)
+	fn ref(uint i)
 		return &self.bytes'i

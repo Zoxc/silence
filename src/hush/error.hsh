@@ -1,17 +1,17 @@
 use "source"
 
 struct Error
-	src *SrcLoc
+	SrcLoc* src
 
 	when UnknownChars
 	when NullChar
 	when IndentMismatch
-		start *SrcLoc
+		SrcLoc* start
 	when UnknownIndent
-		start *SrcLoc
+		SrcLoc* start
 	when ExpectedToken
-		tok Token
-		found String(Region)
+		Token tok
+		String[Region] found 
 
 	fn str() -> String
 		return match self as err

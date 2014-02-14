@@ -1,16 +1,16 @@
 use "src-file"
 
 struct SrcLoc
-	file *SrcFile
-	start *char
-	stop *char
+	SrcFile* file
+	char* start
+	char* stop
 
 	fn size()
 		return ptr_diff(stop, start)
 
-	fn line_nr(pos *char)
+	fn line_nr(char* pos)
 		.c = file.content.data()
-		.line uint = 1
+		.uint line = 1
 
 		loop
 			if c == pos
@@ -41,7 +41,7 @@ struct SrcLoc
 
 		return c
 
-	fn line_end(c *char)
+	fn line_end(char* c)
 		loop
 			if ptr_idx(file.content.data(), file.content.size()) == c
 				break
@@ -55,7 +55,7 @@ struct SrcLoc
 
 		return c
 
-	fn indicator(c *char)
+	fn indicator(char* c)
 		.result
 
 		loop
