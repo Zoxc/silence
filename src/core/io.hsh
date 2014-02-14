@@ -4,10 +4,10 @@ data IO
 
 	shared fn puts(String s)
 		print s
-		.l = 10
+		var l = 10
 		print String.from_data(&l, 1)
 
 	shared fn gets()
-		.r = undef()
+		var r = undef()
 		Runtime.hush_gets(&r)
 		return r

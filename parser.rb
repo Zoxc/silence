@@ -676,9 +676,9 @@ class Parser
 					return _loop
 				when :if
 					return _if
+				when :var
+					return variable_decl
 			end
-		elsif eq(:sym, '.')
-			return variable_decl
 		end
 		
 		assign_operator

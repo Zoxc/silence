@@ -2,8 +2,8 @@ use "compiler"
 
 fn parse(input, name)
 	IO.puts("Parsing file: " ~ name)
-	.file = SrcFile(input, name)
-	.compiler = Compiler(&file)
+	var file = SrcFile(input, name)
+	var compiler = Compiler(&file)
 
 	compiler.parser.program()
 

@@ -120,7 +120,7 @@ patterns:
     - include: '#expression'
 
 - begin: (?:^|;)(?:\s*)(shared\s*)?(?=.)
-  end: ([A-Za-z_0-9]+)\s*(;|$)
+  end: ([A-Za-z_0-9]+)\s*(=|;|$)
   beginCaptures:
     '1':
       name: storage.modifier.hush
@@ -157,8 +157,26 @@ repository:
         name: comment.hush
       - match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
         name: constant.numeric.hush
-      - begin: "^[ \\t]*\\.[A-Za-z_0-9]+"
-        end: (?=\s*($|=|;))
+      - begin: "(\\\\)"
+        beginCaptures:
+          '1':
+            name: keyword.operator.hush
+        end: (->|$)
+        endCaptures:
+          '1':
+            name: keyword.operator.hush
+        name: storage.type.hush
+        patterns:
+          - match: ([A-Za-z_0-9]+)\s*(?=,|->)
+            name: variable.hush
+          - match: "[,*\\[\\]]"
+            name: keyword.operator.hush
+      - match: "^[ \\t]*(var)(\\s+.*?)?\\s+[A-Za-z_0-9]+(?=\\s*($|=|;))"
+        captures:
+          '1':
+            name: keyword.hush
+          '2':
+            name: storage.type.hush
         name: variable.hush
       - match: "(\\.)([A-Za-z_0-9]+)"
         name: support.function

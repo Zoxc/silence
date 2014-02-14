@@ -77,7 +77,7 @@ data Lexer
 			return ptr_diff(stop, start)
 
 		fn subset(Indent other)
-			.s = size()
+			var s = size()
 			if other.size() < s
 				return false
 			other = Indent(other.start, ptr_idx(other.start, s))
@@ -161,7 +161,7 @@ data Lexer
 		return make_src(tok.start, tok.stop)
 
 	fn report[T] *args
-		.error = Callable(region().new[T]).apply(args)
+		var error = Callable(region().new[T]).apply(args)
 		compiler.errors.push error
 
 	action create(compiler, file) :
@@ -174,10 +174,10 @@ data Lexer
 		next_token()
 
 	fn setup_table()
-		.set_char = \char i, f ->
+		var set_char = \char i, f ->
 			jump_table'force_cast i = f
 
-		.set_chars = \char start, stop, f ->
+		var set_chars = \char start, stop, f ->
 			for_range(start, stop, \i -> set_char(i, f))
 
 		set_chars(0, 255, unknown)
@@ -253,8 +253,8 @@ data Lexer
 
 	fn indent_newline(Indent baseline)
 		assert -> tok.type == Token.Line
-		.indent = get_line_indent()
-		.r = false
+		var indent = get_line_indent()
+		var r = false
 
 		match compare_indent(baseline, indent)
 			when IndentChange.Increased
@@ -289,7 +289,7 @@ data Lexer
 					step()
 
 	fn get_line_indent() -> Indent
-		.start = tok.pos
+		var start = tok.pos
 		skip_whitespace()
 
 		return match c()
@@ -325,7 +325,7 @@ data Lexer
 			IndentChange.Error
 
 	fn handle_line()
-		.block = undef()
+		var block = undef()
 
 		match tok.blocks.last() as b_
 			when Option.Some
@@ -340,7 +340,7 @@ data Lexer
 		match compare_indent(block.indent, tok.indent)
 			when IndentChange.Unchanged, IndentChange.Decreased
 				tok.blocks.pop()
-				.i = 1
+				var i = 1
 				loop
 					match tok.blocks.last() as b
 						when Option.Some
@@ -373,7 +373,7 @@ data Lexer
 		return 0
 
 	fn bracket_data() -> uint
-		.i
+		var i
 		(tok.type, i) = match c()
 			when "("
 				(Token.ParentOpen, 0)
@@ -390,15 +390,15 @@ data Lexer
 		return i
 
 	fn bracket_push()
-		.i = bracket_data()
+		var i = bracket_data()
 		step()
 		tok.end()
 		tok.blocks.last().map \b -> b.levels'i += 1
 
 	fn bracket_pop()
-		.i = bracket_data()
+		var i = bracket_data()
 		if tok.blocks.size > 0
-			.p = pop_bracket_level i
+			var p = pop_bracket_level i
 			if p > 0
 				tok.end()
 				tok.type = Token.Deindent

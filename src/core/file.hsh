@@ -1,14 +1,14 @@
 data File
 	shared fn read(String path)
-		.f = path.c_str \p -> C.fopen(p, "r")
+		var f = path.c_str \p -> C.fopen(p, "r")
 
 		if is_nil_ptr(f)
 			return nil
 
-		.result
+		var result
 
 		loop
-			.c = C.fgetc(f)
+			var c = C.fgetc(f)
 			if c == -1
 				break
 			result ~= String.from_c(force_cast c)

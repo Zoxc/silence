@@ -12,7 +12,7 @@ class Hash[T]
 
 instance[T] Hash[T*]
 	fn hash() -> uint
-		.r = force_cast(self)
+		var r = force_cast(self)
 		return (r >> 4) ^ r
 
 class Allocator[T]
@@ -30,9 +30,9 @@ instance[T] RefConstructable[T*]
 		return ptr_cast ptr_succ(obj)
 
 fn allocate[T, Ref](args, allocator) -> Ref
-	.size = size_of[RefConstructable[Ref].Header]() + size_of[Constructor[T].Constructed]()
-	.obj = Allocator(allocator).alloc(size)
-	.result = ptr_cast ptr_succ(obj)
+	var size = size_of[RefConstructable[Ref].Header]() + size_of[Constructor[T].Constructed]()
+	var obj = Allocator(allocator).alloc(size)
+	var result = ptr_cast ptr_succ(obj)
 	Constructor[T].construct(result, args)
 	return RefConstructable[Ref].construct(obj, allocator)
 
@@ -84,13 +84,13 @@ class Show[T]
 
 instance Show[int]
 	fn show()
-		.r = undef()
+		var r = undef()
 		Runtime.hush_show_int(&r, self)
 		return r
 
 instance Show[uint]
 	fn show()
-		.r = undef()
+		var r = undef()
 		Runtime.hush_show_uint(&r, self)
 		return r
 
@@ -144,7 +144,7 @@ fn is_nil_ptr(p)
 	return ptr_int(p) == 0
 
 fn nil_ptr[P]() -> P*
-	.uint z = 0
+	var uint z = 0
 	return force_cast z
 
 fn times_impl(i, max, f)
@@ -156,7 +156,7 @@ fn times(i, f)
 	times_impl(i, i, f)
 
 fn for_range(a, b, f)
-	.uint i = force_cast(b - a) + 1
+	var uint i = force_cast(b - a) + 1
 	times(i, \i -> f(a + force_cast i))
 
 fn ptr_idx[T](T* ptr, uint idx) -> T*

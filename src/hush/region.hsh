@@ -13,12 +13,12 @@ data Region
 	Base* base
 
 	fn alloc(uint size)
-		.ptr = C.malloc(size)
+		var ptr = C.malloc(size)
 		base.ptrs.push ptr
 		return ptr_cast ptr
 
 	fn realloc[T](T* ptr, uint old_size , uint new_size) -> T*
-		.new_ptr = C.malloc(new_size)
+		var new_ptr = C.malloc(new_size)
 		Mem.copy(ptr_cast ptr, new_ptr, old_size)
 		base.ptrs.push new_ptr
 		return ptr_cast new_ptr

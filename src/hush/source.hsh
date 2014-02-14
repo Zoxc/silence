@@ -9,8 +9,8 @@ data SrcLoc
 		return ptr_diff(stop, start)
 
 	fn line_nr(char* pos)
-		.c = file.content.data()
-		.uint line = 1
+		var c = file.content.data()
+		var uint line = 1
 
 		loop
 			if c == pos
@@ -26,8 +26,8 @@ data SrcLoc
 		return line
 
 	fn line_start()
-		.file_start = file.content.data()
-		.c = start
+		var file_start = file.content.data()
+		var c = start
 
 		loop
 			if c == file_start
@@ -56,7 +56,7 @@ data SrcLoc
 		return c
 
 	fn indicator(char* c)
-		.result
+		var result
 
 		loop
 			if ptr_int c >= ptr_int start
@@ -92,8 +92,8 @@ data SrcLoc
 		return result
 
 	fn format()
-		.line = line_start()
-		.prefix = file.path ~ ":" ~ show line_nr(line) ~ " "
-		.ind = (" " :: String).repeat(prefix.size()) ~ indicator(line)
+		var line = line_start()
+		var prefix = file.path ~ ":" ~ show line_nr(line) ~ " "
+		var ind = (" " :: String).repeat(prefix.size()) ~ indicator(line)
 
 		return prefix ~ String.from_data(line, ptr_diff(line_end(line), line)) ~ String.from_c(10) ~ ind

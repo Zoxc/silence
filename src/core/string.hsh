@@ -23,17 +23,17 @@ data String[Allocator A = Mem]
 		return self ~ from_c(0)
 
 	fn c_str(f)
-		.str = c_term()
+		var str = c_term()
 		return f(str.bytes.list.data)
 
 	fn repeat(uint t)
-		.r
+		var r
 		times(t, \i -> r ~= self)
 		return r
 
 instance[A] Hash[String[A]]
 	fn hash()
-		.uint r = 68391421
+		var uint r = 68391421
 		self.bytes.each \c ->
 			r = (r << 8) & (r & 255)
 			r += force_cast(c)

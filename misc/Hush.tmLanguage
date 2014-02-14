@@ -305,7 +305,7 @@
 				</dict>
 			</dict>
 			<key>end</key>
-			<string>([A-Za-z_0-9]+)\s*(;|$)</string>
+			<string>([A-Za-z_0-9]+)\s*(=|;|$)</string>
 			<key>endCaptures</key>
 			<dict>
 				<key>1</key>
@@ -361,9 +361,59 @@
 				</dict>
 				<dict>
 					<key>begin</key>
-					<string>^[ \t]*\.[A-Za-z_0-9]+</string>
+					<string>(\\)</string>
+					<key>beginCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>keyword.operator.hush</string>
+						</dict>
+					</dict>
 					<key>end</key>
-					<string>(?=\s*($|=|;))</string>
+					<string>(-&gt;|$)</string>
+					<key>endCaptures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>keyword.operator.hush</string>
+						</dict>
+					</dict>
+					<key>name</key>
+					<string>storage.type.hush</string>
+					<key>patterns</key>
+					<array>
+						<dict>
+							<key>match</key>
+							<string>([A-Za-z_0-9]+)\s*(?=,|-&gt;)</string>
+							<key>name</key>
+							<string>variable.hush</string>
+						</dict>
+						<dict>
+							<key>match</key>
+							<string>[,*\[\]]</string>
+							<key>name</key>
+							<string>keyword.operator.hush</string>
+						</dict>
+					</array>
+				</dict>
+				<dict>
+					<key>captures</key>
+					<dict>
+						<key>1</key>
+						<dict>
+							<key>name</key>
+							<string>keyword.hush</string>
+						</dict>
+						<key>2</key>
+						<dict>
+							<key>name</key>
+							<string>storage.type.hush</string>
+						</dict>
+					</dict>
+					<key>match</key>
+					<string>^[ \t]*(var)(\s+.*?)?\s+[A-Za-z_0-9]+(?=\s*($|=|;))</string>
 					<key>name</key>
 					<string>variable.hush</string>
 				</dict>

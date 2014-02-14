@@ -24,7 +24,7 @@ data Array[T, Allocator A = Mem]
 		return list.allocator
 
 	shared fn from_data_a(T* data, size, allocator)
-		.result = Array[T, A](allocator)
+		var result = Array[T, A](allocator)
 		if size > 0
 			result.list.destroy_n(0)
 			result.list = PtrArray[T, A].from_data(allocator, data, size)
@@ -41,12 +41,12 @@ data Array[T, Allocator A = Mem]
 		size += other.size
 
 	fn copy[OA](OA allocator)
-		.r = Array[T, OA](allocator)
+		var r = Array[T, OA](allocator)
 		r.concat self
 		return r
 
 	fn all(f)
-		.i = 0
+		var i = 0
 		loop
 			if i >= size
 				break
@@ -62,22 +62,22 @@ data Array[T, Allocator A = Mem]
 		times(size, \i -> f(self'i, i))
 
 	fn reverse()
-		.result = Array[T, A](allocator())
+		var result = Array[T, A](allocator())
 		result.expand(size)
 		times(size, \i -> result.list.set(i, self'(size - 1 - i)))
 		return result
 
 	fn slice(start, stop)
-		.result = Array[T, A](allocator())
+		var result = Array[T, A](allocator())
 		if start > stop
 			return result
-		.size = stop - start + 1
+		var size = stop - start + 1
 		result.expand(size)
 		times(size, \i -> result.list.set(i, self'(start + i)))
 		return result
 
 	fn expand(n)
-		.c = capacity
+		var c = capacity
 
 		if c >= size + n
 			return
@@ -108,7 +108,7 @@ data Array[T, Allocator A = Mem]
 	fn pop() -> Option[T]
 		return if size > 0
 			size -= 1
-			.r = some(self'size)
+			var r = some(self'size)
 			list.del(size)
 			r
 		else

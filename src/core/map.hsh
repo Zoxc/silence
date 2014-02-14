@@ -35,7 +35,7 @@ data Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
 	fn merge(Map[K, V, A] other)
 		ensure_tbl()
 
-		.i = 0
+		var i = 0
 		loop
 			if i > other.mask
 				break
@@ -48,15 +48,15 @@ data Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
 			i += 1
 
 	fn expand() -> () constraints
-		.new_map = Map[K, V, A](tbl.allocator)
+		var new_map = Map[K, V, A](tbl.allocator)
 		new_map.alloc_tbl((mask + 1) * 2)
 		new_map.merge(self)
 		self = new_map
 
 	fn remove_index(K key, uint i)
-		.hash = Hash(key).hash()
-		.free = i
-		.c = i
+		var hash = Hash(key).hash()
+		var free = i
+		var c = i
 
 		entries -= 1
 
@@ -77,7 +77,7 @@ data Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
 	fn search(K key, free, found)
 		ensure_tbl()
 
-		.c = Hash(key).hash() & mask
+		var c = Hash(key).hash() & mask
 
 		assert -> mask >= entries
 
@@ -92,7 +92,7 @@ data Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
 			c = (c + 1) & mask
 
 	fn each(f)
-		.i = 0
+		var i = 0
 		loop
 			if i > mask
 				break
@@ -105,38 +105,38 @@ data Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
 			i += 1
 
 	fn set(key, value)
-		.free = \entry ->
+		var free = \entry ->
 			*entry = some Entry(key, value)
 			entries += 1
 			if entries > mask
 				expand() 
 
 			return false
-		.found = \entry, i ->
+		var found = \entry, i ->
 			entry.value = value
 			return true
 		return search(key, free, found)
 
 	fn remove(key)
-		.free = \entry ->
+		var free = \entry ->
 			return nil
-		.found = \entry, i ->
-			.r = some entry.value
+		var found = \entry, i ->
+			var r = some entry.value
 			remove_index(key, i)
 			return r
 		return search(key, free, found)
 
 	fn has(key)
-		.free = \entry ->
+		var free = \entry ->
 			return false
-		.found = \entry, i ->
+		var found = \entry, i ->
 			return true
 		return search(key, free, found)
 
 	fn get(key)
-		.free = \entry ->
+		var free = \entry ->
 			return nil
-		.found = \entry, i ->
+		var found = \entry, i ->
 			return some entry.value
 		return search(key, free, found)
 

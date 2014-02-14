@@ -42,7 +42,7 @@ data Parser
 			false
 
 	fn program()
-		.r = global_entries -> tok() == Token.EndOfFile
+		var r = global_entries -> tok() == Token.EndOfFile
 		if tok() != Token.EndOfFile
 			expected(Token.EndOfFile)
 		return r
@@ -51,7 +51,7 @@ data Parser
 		ensure(Token.Line)
 
 	fn src(a)
-		.s = lexer.src()
+		var s = lexer.src()
 		a(s)
 		s.stop = lexer.tok.last_ended
 
@@ -78,16 +78,14 @@ data Parser
 		return true
 
 	fn struct()
-				IO.puts("in struct" ~ lexer.tok.str())
-		.s = lexer.src()
-		.baseline = lexer.tok.indent
+		var s = lexer.src()
+		var baseline = lexer.tok.indent
 		step()
-		if matches_ident("ref")
-		else if matches_ident("bare")
-		.name = get_ident()
-		.tp = kind_params()
+		var sizeable = !matches_ident("ref")
+		var name = get_ident()
+		var tp = kind_params()
 		extend s
-		.scope = global_scope(baseline)
+		var scope = global_scope(baseline)
 
 	fn kind_params()
 
