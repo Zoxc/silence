@@ -1,4 +1,4 @@
-struct File
+data File
 	shared fn read(String path)
 		.f = path.c_str \p -> C.fopen(p, "r")
 

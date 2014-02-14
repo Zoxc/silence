@@ -1,4 +1,4 @@
-struct Array[T, Allocator A = Mem]
+data Array[T, Allocator A = Mem]
 	PtrArray[T, A] list
 	uint size
 	uint capacity

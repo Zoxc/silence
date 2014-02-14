@@ -1,4 +1,4 @@
-struct IO
+data IO
 	shared fn print(String s)
 		Runtime.hush_puts(&s)
 

@@ -135,7 +135,7 @@ class Parser
 						true
 					when :enum
 						enum
-					when :struct
+					when :data
 						struct
 					when :when
 						struct_when
@@ -428,7 +428,7 @@ class Parser
 		s = @l.source
 		baseline = @l.indent
 		step
-		sizeable = !matches(:id, :bare)
+		sizeable = !matches(:id, :ref)
 		name = match :id
 		tp = kind_params
 		s.extend(@l.last_ended)

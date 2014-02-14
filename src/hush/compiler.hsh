@@ -3,7 +3,7 @@ use "parser"
 use "error"
 use "region"
 
-struct Compiler
+data Compiler
 	Region.Base region
 	Lexer lexer
 	Parser parser

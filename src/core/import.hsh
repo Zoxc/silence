@@ -1,5 +1,5 @@
-struct C
-	struct bare FILE
+data C
+	data ref FILE
 
 	shared import fn malloc(uint size) -> ()*
 	shared import fn realloc(()* mem, uint size) -> ()*
@@ -13,7 +13,7 @@ struct C
 	shared import fn fclose(FILE* file) -> ()
 	shared import fn abort() -> ()
 
-struct Runtime
+data Runtime
 	shared import fn hush_show_uint(String* str, uint i)
 	shared import fn hush_show_int(String* str, int i)
 	shared import fn hush_puts(String* str)

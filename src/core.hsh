@@ -38,7 +38,7 @@ fn allocate[T, Ref](args, allocator) -> Ref
 
 fn destruct(obj)
 	
-struct Mem
+data Mem
 	shared fn alloc(uint size)
 		return ptr_cast C.malloc(size)
 

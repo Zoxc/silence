@@ -66,8 +66,8 @@ enum Token
 
 	AssignJoin
 
-struct Lexer
-	struct Indent
+data Lexer
+	data Indent
 		char* start
 		char* stop
 
@@ -83,7 +83,7 @@ struct Lexer
 			other = Indent(other.start, ptr_idx(other.start, s))
 			return Mem.cmp(start, other.start, s)
 
-	struct State
+	data State
 		char* pos
 		char* input_end
 
@@ -118,7 +118,7 @@ struct Lexer
 		fn str()
 			return String.from_data(start, ptr_diff(stop, start))
 
-	struct Block
+	data Block
 		Table[3, uint] levels
 		Indent indent
 

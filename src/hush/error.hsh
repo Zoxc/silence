@@ -1,6 +1,6 @@
 use "source"
 
-struct Error
+data Error
 	SrcLoc* src
 
 	when UnknownChars

@@ -5,10 +5,10 @@ class Copyable[T]
 
 # Tuple types
 
-struct Unit
+data Unit
 	action copy
 
-struct Cell[Val, Tuple Next]
+data Cell[Val, Tuple Next]
 	Val val
 	Next next
 
@@ -20,7 +20,7 @@ instance Tuple[Unit]
 
 instance[Val, Next] Tuple[Cell[Val, Next]]
 
-struct Option[T]
+data Option[T]
 	when Some
 		T val
 	when None

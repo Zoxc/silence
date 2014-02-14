@@ -1,4 +1,4 @@
-struct PtrArray[Copyable T, A]
+data PtrArray[Copyable T, A]
 	T* data
 	A allocator
 

@@ -1,4 +1,4 @@
-struct String[Allocator A = Mem]
+data String[Allocator A = Mem]
 	Array[char, A] bytes
 
 	action create

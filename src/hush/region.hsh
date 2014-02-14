@@ -1,5 +1,5 @@
-struct Region
-	struct Base
+data Region
+	data Base
 		Array[()*] ptrs
 
 		action create

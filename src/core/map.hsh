@@ -1,5 +1,5 @@
-struct Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
-	struct Entry
+data Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
+	data Entry
 		K key
 		V value
 

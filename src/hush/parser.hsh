@@ -1,6 +1,6 @@
 use "lexer"
 
-struct Parser
+data Parser
 	Lexer* lexer
 	Compiler* compiler
 
