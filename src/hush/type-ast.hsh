@@ -1,0 +1,14 @@
+data TypeNode
+	SrcLoc *src
+
+	when Tuple
+		Array[TypeNode*, Region] nodes
+
+	when Ref
+		Symbol *name
+
+	when Typeof
+	
+	when Number
+
+	when Error

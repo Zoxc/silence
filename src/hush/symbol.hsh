@@ -1,0 +1,12 @@
+data Symbol
+	String str
+
+	shared Map[String, Symbol*] table
+
+	shared kw_data = get("data")
+	shared kw_ref = get("ref")
+	shared kw_typeof = get("typeof")
+
+	shared fn get(String str)
+		var create = -> new[Symbol](str)
+		return table.get_or_create(str, create)

@@ -1,4 +1,5 @@
 use "lexer"
+use "type-ast"
 
 data Parser
 	Lexer* lexer
@@ -11,14 +12,27 @@ data Parser
 	fn tok()
 		return lexer.tok.type
 
+	fn eq(Token v)
+		return v == tok()
+
 	fn format_token() -> String
 		return tok().str()
 
 	fn step()
 		lexer.next_token()
 
+	fn array[T]() -> Array[T, Region]
+		return Array[T, Region](lexer.region())
+
+	fn ast[T, R] *args
+		var R* r = Callable(lexer.region().new[T]).apply(args)
+		return r
+
 	fn extend(SrcLoc* src)
 		src.stop = lexer.tok.last_ended
+
+	fn expected_str(String str)
+		lexer.report[Error.ExpectedString](lexer.src(), str.copy(compiler.region.ref()))
 
 	fn expected(Token tok)
 		lexer.report[Error.ExpectedToken](lexer.src(), tok, format_token().copy(compiler.region.ref()))
@@ -29,31 +43,50 @@ data Parser
 		else
 			expected(v)
 
+	fn skip_line()
+		if tok() == Token.Line
+			lexer.next_token_after_line()
+
 	fn get_ident()
 		return if tok() == Token.Ident
-			some lexer.tok.str()
+			var r = some lexer.tok.symbol
+			step()
+			r
 		else
 			nil
 
-	fn matches_ident(String ident)
-		return if tok() == Token.Ident
-			ident == lexer.tok.str()
+	fn matches(token)
+		return if tok() == token
+			step()
+			true
 		else
 			false
 
-	fn program()
-		var r = global_entries -> tok() == Token.EndOfFile
-		if tok() != Token.EndOfFile
-			expected(Token.EndOfFile)
-		return r
+	fn matches_ident(Symbol *ident)
+		return if tok() == Token.Ident
+			if ident == lexer.tok.symbol
+				step()
+				true
+			else
+				false
+		else
+			false
 
 	fn sep()
 		ensure(Token.Line)
 
 	fn src(a)
 		var s = lexer.src()
-		a(s)
+		var r = a(s)
 		s.stop = lexer.tok.last_ended
+		return r
+
+	# Global scope and program
+
+	fn program()
+		global_entries -> tok() == Token.EndOfFile
+		if tok() != Token.EndOfFile
+			expected(Token.EndOfFile)
 
 	fn global_entries(term)
 		loop
@@ -66,10 +99,10 @@ data Parser
 	fn global_entry() -> bool
 		match tok()
 			when Token.Ident
-				IO.puts("Test |" ~ lexer.tok.str() ~ "|")
-				match lexer.tok.str()
-					when "struct"
-						struct()
+				match lexer.tok.symbol
+					when Symbol.kw_data
+						data()
+						return true
 					else
 						return false
 			else
@@ -77,16 +110,145 @@ data Parser
 
 		return true
 
-	fn struct()
+	fn data()
 		var s = lexer.src()
 		var baseline = lexer.tok.indent
 		step()
-		var sizeable = !matches_ident("ref")
+		var sizeable = !matches_ident(Symbol.kw_ref)
 		var name = get_ident()
-		var tp = kind_params()
+		kind_params()
 		extend s
 		var scope = global_scope(baseline)
 
-	fn kind_params()
+	fn kind_params() -> () constraints
+		src \s ->
+			if matches(Token.SquareOpen)
+				skip_line()
+				var params = type_params()
+				ensure(Token.SquareClose)
+
+	fn type_args(Array[TypeNode*, Region]* args)
+
+		loop
+			type_operator()
+			if matches(Token.Comma)
+				skip_line()
+			else
+				break
+
+	fn type_params()
+		src \s ->
+			var type = type_expression()
+			var value = false
+			var name = nil
+			if eq(Token.Ident)
+				name = get_ident()
+			else if matches(Token.DoubleColon)
+				skip_line()
+				name = get_ident()
+				value = true
+			else
+				type = nil
+
+			kind_params()
+			if matches(Token.Assign)
+				skip_line()
+				if value
+					expression
+				else
+					type_expression
+
+	fn is_type_expression()
+		return match tok()
+			when Token.Ident, Token.Number, Token.String, Token.ParentOpen
+				true
+			else
+				false
+
+	fn type_operator()
+		var r = type_expression()
+
+		loop
+			if !eq(Token.ArrowRight)
+				break
+
+			step()
+			skip_line()
+
+			type_expression()
+
+		return r
+
+	fn type_expression() -> Option[TypeNode*] constraints
+		type_ptr()
+
+	fn type_ptr()
+		var r = type_chain()
+
+		loop
+			if !eq(Token.Mul)
+				break
+
+			step()
+
+		return r
+
+	fn type_chain()
+		var r = type_factor()
+
+		loop
+			match tok()
+				when Token.SquareOpen
+					step()
+					skip_line()
+					var args = array()
+					type_args(&args)
+					ensure(Token.SquareClose)
+				when Token.Dot
+					step()
+					skip_line()
+					var name = get_ident()
+				else
+					break
+
+		return r
+
+	fn type_tuple(s)
+		step()
+		skip_line()
+
+		var nodes = array()
+
+		if !eq(Token.ParentClose)
+			type_args(&nodes)
+
+		ensure(Token.ParentClose)
+
+		return ast[TypeNode.Tuple](s, nodes)
+
+	fn type_factor()
+		return src \s ->
+			return match tok()
+				when Token.ParentOpen
+					type_tuple(s)
+				when Token.Number
+					var r = ast[TypeNode.Number](s)
+					step()
+					r
+				when Token.Ident
+					if matches_ident(Symbol.kw_typeof)
+						chain()
+						ast[TypeNode.Typeof](s)
+					else
+						var r2 = ast[TypeNode.Ref](s, lexer.tok.symbol)
+						step()
+						r2
+				else
+					expected_str("type")
+					ast[TypeNode.Error](s)
 
 	fn global_scope(baseline)
+
+	fn expression()
+
+	fn chain()

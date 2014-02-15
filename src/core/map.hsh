@@ -104,6 +104,19 @@ data Map[Hash K, Copyable V, Allocator A = Mem] where Eq[K]
 
 			i += 1
 
+	fn get_or_create(key, f)
+		var free = \entry ->
+			var new = f()
+			*entry = some Entry(key, new)
+			entries += 1
+			if entries > mask
+				expand() 
+
+			return new
+		var found = \entry, i ->
+			return entry.value
+		return search(key, free, found)
+
 	fn set(key, value)
 		var free = \entry ->
 			*entry = some Entry(key, value)

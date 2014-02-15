@@ -1,5 +1,5 @@
 ﻿class InferContext
-	attr_accessor :obj, :type, :ctx, :fields, :typeclass, :vars, :infer_args, :dependent_vars, :value
+	attr_accessor :obj, :type, :fields, :typeclass, :vars, :infer_args, :dependent_vars, :value
 	
 	# TODO: How to deal with type specifiers which have limits inside expressions?
 	#            Return a list of limits in analyze_impl and use that to check types?
@@ -9,6 +9,10 @@
 		def to_s
 			"#{var.real_text} = #{type.text}.#{name} #{"[#{args.map{ |t|t .text }.join(", ")}]" if args}"
 		end
+	end
+
+	def ctx
+		@public_ctx
 	end
 	
 	def initialize(infer_args, obj)
@@ -169,7 +173,7 @@
 			parent_args[param] = if value
 				inst_type_param.(value)
 			else
-				new_var(source, param.name)
+				new_var(source, param.scoped_name.to_s.gsub(".", "__"))
 			end
 		end
 
@@ -1108,8 +1112,7 @@
 	end
 	
 	def report_unresolved_vars(vars)
-		@ctx.limits.each{|i| puts "    - #{i}"}
-		raise CompileError, "Unable to find the type of the following expressions in #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
+		raise CompileError, "Unable to find the type of the following expressions in #{@obj.name}\nLimits:\n#{@ctx.limits.map{|i| " - #{i}"}.join("\n")}\nVars:\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
 	end
 
 	def assume_parents
@@ -1186,6 +1189,7 @@
 		
 		report_unresolved_vars(unresolved_vars) unless unresolved_vars.empty?
 		
+		@public_ctx = @ctx
 		@type = type
 		@obj.ctype = self
 	end
@@ -1313,6 +1317,7 @@
 		case @obj
 			when AST::Function
 				if @obj.constraints
+					@ctx = TypeContext.new(infer_args)
 					analyze(@obj.scope, analyze_args.next(unused: true)) 
 					process_constraints([])
 					unless @ctx.limits.size == 0

@@ -12,6 +12,8 @@ data Error
 	when ExpectedToken
 		Token tok
 		String[Region] found 
+	when ExpectedString
+		String[Region] exp 
 
 	fn str() -> String
 		return match self as err
@@ -25,6 +27,8 @@ data Error
 				"Unable to find indentation size"
 			when ExpectedToken
 				"Expected " ~ err.tok.str() ~ ", but found " ~ err.found.copy(Mem())
+			when ExpectedString
+				"Expected " ~ err.exp.copy(Mem())
 
 	fn trailing() -> String
 		return match self as err

@@ -23,7 +23,7 @@ data Region
 		base.ptrs.push new_ptr
 		return ptr_cast new_ptr
 
-	fn new[Constructor T = Reference[R].Type, R] *args -> R
+	fn new[Constructor T = R, R] *args -> R*
 		return allocate[T](args, self)
 
 instance Allocator[Region]

@@ -1,11 +1,13 @@
 use "../core"
 use "source"
+use "symbol"
 
 enum Token
 	None
 	Unknown
 	Ident
 	Number
+	String
 	EndOfFile
 	Line
 	Indent
@@ -97,7 +99,8 @@ data Lexer
 
 		Indent indent 
 
-		uint num 
+		uint num
+		Symbol* symbol
 
 		action create(pos, end, lexer) :
 			pos <- pos,
@@ -108,6 +111,7 @@ data Lexer
 			start <- undef(),
 			stop <- undef(),
 			indent <- undef(),
+			symbol <- undef(),
 			blocks <- Array[Block*, Region](lexer.compiler.region.ref())
 
 		action copy
@@ -488,6 +492,9 @@ data Lexer
 			step()
 
 		tok.end()
+
+		tok.symbol = Symbol.get(tok.str())
+
 		tok.type = Token.Ident
 
 	fn unknown()

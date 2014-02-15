@@ -20,21 +20,11 @@ class Allocator[T]
 	fn realloc[P](P* ptr, uint old_size, uint new_size) -> P*
 	fn free[P](P* ptr)
 
-class RefConstructable[T]
-	type_func Header
-	shared fn construct(Header* obj, allocator) -> T
-
-instance[T] RefConstructable[T*]
-	alias Header = ()
-	shared fn construct(()* obj, allocator) -> T*
-		return ptr_cast ptr_succ(obj)
-
-fn allocate[T, Ref](args, allocator) -> Ref
-	var size = size_of[RefConstructable[Ref].Header]() + size_of[Constructor[T].Constructed]()
+fn allocate[T, R](args, allocator) -> R*
+	var size = size_of[Constructor[T].Constructed]()
 	var obj = Allocator(allocator).alloc(size)
-	var result = ptr_cast ptr_succ(obj)
-	Constructor[T].construct(result, args)
-	return RefConstructable[Ref].construct(obj, allocator)
+	Constructor[T].construct(obj, args)
+	return obj
 
 fn destruct(obj)
 	
@@ -66,7 +56,7 @@ instance Allocator[Mem]
 	fn free[P](P* ptr)
 		self.free(ptr)
 
-fn new[Constructor T = Reference[R].Type, R] *args -> R
+fn new[Constructor T = R, R] *args -> R*
 	return allocate[T](args, Mem())
 
 fn delete(obj)
