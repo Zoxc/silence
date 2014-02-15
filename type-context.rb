@@ -302,7 +302,7 @@
 	def reduce_eqs(eqs)
 		eqs.reject! do |eq|
 			dup = eqs.find do |oeq|
-				next if eq == oeq
+				next if eq.equal?(oeq)
 				eq.type_ast == oeq.type_ast
 			end
 			if dup
@@ -315,9 +315,8 @@
 	def reduce_limits
 		@limits.reject! do |c|
 			dup = @limits.find do |oc|
-				next if c == oc
-				
-				c.typeclass == oc.typeclass && c.args == oc.args				
+				next if c.equal?(oc)
+				c == oc			
 			end
 			
 			if dup

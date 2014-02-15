@@ -1108,6 +1108,7 @@
 	end
 	
 	def report_unresolved_vars(vars)
+		@ctx.limits.each{|i| puts "    - #{i}"}
 		raise CompileError, "Unable to find the type of the following expressions in #{@obj.name}\n#{vars.map{|c| " - #{c.text}#{"\n#{c.source.format}" if c.source}\n#{@ctx.var_allocs[c][0..3].join("\n")}"}.join("\n")}\n#{@obj.source.format}"
 	end
 
