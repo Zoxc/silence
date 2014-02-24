@@ -213,7 +213,7 @@ module Types
 				when Core::Func::Node
 					"#{@args[Core::Func::Args].text} -> #{@args[Core::Func::Result].text}"
 				when Core::Ptr::Node
-					"*#{@args[Core::Ptr::Type].text}"
+					"#{@args[Core::Ptr::Type].text}*"
 				when Core::Unit, Core::Cell::Node
 					"(#{text_tuple.join(', ')})"
 				else
