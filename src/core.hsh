@@ -102,7 +102,15 @@ instance StringLiteral[char]
 
 instance[T] Eq[T*]
 	fn equal(T* lhs, T* rhs)
-		return force_cast[uint] lhs == force_cast rhs
+		return ptr_int lhs == ptr_int rhs
+
+instance[T] Ord[T*]
+	shared fn cmp(T* gt, T* ls)
+		return Ord.cmp(ptr_int gt, ptr_int ls)
+
+	fn hash() -> uint
+		var r = force_cast(self)
+		return (r >> 4) ^ r
 
 fn min(a, b)
 	return if a > b

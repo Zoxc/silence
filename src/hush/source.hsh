@@ -31,6 +31,8 @@ data SrcLoc
 
 		loop
 			if c == file_start
+				if *c == 10
+					c = ptr_succ c
 				break
 			if *c == 10
 				if *(ptr_pred c) == 13
@@ -39,7 +41,7 @@ data SrcLoc
 				break
 			c = ptr_pred c
 
-		return c
+		return min(c, start)
 
 	fn line_end(char* c)
 		loop
@@ -93,7 +95,7 @@ data SrcLoc
 
 	fn format()
 		var line = line_start()
-		var prefix = file.path ~ ":" ~ show line_nr(line) ~ " "
+		var prefix = file.path ~ ":" ~ show line_nr(line) ~ " " ~ show ptr_diff(line, file.content.data()) ~ "|"~ show ptr_diff(start, file.content.data()) ~ "|"
 		var ind = (" " :: String).repeat(prefix.size()) ~ indicator(line)
 
 		return prefix ~ String.from_data(line, ptr_diff(line_end(line), line)) ~ String.from_c(10) ~ ind
