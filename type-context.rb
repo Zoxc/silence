@@ -21,8 +21,12 @@
 			end
 		end
 		
+		def plain
+			"#{@typeclass.scoped_name}[#{TypeContext.print_params(@args)}]#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}"
+		end
+
 		def to_s
-			"#{@typeclass.scoped_name}[#{TypeContext.print_params(@args)}]#{" {#{@eqs.join(', ')}}" unless @eqs.empty?}\n#{source.format(8)}"
+			"#{plain}\n#{source.format(8)}"
 		end
 	end
 	
@@ -351,7 +355,7 @@
 				c.eqs.each do |eq| 
 					ast = inst.scope.names[eq.type_ast.name]
 					result = inst(eq.source, ast, map)
-					unify(result, eq.var)
+					unify(result, eq.var, proc { "\nWhen resolving type functions for limit #{c.plain} in #{obj.scoped_name}" })
 				end
 				
 				true
