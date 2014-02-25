@@ -95,7 +95,7 @@ data SrcLoc
 
 	fn format()
 		var line = line_start()
-		var prefix = file.path ~ ":" ~ show line_nr(line) ~ " " ~ show ptr_diff(line, file.content.data()) ~ "|"~ show ptr_diff(start, file.content.data()) ~ "|"
+		var prefix = file.path ~ ":" ~ show line_nr(line) ~ " "
 		var ind = (" " :: String).repeat(prefix.size()) ~ indicator(line)
 
 		return prefix ~ String.from_data(line, ptr_diff(line_end(line), line)) ~ String.from_c(10) ~ ind
