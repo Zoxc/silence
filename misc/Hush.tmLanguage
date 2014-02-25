@@ -68,6 +68,12 @@
 			<string>keyword.hush</string>
 		</dict>
 		<dict>
+			<key>match</key>
+			<string>(^|;)\s*(data(?:\s+(?:ref))?)\b</string>
+			<key>name</key>
+			<string>keyword.hush</string>
+		</dict>
+		<dict>
 			<key>captures</key>
 			<dict>
 				<key>3</key>
@@ -87,66 +93,39 @@
 				<key>2</key>
 				<dict>
 					<key>name</key>
-					<string>keyword.hush</string>
-				</dict>
-				<key>3</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>4</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>5</key>
-				<dict>
-					<key>name</key>
-					<string>storage.type.hush</string>
+					<string>support.function</string>
 				</dict>
 			</dict>
 			<key>match</key>
-			<string>(^|;)\s*(instance\b)\s*(?:(\().*(\))\s*)?([A-Za-z_0-9]+)</string>
-		</dict>
-		<dict>
-			<key>match</key>
-			<string>(^|;)\s*(use|type_func|class|alias|enum|when|instance|data)\b</string>
+			<string>\b(action|fn)\s+([A-Za-z_0-9]+)</string>
 			<key>name</key>
 			<string>keyword.hush</string>
 		</dict>
 		<dict>
+			<key>match</key>
+			<string>(^|;)\s*(action|use|type_func|class|alias|enum|instance|data)\b</string>
+			<key>name</key>
+			<string>keyword.hush</string>
+		</dict>
+		<dict>
+			<key>match</key>
+			<string>\b(shared|import|export)\b</string>
+			<key>name</key>
+			<string>storage.modifier.hush</string>
+		</dict>
+		<dict>
 			<key>begin</key>
-			<string>^(\s*)(action)\s+([A-Za-z_0-9]+)(?:\s*(\().*(\)))?(\s*:)?\s*$</string>
+			<string>(\\)</string>
 			<key>beginCaptures</key>
 			<dict>
-				<key>2</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.hush</string>
-				</dict>
-				<key>3</key>
-				<dict>
-					<key>name</key>
-					<string>support.function</string>
-				</dict>
-				<key>4</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>5</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>6</key>
+				<key>1</key>
 				<dict>
 					<key>name</key>
 					<string>keyword.operator.hush</string>
 				</dict>
 			</dict>
 			<key>end</key>
-			<string>^(?!\1\s)(?!\s*$)(?!\s*{)|(})</string>
+			<string>(-&gt;|$)</string>
 			<key>endCaptures</key>
 			<dict>
 				<key>1</key>
@@ -155,32 +134,21 @@
 					<string>keyword.operator.hush</string>
 				</dict>
 			</dict>
+			<key>name</key>
+			<string>storage.type.hush</string>
 			<key>patterns</key>
 			<array>
 				<dict>
-					<key>begin</key>
-					<string>\s*({)</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.operator.hush</string>
-						</dict>
-					</dict>
-					<key>end</key>
-					<string>(?=})</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>#expression</string>
-						</dict>
-					</array>
+					<key>match</key>
+					<string>([A-Za-z_0-9]+)\s*(?=,|-&gt;)</string>
+					<key>name</key>
+					<string>variable.hush</string>
 				</dict>
 				<dict>
-					<key>include</key>
-					<string>#expression</string>
+					<key>match</key>
+					<string>[,*\[\]]</string>
+					<key>name</key>
+					<string>keyword.operator.hush</string>
 				</dict>
 			</array>
 		</dict>
@@ -190,149 +158,38 @@
 				<key>2</key>
 				<dict>
 					<key>name</key>
-					<string>support.function</string>
-				</dict>
-			</dict>
-			<key>match</key>
-			<string>(^|;)\s*(action)[ \t]+([A-Za-z_0-9]+)</string>
-			<key>name</key>
-			<string>keyword.hush</string>
-		</dict>
-		<dict>
-			<key>begin</key>
-			<string>^(\s*)((?:shared|import|export)\s*)*(?:\[.*?\]\s*)?(fn)\s+([A-Za-z_0-9]+)(?:(\[).*(\])\s*)?(?:(\()(.*?)(\))|(\*)([A-Za-z_0-9]+))(?:\s*(-&gt;))?.*$</string>
-			<key>beginCaptures</key>
-			<dict>
-				<key>10</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>11</key>
-				<dict>
-					<key>name</key>
-					<string>variable.hush</string>
-				</dict>
-				<key>2</key>
-				<dict>
-					<key>name</key>
-					<string>storage.modifier.hush</string>
+					<string>keyword.hush</string>
 				</dict>
 				<key>3</key>
 				<dict>
 					<key>name</key>
-					<string>keyword.hush</string>
-				</dict>
-				<key>4</key>
-				<dict>
-					<key>name</key>
-					<string>support.function</string>
-				</dict>
-				<key>5</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>6</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>7</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<key>9</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
+					<string>storage.type.hush</string>
 				</dict>
 			</dict>
-			<key>end</key>
-			<string>^(?!\1\s)(?!\s*$)(?!\s*{)|(})</string>
-			<key>endCaptures</key>
-			<dict>
-				<key>1</key>
-				<dict>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-			</dict>
-			<key>patterns</key>
-			<array>
-				<dict>
-					<key>begin</key>
-					<string>\s*({)</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.operator.hush</string>
-						</dict>
-					</dict>
-					<key>end</key>
-					<string>(?=})</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>#expression</string>
-						</dict>
-					</array>
-				</dict>
-				<dict>
-					<key>include</key>
-					<string>#expression</string>
-				</dict>
-			</array>
+			<key>match</key>
+			<string>(^|;)\s*(var)\s+[A-Za-z_0-9]+</string>
+			<key>name</key>
+			<string>variable.hush</string>
 		</dict>
 		<dict>
-			<key>begin</key>
-			<string>(?:^|;)(?:\s*)(shared\s*)?(?=.)</string>
-			<key>beginCaptures</key>
+			<key>captures</key>
 			<dict>
 				<key>1</key>
 				<dict>
 					<key>name</key>
-					<string>storage.modifier.hush</string>
-				</dict>
-				<key>2</key>
-				<dict>
-					<key>name</key>
-					<string>variable.hush</string>
+					<string>keyword.operator.hush</string>
 				</dict>
 			</dict>
-			<key>end</key>
-			<string>([A-Za-z_0-9]+)\s*(=|;|$)</string>
-			<key>endCaptures</key>
-			<dict>
-				<key>1</key>
-				<dict>
-					<key>name</key>
-					<string>variable.hush</string>
-				</dict>
-			</dict>
-			<key>patterns</key>
-			<array>
-				<dict>
-					<key>include</key>
-					<string>#type</string>
-				</dict>
-			</array>
+			<key>match</key>
+			<string>(\.)([A-Za-z_0-9]+)</string>
+			<key>name</key>
+			<string>support.function</string>
 		</dict>
 		<dict>
 			<key>match</key>
-			<string>(^|;)\s*shared\b</string>
+			<string>\b(fn|if|else|match|return|as|when|typeof|loop|break|or|and|nil)\b</string>
 			<key>name</key>
-			<string>storage.modifier.hush</string>
-		</dict>
-		<dict>
-			<key>match</key>
-			<string>(^|;)\s*\\.[A-Za-z_0-9]+</string>
-			<key>name</key>
-			<string>support.function.hush</string>
+			<string>keyword.hush</string>
 		</dict>
 		<dict>
 			<key>match</key>
@@ -343,139 +200,6 @@
 	</array>
 	<key>repository</key>
 	<dict>
-		<key>expression</key>
-		<dict>
-			<key>patterns</key>
-			<array>
-				<dict>
-					<key>match</key>
-					<string>#.*</string>
-					<key>name</key>
-					<string>comment.hush</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>\b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b</string>
-					<key>name</key>
-					<string>constant.numeric.hush</string>
-				</dict>
-				<dict>
-					<key>begin</key>
-					<string>(\\)</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.operator.hush</string>
-						</dict>
-					</dict>
-					<key>end</key>
-					<string>(-&gt;|$)</string>
-					<key>endCaptures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.operator.hush</string>
-						</dict>
-					</dict>
-					<key>name</key>
-					<string>storage.type.hush</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>match</key>
-							<string>([A-Za-z_0-9]+)\s*(?=,|-&gt;)</string>
-							<key>name</key>
-							<string>variable.hush</string>
-						</dict>
-						<dict>
-							<key>match</key>
-							<string>[,*\[\]]</string>
-							<key>name</key>
-							<string>keyword.operator.hush</string>
-						</dict>
-					</array>
-				</dict>
-				<dict>
-					<key>captures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.hush</string>
-						</dict>
-						<key>2</key>
-						<dict>
-							<key>name</key>
-							<string>storage.type.hush</string>
-						</dict>
-					</dict>
-					<key>match</key>
-					<string>^[ \t]*(var)(\s+.*?)?\s+[A-Za-z_0-9]+(?=\s*($|=|;))</string>
-					<key>name</key>
-					<string>variable.hush</string>
-				</dict>
-				<dict>
-					<key>captures</key>
-					<dict>
-						<key>1</key>
-						<dict>
-							<key>name</key>
-							<string>keyword.operator.hush</string>
-						</dict>
-					</dict>
-					<key>match</key>
-					<string>(\.)([A-Za-z_0-9]+)</string>
-					<key>name</key>
-					<string>support.function</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>\b(if|else|match|return|as|when|typeof|loop|break|or|and|nil)\b</string>
-					<key>name</key>
-					<string>keyword.hush</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>[/\*^&amp;%!()\[\]~\-\+=,\.:&lt;&gt;?|]</string>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
-				</dict>
-				<dict>
-					<key>begin</key>
-					<string>"</string>
-					<key>beginCaptures</key>
-					<dict>
-						<key>0</key>
-						<dict>
-							<key>name</key>
-							<string>punctuation.definition.string.begin.hush</string>
-						</dict>
-					</dict>
-					<key>end</key>
-					<string>"</string>
-					<key>endCaptures</key>
-					<dict>
-						<key>0</key>
-						<dict>
-							<key>name</key>
-							<string>punctuation.definition.string.end.hush</string>
-						</dict>
-					</dict>
-					<key>name</key>
-					<string>string.quoted.double.hush</string>
-					<key>patterns</key>
-					<array>
-						<dict>
-							<key>include</key>
-							<string>#string_escaped_char</string>
-						</dict>
-					</array>
-				</dict>
-			</array>
-		</dict>
 		<key>string_escaped_char</key>
 		<dict>
 			<key>patterns</key>
@@ -491,36 +215,6 @@
 					<string>\\.</string>
 					<key>name</key>
 					<string>invalid.illegal.unknown-escape.hush</string>
-				</dict>
-			</array>
-		</dict>
-		<key>type</key>
-		<dict>
-			<key>patterns</key>
-			<array>
-				<dict>
-					<key>match</key>
-					<string>#.*</string>
-					<key>name</key>
-					<string>comment.hush</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>\b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b</string>
-					<key>name</key>
-					<string>constant.numeric.hush</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>[A-Za-z_0-9]+</string>
-					<key>name</key>
-					<string>storage.type.hush</string>
-				</dict>
-				<dict>
-					<key>match</key>
-					<string>[\*\(\)\[\]]|-&gt;</string>
-					<key>name</key>
-					<string>keyword.operator.hush</string>
 				</dict>
 			</array>
 		</dict>

@@ -20,6 +20,7 @@ patterns:
   name: string.quoted.double.hush
   patterns:
   - include: '#string_escaped_char'
+
 - match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
   name: constant.numeric.hush
 
@@ -29,175 +30,63 @@ patterns:
       '3':
         name: support.class
 
+- match: (^|;)\s*(data(?:\s+(?:ref))?)\b
+  name: keyword.hush
+
 - match: (^|;)\s*(type_func|class|data|alias|enum|when)[ \t]+([A-Za-z_0-9]+)\b
   name: keyword.hush
   captures:
       '3':
         name: support.class
 
-- match: (^|;)\s*(instance\b)\s*(?:(\().*(\))\s*)?([A-Za-z_0-9]+)
-  captures:
-      '2':
-        name: keyword.hush
-      '3':
-        name: keyword.operator.hush
-      '4':
-        name: keyword.operator.hush
-      '5':
-        name: storage.type.hush
-
-- match: (^|;)\s*(use|type_func|class|alias|enum|when|instance|data)\b
-  name: keyword.hush
-
-# Action with { on next line or whitespace scope
-- begin: ^(\s*)(action)\s+([A-Za-z_0-9]+)(?:\s*(\().*(\)))?(\s*:)?\s*$
-  beginCaptures:
-    '2':
-      name: keyword.hush
-    '3':
-      name: support.function
-    '4':
-      name: keyword.operator.hush
-    '5':
-      name: keyword.operator.hush
-    '6':
-      name: keyword.operator.hush
-  end: ^(?!\1\s)(?!\s*$)(?!\s*{)|(})
-  endCaptures:
-    '1':
-      name: keyword.operator.hush
-  patterns:
-    - begin: \s*({)
-      beginCaptures:
-        '1':
-          name: keyword.operator.hush
-      end: (?=})
-      patterns:
-        - include: '#expression'
-
-    - include: '#expression'
-      
-- match: (^|;)\s*(action)[ \t]+([A-Za-z_0-9]+)
+- match: \b(action|fn)\s+([A-Za-z_0-9]+)
   name: keyword.hush
   captures:
       '2':
         name: support.function
   
-# Function with { on next line or whitespace scope
-- begin: ^(\s*)((?:shared|import|export)\s*)*(?:\[.*?\]\s*)?(fn)\s+([A-Za-z_0-9]+)(?:(\[).*(\])\s*)?(?:(\()(.*?)(\))|(\*)([A-Za-z_0-9]+))(?:\s*(->))?.*$
-  beginCaptures:
-    '2':
-      name: storage.modifier.hush
-    '3':
-      name: keyword.hush
-    '4':
-      name: support.function
-    '5':
-      name: keyword.operator.hush
-    '6':
-      name: keyword.operator.hush
-    '7':
-      name: keyword.operator.hush
-    '9':
-      name: keyword.operator.hush
-    '10':
-      name: keyword.operator.hush
-    '11':
-      name: variable.hush
-  end: ^(?!\1\s)(?!\s*$)(?!\s*{)|(})
-  endCaptures:
-    '1':
-      name: keyword.operator.hush
-  patterns:
-    - begin: \s*({)
-      beginCaptures:
-        '1':
-          name: keyword.operator.hush
-      end: (?=})
-      patterns:
-        - include: '#expression'
+- match: (^|;)\s*(action|use|type_func|class|alias|enum|instance|data)\b
+  name: keyword.hush
 
-    - include: '#expression'
-
-- begin: (?:^|;)(?:\s*)(shared\s*)?(?=.)
-  end: ([A-Za-z_0-9]+)\s*(=|;|$)
-  beginCaptures:
-    '1':
-      name: storage.modifier.hush
-    '2':
-      name: variable.hush
-  endCaptures:
-    '1':
-      name: variable.hush
-  patterns:
-    - include: '#type'
-
-- match: (^|;)\s*shared\b
+- match: \b(shared|import|export)\b
   name: storage.modifier.hush
 
-- match: (^|;)\s*\\.[A-Za-z_0-9]+
-  name: support.function.hush
+- begin: "(\\\\)"
+  beginCaptures:
+    '1':
+      name: keyword.operator.hush
+  end: (->|$)
+  endCaptures:
+    '1':
+      name: keyword.operator.hush
+  name: storage.type.hush
+  patterns:
+    - match: ([A-Za-z_0-9]+)\s*(?=,|->)
+      name: variable.hush
+    - match: "[,*\\[\\]]"
+      name: keyword.operator.hush
+
+- match: "(^|;)\\s*(var)\\s+[A-Za-z_0-9]+"
+  captures:
+    '2':
+      name: keyword.hush
+    '3':
+      name: storage.type.hush
+  name: variable.hush
+
+- match: "(\\.)([A-Za-z_0-9]+)"
+  name: support.function
+  captures:
+    '1':
+      name: keyword.operator.hush
+
+- match: \b(fn|if|else|match|return|as|when|typeof|loop|break|or|and|nil)\b
+  name: keyword.hush
 
 - match: "[/\\*^&%!()\\[\\]~\\-\\+=,\\.:<>?|]"
   name: keyword.operator.hush
-repository: 
-  type:
-    patterns:
-      - match: "#.*"
-        name: comment.hush
-      - match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
-        name: constant.numeric.hush
-      - match: "[A-Za-z_0-9]+"
-        name: storage.type.hush
-      - match: "[\\*\\(\\)\\[\\]]|->"
-        name: keyword.operator.hush
-  expression:
-    patterns:
-      - match: "#.*"
-        name: comment.hush
-      - match: \b([0-9]+|0([xX][0-9a-fA-F]+|[oO][0-7]+))\b
-        name: constant.numeric.hush
-      - begin: "(\\\\)"
-        beginCaptures:
-          '1':
-            name: keyword.operator.hush
-        end: (->|$)
-        endCaptures:
-          '1':
-            name: keyword.operator.hush
-        name: storage.type.hush
-        patterns:
-          - match: ([A-Za-z_0-9]+)\s*(?=,|->)
-            name: variable.hush
-          - match: "[,*\\[\\]]"
-            name: keyword.operator.hush
-      - match: "^[ \\t]*(var)(\\s+.*?)?\\s+[A-Za-z_0-9]+(?=\\s*($|=|;))"
-        captures:
-          '1':
-            name: keyword.hush
-          '2':
-            name: storage.type.hush
-        name: variable.hush
-      - match: "(\\.)([A-Za-z_0-9]+)"
-        name: support.function
-        captures:
-          '1':
-            name: keyword.operator.hush
-      - match: \b(if|else|match|return|as|when|typeof|loop|break|or|and|nil)\b
-        name: keyword.hush
-      - match: "[/\\*^&%!()\\[\\]~\\-\\+=,\\.:<>?|]"
-        name: keyword.operator.hush
-      - begin: '"'
-        beginCaptures:
-          '0':
-            name: punctuation.definition.string.begin.hush
-        end: '"'
-        endCaptures:
-          '0':
-            name: punctuation.definition.string.end.hush
-        name: string.quoted.double.hush
-        patterns:
-        - include: '#string_escaped_char'
+
+repository:
   string_escaped_char:
     patterns:
     - match: \\(\\|[abefnprtv'"?]|[0-3]\d{,2}|[4-7]\d?|x[a-fA-F0-9]{,2}|u[a-fA-F0-9]{,4}|U[a-fA-F0-9]{,8})
