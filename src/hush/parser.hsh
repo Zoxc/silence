@@ -29,10 +29,16 @@ data Parser
 		return r
 
 	fn extend(SrcLoc* src)
-		src.stop = lexer.tok.last_ended
+		match *src as s
+			when SrcLoc.File
+				s.stop = lexer.tok.last_ended
+			else
+
+	fn expected_str_s(SrcLoc* src, String str)
+		lexer.report[Error.ExpectedString](src, str.copy(compiler.region.ref()))
 
 	fn expected_str(String str)
-		lexer.report[Error.ExpectedString](lexer.src(), str.copy(compiler.region.ref()))
+		expected_str_s(lexer.src(), str)
 
 	fn expected(Token tok)
 		lexer.report[Error.ExpectedToken](lexer.src(), tok, format_token().copy(compiler.region.ref()))
@@ -48,12 +54,13 @@ data Parser
 			lexer.next_token_after_line()
 
 	fn get_ident()
-		return if tok() == Token.Ident
-			var r = some lexer.tok.symbol
+		return if eq(Token.Ident)
+			var r = lexer.tok.symbol
 			step()
 			r
 		else
-			nil
+			expected(Token.Ident)
+			Symbol.none
 
 	fn matches(token)
 		return if tok() == token
@@ -73,17 +80,21 @@ data Parser
 			false
 
 	fn sep()
-		ensure(Token.Line)
+		if eq(Token.Line)
+			lexer.next_token_after_line()
+		else
+			expected(Token.Line)
 
 	fn src(a)
 		var s = lexer.src()
 		var r = a(s)
-		s.stop = lexer.tok.last_ended
+		extend(s)
 		return r
 
 	# Global scope and program
 
 	fn program()
+		skip_line()
 		global_entries -> tok() == Token.EndOfFile
 		if tok() != Token.EndOfFile
 			expected(Token.EndOfFile)
@@ -104,11 +115,99 @@ data Parser
 						data()
 						return true
 					else
-						return false
+						attribute()
+						return true
 			else
 				return false
 
 		return true
+
+	fn properties()
+		loop
+			if matches_ident(Symbol.kw_shared)
+			else if matches_ident(Symbol.kw_import)
+			else if matches_ident(Symbol.kw_export)
+			else
+				if matches(Token.SquareOpen)
+					skip_line()
+
+					if !eq(Token.SquareClose)
+						loop
+							get_ident()
+
+							if matches(Token.Comma)
+								skip_line()
+							else
+								break
+
+					ensure(Token.SquareClose)
+
+				return
+
+	fn attribute()
+		src \s ->
+			var props = properties()
+			var baseline = lexer.tok.indent
+
+			if(matches_ident(Symbol.kw_fn))
+				fn(s, baseline, get_ident(), props, nil)
+			else
+				var name = undef()
+				var type = undef()
+				var val
+				(name, type) = name_opt_type()
+
+				if matches(Token.Assign)
+					skip_line()
+					val = some expression()
+
+	fn fn_params()
+		skip_line()
+
+		if is_type_expression()
+			loop
+				name_opt_type()
+
+				if matches(Token.Comma)
+					skip_line()
+				else
+					break
+
+	fn fn(s, baseline, name, props, Option[Symbol*] action_type)
+		var tp = kind_params()
+
+		if matches(Token.Mul)
+			src \s ->
+				name_opt_type()
+		else
+			if action_type.has() and !eq(Token.ParentOpen)
+			else
+				ensure(Token.ParentOpen)
+				fn_params()
+				ensure(Token.ParentClose)
+
+		if action_type.has()
+			if matches(Token.Colon)
+				skip_line()
+
+				loop
+					get_ident()
+					ensure(Token.ArrowLeft)
+					expression()
+
+					if matches(Token.Comma)
+						skip_line()
+					else
+						break
+		else
+			if matches(Token.ArrowRight)
+				skip_line()
+
+				type_expression()
+
+				matches_ident(Symbol.kw_constraints)
+
+		group(baseline)
 
 	fn data()
 		var s = lexer.src()
@@ -140,7 +239,7 @@ data Parser
 		src \s ->
 			var type = type_expression()
 			var value = false
-			var name = nil
+			var name = Symbol.none
 			if eq(Token.Ident)
 				name = get_ident()
 			else if matches(Token.DoubleColon)
@@ -148,7 +247,7 @@ data Parser
 				name = get_ident()
 				value = true
 			else
-				type = nil
+				type = TypeNode.none
 
 			kind_params()
 			if matches(Token.Assign)
@@ -179,7 +278,7 @@ data Parser
 
 		return r
 
-	fn type_expression() -> Option[TypeNode*] constraints
+	fn type_expression() -> TypeNode* constraints
 		type_ptr()
 
 	fn type_ptr()
@@ -245,9 +344,28 @@ data Parser
 						r2
 				else
 					expected_str("type")
-					ast[TypeNode.Error](s)
+					TypeNode.none
+
+	fn name_opt_type()
+		var type = type_expression()
+		var name = undef()
+
+		if eq(Token.Ident)
+			name = get_ident()
+		else
+			match *type as node
+				when TypeNode.Ref
+					name = node.name
+					type = TypeNode.none
+				else
+					expected_str_s(type.src, "variable name")
+
+		return (name, type)
+
 
 	fn global_scope(baseline)
+
+	fn group(baseline)
 
 	fn expression()
 

@@ -91,6 +91,10 @@ instance Show[String]
 fn show(t)
 	return Show(t).show()
 
+instance[T] Defaultable[Option[T]]
+	shared fn construct(Option[T]* obj)
+		Constructor[Option[T].None].construct(obj, ())
+
 instance StringLiteral[char*]
 	fn create(char* data, uint size)
 		return data

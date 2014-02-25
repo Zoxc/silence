@@ -12,3 +12,6 @@ data TypeNode
 	when Number
 
 	when Error
+
+	shared none_obj = TypeNode.Error(SrcLoc.error)
+	shared none = &none_obj

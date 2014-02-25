@@ -45,6 +45,13 @@ data Option[T]
 			when None
 				Option.None()
 
+	fn has()
+		return match self as v
+			when Some
+				true
+			when None
+				false
+
 
 class Defaultable[T]
 	shared fn construct(T* obj)

@@ -3,9 +3,33 @@ data Symbol
 
 	shared Map[String, Symbol*] table
 
+	shared Symbol* none = new("@NONE")
+
 	shared kw_data = get("data")
 	shared kw_ref = get("ref")
 	shared kw_typeof = get("typeof")
+	shared kw_fn = get("fn")
+	shared kw_instance = get("instance")
+	shared kw_type_func = get("type_func")
+	shared kw_class = get("class")
+	shared kw_when = get("when")
+	shared kw_match = get("match")
+	shared kw_alias = get("alias")
+	shared kw_enum = get("enum")
+	shared kw_action = get("action")
+	shared kw_shared = get("shared")
+	shared kw_import = get("import")
+	shared kw_export = get("export")
+	shared kw_if = get("if")
+	shared kw_else = get("else")
+	shared kw_return = get("return")
+	shared kw_as = get("as")
+	shared kw_loop = get("loop")
+	shared kw_break = get("break")
+	shared kw_or = get("or")
+	shared kw_and = get("and")
+	shared kw_nil = get("nil")
+	shared kw_constraints = get("constraints")
 
 	shared fn get(String str)
 		var create = -> new[Symbol](str)

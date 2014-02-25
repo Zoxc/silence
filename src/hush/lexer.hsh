@@ -159,7 +159,7 @@ data Lexer
 		return a <= c() and c() <= b
 
 	fn make_src(start, stop) -> SrcLoc*
-		return region().new(file, start, stop)
+		return region().new[SrcLoc.File](file, start, stop)
 
 	fn src() -> SrcLoc*
 		return make_src(tok.start, tok.stop)

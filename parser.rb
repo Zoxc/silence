@@ -81,6 +81,7 @@ class Parser
 	end
 	
 	def program
+		skip :line
 		r = global_scope_entries(proc { eq(:eos) })
 		expected('end') unless tok == :eos
 		r
@@ -559,7 +560,7 @@ class Parser
 					
 					attrs = []
 
-					if !eq(:sym, '}')
+					if !eq(:sym, ']')
 						loop do
 							attrs << match(:id)
 							if matches :sym, ','
