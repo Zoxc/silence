@@ -99,7 +99,7 @@ def process(file)
 	File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
 
 	puts "Compiling output..."
-	system "g++ -std=gnu++0x -g -Wall -Wno-unused-label -Wno-unused-but-set-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable #{File.expand_path('../hush.cpp', __FILE__)} output.cpp -o output"
+	system "g++ -std=gnu++0x -g -Wall -Wno-unused-label -Wno-unused-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable #{File.expand_path('../hush.cpp', __FILE__)} output.cpp -o output"
 	if $?.exitstatus != 0
 		$stderr.puts "Failed to compile C++ output" 
 		exit
