@@ -653,7 +653,7 @@ class Parser
 		case tok
 			when :id
 				case tok_val
-					when :return, :if, :match, :loop, :and, :or, :as
+					when :return, :if, :match, :loop, :and, :or, :as, :var
 						true
 				end
 			when :sym
