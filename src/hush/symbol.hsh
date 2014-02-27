@@ -5,6 +5,7 @@ data Symbol
 
 	shared Symbol* none = new("@NONE")
 
+	shared kw_var = get("var")
 	shared kw_data = get("data")
 	shared kw_ref = get("ref")
 	shared kw_typeof = get("typeof")
@@ -31,6 +32,6 @@ data Symbol
 	shared kw_nil = get("nil")
 	shared kw_constraints = get("constraints")
 
-	shared fn get(String str)
+	shared fn get(String str) -> Symbol*
 		var create = -> new[Symbol](str)
 		return table.get_or_create(str, create)

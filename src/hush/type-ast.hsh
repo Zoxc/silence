@@ -5,7 +5,7 @@ data TypeNode
 		Array[TypeNode*, Region] nodes
 
 	when Ref
-		Symbol *name
+		Symbol* name
 
 	when Typeof
 	

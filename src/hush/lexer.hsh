@@ -18,6 +18,8 @@ enum Token
 	Dot
 	Colon
 	DoubleColon
+	Backslash
+	Subscript
 
 	Eq
 	NotEq
@@ -42,6 +44,9 @@ enum Token
 
 	# Ordered binary operators
 
+	RShift
+	LShift
+
 	Add
 	Sub
 	Mul
@@ -56,6 +61,9 @@ enum Token
 
 	# Keep the assigns in the same order as the binary operators
 
+	AssignRShift
+	AssignLShift
+
 	AssignAdd
 	AssignSub
 	AssignMul
@@ -67,6 +75,15 @@ enum Token
 	AssignXor
 
 	AssignJoin
+
+	# Fake keyword tokens
+
+	LogicalAnd
+	LogicalOr
+
+instance Hash[Token]
+	fn hash() -> uint
+		return force_cast self
 
 data Lexer
 	data Indent
@@ -210,11 +227,13 @@ data Lexer
 		set_char(":", dual[Token.Colon, ":", Token.DoubleColon])
 		set_char("!", dual[Token.Not, ":", Token.NotEq])
 
+		set_char("'", single[Token.Subscript])
+		set_char("\", single[Token.Backslash])
 		set_char(".", single[Token.Dot])
 		set_char(",", single[Token.Comma])
 
-		set_char(">", assign[Token.Greater, Token.GreaterOrEq])
-		set_char("<", tri[Token.Less, "=", Token.LessOrEq, "-", Token.ArrowLeft])
+		set_char(">", greater)
+		set_char("<", less)
 
 		set_char("+", assign[Token.Add, Token.AssignAdd])
 		set_char("-", tri[Token.Sub, "=", Token.AssignSub, ">", Token.ArrowRight])
@@ -409,6 +428,51 @@ data Lexer
 				tok.num = p * 2 - 1
 				return
 		step()
+		tok.end()
+
+	fn greater()
+		step()
+
+		tok.type = match c()
+			when ">"
+				step()
+
+				match c()
+					when "="
+						step()
+						Token.AssignRShift
+					else
+						Token.RShift
+			when "="
+				step()
+				Token.GreaterOrEq
+			else
+				Token.Greater
+
+		tok.end()
+
+	fn less()
+		step()
+
+		tok.type = match c()
+			when "<"
+				step()
+
+				match c()
+					when "="
+						step()
+						Token.AssignLShift
+					else
+						Token.LShift
+			when "="
+				step()
+				Token.LessOrEq
+			when "-"
+				step()
+				Token.ArrowLeft
+			else
+				Token.Less
+
 		tok.end()
 
 	fn tri[Token :: type, char :: c1, Token :: t1, char :: c2, Token :: t2]()

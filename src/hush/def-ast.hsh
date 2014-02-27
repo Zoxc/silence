@@ -1,0 +1,14 @@
+data DefNode
+	SrcLoc* src
+
+	when Function
+		Block* block
+
+	when Data
+
+	when When
+	
+	when Error
+
+	shared none_obj = DefNode.Error(SrcLoc.error)
+	shared none = &none_obj

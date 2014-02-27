@@ -1,5 +1,7 @@
 use "lexer"
 use "type-ast"
+use "value-ast"
+use "def-ast"
 
 data Parser
 	Lexer* lexer
@@ -9,11 +11,16 @@ data Parser
 		lexer <- lexer,
 		compiler <- lexer.compiler
 
+		setup_ops()
+
 	fn tok()
 		return lexer.tok.type
 
 	fn eq(Token v)
 		return v == tok()
+
+	fn eq_i(Symbol *ident)
+		return eq(Token.Ident) and lexer.tok.symbol == ident
 
 	fn format_token() -> String
 		return tok().str()
@@ -107,7 +114,7 @@ data Parser
 				break
 			sep()
 
-	fn global_entry() -> bool
+	fn global_entry() -> bool constraints
 		match tok()
 			when Token.Ident
 				match lexer.tok.symbol
@@ -121,6 +128,29 @@ data Parser
 				return false
 
 		return true
+
+	fn global_scope(baseline)
+		parse_scope(baseline, global_entries)
+
+	fn parse_scope(baseline, term)
+		if eq(Token.Line)
+			if lexer.indent_newline(baseline)
+				var r = term(-> eq(Token.Deindent))
+				ensure(Token.Deindent)
+				return some r
+
+		var state = lexer.tok
+
+		skip_line()
+
+		return if matches(Token.BraceOpen)
+			skip_line()
+			var r2 = term(-> eq(Token.BraceClose))
+			ensure(Token.BraceClose)
+			some r2
+		else
+			lexer.tok = state
+			nil
 
 	fn properties()
 		loop
@@ -207,7 +237,9 @@ data Parser
 
 				matches_ident(Symbol.kw_constraints)
 
-		group(baseline)
+		var block = group(baseline)
+		return ast[DefNode.Function](s, block)
+
 
 	fn data()
 		var s = lexer.src()
@@ -227,7 +259,6 @@ data Parser
 				ensure(Token.SquareClose)
 
 	fn type_args(Array[TypeNode*, Region]* args)
-
 		loop
 			type_operator()
 			if matches(Token.Comma)
@@ -362,11 +393,433 @@ data Parser
 
 		return (name, type)
 
+	fn group(baseline) -> Block*
+		var block = ast[Block]()
 
-	fn global_scope(baseline)
+		parse_scope(baseline, \term ->
+			loop
+				if !is_expression()
+					break
+				expression()
+				if term()
+					break
+				sep())
 
-	fn group(baseline)
+		return block
 
-	fn expression()
+	fn is_expression()
+		if is_factor()
+			return true
+
+		return match tok()
+			when Token.Ident, Token.Mul, Token.And, Token.Dot, Token.Sub, Token.Add, Token.Not, Token.Join
+				true
+			else
+				false
+
+	fn expression() -> ValueNode* constraints
+		if eq(Token.Ident)
+			match lexer.tok.symbol
+				when Symbol.kw_var
+					return _var()
+				when Symbol.kw_return
+					return _return()
+				when Symbol.kw_if
+					return _if()
+				when Symbol.kw_match
+					return _match()
+				when Symbol.kw_loop
+					return _loop()
+				else
+
+		return assign_operator()
+
+	fn expression_list(Array[ValueNode*, Region]* args)
+		loop
+			args.push(expression())
+
+			if matches(Token.Comma)
+				skip_line()
+			else
+				break
+
+	fn _var()
+		return src \s ->
+			step()
+			skip_line()
+
+			var name = undef()
+			var type = undef()
+			(name, type) = name_opt_type()
+			var value = ValueNode.none
+
+			if matches(Token.Assign)
+				skip_line()
+				value = expression()
+
+			return ast[ValueNode.LocalVar](s, name, type, value)
+
+	fn _return()
+		return src \s ->
+			step()
+			skip_line()
+
+			return ast[ValueNode.Return](s, if is_expression()
+				expression()
+			else
+				ValueNode.none)
+
+	fn _if() -> ValueNode*
+		var baseline = lexer.tok.indent
+
+		var s = lexer.src()
+		step()
+		skip_line()
+		var exp = expression()
+		extend(s)
+
+		var block = group(baseline)
+
+		var state = lexer.tok
+
+		skip_line()
+
+		var else_node = if eq_i(Symbol.kw_else)
+			var else_baseline = lexer.tok.indent
+			step()
+
+			if eq_i(Symbol.kw_if)
+				_if()
+			else
+				src \s -> ast[ValueNode.Group](s, group(else_baseline))
+		else
+			lexer.tok = state
+
+			ValueNode.none
+
+		return ast[ValueNode.If](s, exp, block, else_node)
+
+	fn _match()
+		return src \s ->
+			var baseline = lexer.tok.indent
+			step()
+			skip_line()
+
+			var exp = expression()
+			var binding = nil
+
+			if matches_ident(Symbol.kw_as)
+				binding = some(src \s -> (s, get_ident()))
+
+			parse_scope(baseline, \term ->
+				loop
+					if !eq_i(Symbol.kw_when)
+						break
+
+					src \s ->
+						var when_baseline = lexer.tok.indent
+						step()
+						skip_line()
+						var cases = array()
+						expression_list(&cases)
+						group(when_baseline)
+
+					if term()
+						break
+
+					sep()
+
+				if eq_i(Symbol.kw_else)
+					var else_baseline = lexer.tok.indent
+					step()
+					skip_line()
+					group(else_baseline)
+					if !term()
+						sep()
+				)
+
+			match binding as b
+				when Option.Some
+				else
+
+			return ValueNode.none
+
+	fn _loop()
+		var baseline = lexer.tok.indent
+		var s = lexer.src()
+		step()
+		var block = group(baseline)
+		return ast[ValueNode.Loop](s, block)
+
+	fn assign_operator()
+		var result = pred_op(type_assert(), 0)
+
+		return match tok()
+			when Token.Assign, Token.AssignLShift, Token.AssignRShift, Token.AssignAdd, Token.AssignSub, Token.AssignMul, Token.AssignDiv, Token.AssignMod, Token.AssignOr, Token.AssignAnd, Token.AssignXor, Token.AssignJoin
+				var s = lexer.src()
+				var op = tok()
+				step()
+				skip_line()
+				ast[ValueNode.Assign](s, result, op, expression())
+			else
+				result
+
+	Map[Token, uint] PredOps
+
+	fn setup_ops()
+		var i = 1
+
+		PredOps.set(Token.LogicalOr, i)
+		i += 1
+
+		PredOps.set(Token.LogicalAnd, i)
+		i += 1
+
+		PredOps.set(Token.Eq, i)
+		PredOps.set(Token.NotEq, i)
+		i += 1
+
+		PredOps.set(Token.Or, i)
+		i += 1
+
+		PredOps.set(Token.Xor, i)
+		i += 1
+
+		PredOps.set(Token.And, i)
+		i += 1
+
+		PredOps.set(Token.LessOrEq, i)
+		PredOps.set(Token.GreaterOrEq, i)
+		PredOps.set(Token.Less, i)
+		PredOps.set(Token.Greater, i)
+		i += 1
+
+		PredOps.set(Token.RShift, i)
+		PredOps.set(Token.LShift, i)
+		i += 1
+
+		PredOps.set(Token.Add, i)
+		PredOps.set(Token.Sub, i)
+		PredOps.set(Token.Join, i)
+		i += 1
+
+		PredOps.set(Token.Mul, i)
+		PredOps.set(Token.Div, i)
+		PredOps.set(Token.Mod, i)
+
+
+	fn current_pred_op()
+		return if eq_i(Symbol.kw_and)
+			Token.LogicalAnd
+		else if eq_i(Symbol.kw_or)
+			Token.LogicalOr
+		else
+			tok()
+
+	fn is_pred_op()
+		return PredOps.has(current_pred_op())
+
+	fn pred_op(left, min) -> ValueNode*
+		loop
+			if !is_pred_op()
+				break
+
+			var op = current_pred_op()
+			var op_src = lexer.src()
+			var pred = PredOps.assert_get(op)
+
+			if pred < min
+				break
+
+			step()
+			skip_line()
+
+			var right = type_assert()
+
+			loop
+				if !is_pred_op()
+					break
+
+				var next_pred = PredOps.assert_get(current_pred_op())
+
+				if next_pred <= pred
+					break
+
+				right = pred_op(right, next_pred)
+
+			left = ast[ValueNode.BinOp](op_src, left, op, right)
+
+		return left
+
+	fn type_assert()
+		var r = unary()
+
+
+		return if eq(Token.DoubleColon)
+			src \s ->
+				step()
+				skip_line()
+
+				return ast[ValueNode.TypeAssert](s, r, type_expression())
+		else
+			r
+
+	fn unary() -> ValueNode*
+		return match tok()
+			when Token.And, Token.Mul, Token.Sub, Token.Add, Token.Not, Token.Join
+				src \s ->
+					var op = tok()
+					step()
+					skip_line()
+					return ast[ValueNode.UnaryOp](s, op, unary())
+			else
+				subscript()
+
+	fn subscript() -> ValueNode*
+		var r = apply()
+		return if eq(Token.Subscript)
+			src \s ->
+				step()
+				skip_line()
+				return ast[ValueNode.Subscript](s, r, subscript())
+		else
+			r
+
+	fn apply()
+		var s = lexer.src()
+		var result = chain()
+
+		loop
+			if !is_factor()
+				break
+
+			var new_s = lexer.src()
+			var arg = chain()
+			var args = array()
+			args.push(arg)
+			extend(s)
+			result = ast[ValueNode.Call](s, result, args)
+			s = new_s
+
+		return result
 
 	fn chain()
+		var result = factor()
+
+		loop
+			match tok()
+				when Token.ParentOpen
+					src \s ->
+						step()
+						skip_line()
+
+						var args = array()
+
+						if !eq(Token.ParentClose)
+							expression_list(&args)
+
+						ensure(Token.ParentClose)
+
+						result = ast[ValueNode.Call](s, result, args)
+				when Token.SquareOpen
+					src \s ->
+						step()
+						skip_line()
+
+						var args = array()
+						type_args(&args)
+
+						ensure(Token.SquareClose)
+
+						result = ast[ValueNode.TypeArgs](s, result, args)
+				when Token.Dot
+					src \s ->
+						step()
+						skip_line()
+
+						result = ast[ValueNode.Field](s, result, get_ident())
+				else
+					break
+
+		return result
+
+	fn tuple(s)
+		step()
+		skip_line()
+
+		var nodes = array()
+
+		if !eq(Token.ParentClose)
+			expression_list(&nodes)
+
+		ensure(Token.ParentClose)
+
+		if nodes.size == 1
+			return nodes'0
+		else
+			return ast[ValueNode.Tuple](s, nodes)
+
+	fn _array(s)
+		step()
+		skip_line()
+
+		var nodes = array()
+
+		if !eq(Token.SquareClose)
+			expression_list(&nodes)
+
+		ensure(Token.SquareClose)
+
+		return ast[ValueNode.ArrayLit](s, nodes)
+
+	fn lambda()
+		var baseline = lexer.tok.indent
+
+		src \s ->
+			if matches(Token.Backslash)
+				fn_params()
+			ensure(Token.ArrowRight)
+
+		if eq(Token.Line) or eq(Token.BraceOpen)
+			group(baseline)
+		else
+			expression()
+
+		return ValueNode.none
+
+
+	fn is_factor()
+		return match tok()
+			when Token.SquareOpen, Token.Backslash, Token.ParentOpen, Token.ArrowRight, Token.Number, Token.String
+				true
+			when Token.Ident
+				match lexer.tok.symbol
+					when Symbol.kw_or, Symbol.kw_and
+						false
+					when Symbol.kw_as
+						true  
+					else
+						true
+			else
+				false
+
+	fn factor()
+		return src \s ->
+			return match tok()
+				when Token.SquareOpen
+					_array(s)
+				when Token.ParentOpen
+					tuple(s)
+				when Token.Backslash
+					lambda()
+				when Token.Number, Token.String
+					ValueNode.none
+				when Token.Ident
+					match lexer.tok.symbol
+						when Symbol.kw_nil
+							ValueNode.none
+						else
+							ast[ValueNode.Ref](s, lexer.tok.symbol)
+				else
+					expected_str("expression")
+					ValueNode.none

@@ -1,0 +1,73 @@
+data Block
+
+data ValueNode
+	SrcLoc* src
+
+	when Group
+		Block* block
+
+	when LocalVar
+		Symbol *name
+		TypeNode *type
+		ValueNode *value
+
+	when Return
+		ValueNode *value
+
+	when If
+		ValueNode* condition
+		Block* block
+		ValueNode* else
+
+	when Loop
+		Block* block
+
+	when ArrayLit
+		Array[ValueNode*, Region] nodes
+
+	when Tuple
+		Array[ValueNode*, Region] nodes
+
+	when Call
+		ValueNode *obj
+		Array[ValueNode*, Region] args
+
+	when TypeArgs
+		ValueNode *obj
+		Array[TypeNode*, Region] args
+
+	when Field
+		ValueNode *obj
+		Symbol *name
+
+	when Subscript
+		ValueNode *obj
+		ValueNode *index
+
+	when TypeAssert
+		ValueNode *val
+		TypeNode *type
+
+	when Assign
+		ValueNode *lhs
+		Token op
+		ValueNode *rhs
+
+	when BinOp
+		ValueNode *lhs
+		Token op
+		ValueNode *rhs
+
+	when UnaryOp
+		Token op
+		ValueNode *val
+
+	when Ref
+		Symbol* name
+
+	when Number
+
+	when Error
+
+	shared none_obj = ValueNode.Error(SrcLoc.error)
+	shared none = &none_obj
