@@ -537,7 +537,7 @@ data Lexer
 
 	fn skip_whitespace()
 		loop
-			if c() != " " or c() != 9
+			if c() != " " and c() != 9
 				break
 
 			step()
