@@ -115,6 +115,7 @@ data Lexer
 		Array[Block*, Region] blocks 
 
 		Indent indent 
+		uint deindent_level
 
 		uint num
 		Symbol* symbol
@@ -220,8 +221,8 @@ data Lexer
 		set_char(" ", whitespace)
 		set_char(9, whitespace)
 
-		set_char(10, single[Token.Line])
-		set_char(13, dual[Token.Line, 10, Token.Line])
+		set_char(10, newline)
+		set_char(13, carrage_return)
 
 		set_char("=", dual[Token.Assign, "=", Token.Eq])
 		set_char(":", dual[Token.Colon, ":", Token.DoubleColon])
@@ -260,6 +261,9 @@ data Lexer
 		assert -> ptr_int tok.stop >= ptr_int tok.start
 		assert -> tok.type != Token.None
 
+	fn produce_token()
+		IO.puts("Token: " ~ tok.type.str() ~ String.from_c(10) ~ src().format())
+
 	fn process_token()
 		(jump_table'force_cast c())()
 
@@ -267,12 +271,51 @@ data Lexer
 		assert -> tok.type != Token.Line and tok.type != Token.Deindent
 		next(process_token)
 
+		produce_token()
+
 	fn next_token_after_line()
 		assert -> tok.type == Token.Line
 
-		next ->
-			tok.indent = get_line_indent()
-			handle_line()
+		match tok.deindent_level
+			when 0
+				next ->
+					tok.indent = get_line_indent()
+					handle_line()
+			when 1
+				next(process_token)
+			else
+				tok.type = Token.Deindent
+				tok.deindent_level -= 1
+
+		produce_token()
+
+	fn next_token_after_deindent()
+		assert -> tok.type == Token.Deindent
+
+		if tok.deindent_level == 1
+			next(process_token)
+		else
+			tok.type = Token.Line
+			tok.deindent_level -= 1
+
+		produce_token()
+
+	fn newline()
+		step()
+
+		tok.type = Token.Line
+		tok.deindent_level = 0
+		tok.end()
+
+	fn carrage_return()
+		step()
+
+		if c() == 10
+			step()
+
+		tok.type = Token.Line
+		tok.deindent_level = 0
+		tok.end()
 
 	fn indent_newline(Indent baseline)
 		assert -> tok.type == Token.Line
@@ -381,7 +424,7 @@ data Lexer
 				tok.start = tok.pos
 				tok.end()
 				tok.type = Token.Deindent
-				tok.num = i * 2
+				tok.deindent_level = i * 2
 			when IndentChange.Increased
 				next(process_token)
 			when IndentChange.Error
@@ -425,7 +468,7 @@ data Lexer
 			if p > 0
 				tok.end()
 				tok.type = Token.Deindent
-				tok.num = p * 2 - 1
+				tok.deindent_level = p * 2 - 1
 				return
 		step()
 		tok.end()
@@ -515,7 +558,7 @@ data Lexer
 
 			if tok.blocks.size > 0
 				tok.type = Token.Deindent
-				tok.num = tok.blocks.size * 2
+				tok.deindent_level = tok.blocks.size * 2
 			else
 				tok.type = Token.EndOfFile
 		else

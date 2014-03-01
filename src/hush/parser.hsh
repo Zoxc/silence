@@ -136,7 +136,12 @@ data Parser
 		if eq(Token.Line)
 			if lexer.indent_newline(baseline)
 				var r = term(-> eq(Token.Deindent))
-				ensure(Token.Deindent)
+
+				if eq(Token.Deindent)
+					lexer.next_token_after_deindent()
+				else
+					expected(Token.Deindent)
+
 				return some r
 
 		var state = lexer.tok
@@ -310,7 +315,7 @@ data Parser
 		return r
 
 	fn type_expression() -> TypeNode* constraints
-		type_ptr()
+		return type_ptr()
 
 	fn type_ptr()
 		var r = type_chain()
@@ -813,13 +818,15 @@ data Parser
 				when Token.Backslash
 					lambda()
 				when Token.Number, Token.String
+					step()
 					ValueNode.none
 				when Token.Ident
 					match lexer.tok.symbol
 						when Symbol.kw_nil
+							step()
 							ValueNode.none
 						else
-							ast[ValueNode.Ref](s, lexer.tok.symbol)
+							ast[ValueNode.Ref](s, get_ident())
 				else
 					expected_str("expression")
 					ValueNode.none

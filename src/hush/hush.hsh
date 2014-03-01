@@ -16,6 +16,7 @@ fn parse(input, name)
 			when Token.Line
 				compiler.lexer.next_token_after_line()
 			when Token.Deindent
+				compiler.lexer.next_token_after_deindent()
 			else
 				compiler.lexer.next_token()
 
