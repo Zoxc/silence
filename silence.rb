@@ -1,5 +1,6 @@
 require 'pathname'
 require 'rbconfig'
+require 'benchmark'
 IsWindows = (RbConfig::CONFIG['host_os'] =~ /mswin|mingw/)
 
 class CompileError < StandardError
@@ -66,37 +67,41 @@ def process(file)
 	files = {}
 	asts = []
 
-	infer_args = InferContext::InferArgs.new({}, [])
+	time = Benchmark.measure do
+		infer_args = InferContext::InferArgs.new({}, [])
 
 
-	begin
-		parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__))) unless Silence::Bare
-		parse(files, asts, file)
+		begin
+			parse(files, asts, File.realpath(File.expand_path('../src/core.hsh', __FILE__))) unless Silence::Bare
+			parse(files, asts, file)
+			
+			ast = AST::Program.new(AST::GlobalScope.new(asts))
+
+			#puts print_ast(ast)
+			ast.run_pass :declare_pass, false
+
+			Silence.set_program(ast)
+			require_relative 'core' # Core requires builtin things to be defined
+			asts.concat Core::Nodes
+
+			ast.run_pass :sema, true
+			ast.run_pass :ref_pass
+
+			InferContext.infer_core(infer_args)
+			InferContext.infer_scope(ast.scope, infer_args)
+			InferContext.infer_scope(Core::Generated, infer_args)
+
+		rescue CompileError => error
+			$stderr.puts "Failed to compile file:", error.message
+			$stderr.puts error.backtrace.join("\n") if Silence::Debug
+			exit
+		end
 		
-		ast = AST::Program.new(AST::GlobalScope.new(asts))
-
-		#puts print_ast(ast)
-		ast.run_pass :declare_pass, false
-
-		Silence.set_program(ast)
-		require_relative 'core' # Core requires builtin things to be defined
-		asts.concat Core::Nodes
-
-		ast.run_pass :sema, true
-		ast.run_pass :ref_pass
-
-		InferContext.infer_core(infer_args)
-		InferContext.infer_scope(ast.scope, infer_args)
-		InferContext.infer_scope(Core::Generated, infer_args)
-
-	rescue CompileError => error
-		$stderr.puts "Failed to compile file:", error.message
-		$stderr.puts error.backtrace.join("\n") if Silence::Debug
-		exit
+		puts "Generating code..."
+		File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
 	end
 	
-	puts "Generating code..."
-	File.open("output.cpp", "w") { |f| f.write Codegen.new.codegen(ast) }
+	puts "Compiled in #{time}"
 
 	puts "Compiling output..."
 	system "g++ -std=gnu++0x -g -Wall -Wno-unused-label -Wno-unused-variable -Wno-unused-value -Wno-self-assign -Wno-unused-variable #{File.expand_path('../hush.cpp', __FILE__)} output.cpp -o output"
