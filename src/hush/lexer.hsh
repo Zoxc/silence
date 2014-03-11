@@ -431,12 +431,20 @@ data Lexer
 				report[Error.IndentMismatch](make_src(tok.indent.start, tok.indent.stop), make_src(block.indent.start, block.indent.stop))
 
 	fn pop_bracket_level(brace) -> uint
-		tok.blocks.reverse().each_with_index \b, i ->
+		var i = tok.blocks.size
+
+		loop
+			if i == 0
+				return 0
+
+			i -= 1
+
+			var b = tok.blocks'i
+
 			if b.levels'brace > 0
 				b.levels'brace -= 1
-				tok.blocks = tok.blocks.slice(0, tok.blocks.size - 1 - i)
-				return i
-		return 0
+				tok.blocks = tok.blocks.slice(0, i)
+				return tok.blocks.size - 1 - i
 
 	fn bracket_data() -> uint
 		var i
@@ -559,6 +567,7 @@ data Lexer
 			if tok.blocks.size > 0
 				tok.type = Token.Deindent
 				tok.deindent_level = tok.blocks.size * 2
+				tok.blocks.clear()
 			else
 				tok.type = Token.EndOfFile
 		else

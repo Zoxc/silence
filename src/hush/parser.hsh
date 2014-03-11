@@ -537,7 +537,6 @@ data Parser
 				if eq_i(Symbol.kw_else)
 					var else_baseline = lexer.tok.indent
 					step()
-					skip_line()
 					group(else_baseline)
 					if !term()
 						sep()
@@ -815,7 +814,7 @@ data Parser
 					_array(s)
 				when Token.ParentOpen
 					tuple(s)
-				when Token.Backslash
+				when Token.Backslash, Token.ArrowRight
 					lambda()
 				when Token.Number, Token.String
 					step()
