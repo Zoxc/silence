@@ -35,6 +35,11 @@ data Array[T, Allocator A = Mem]
 	shared fn from_data(data, size)
 		return from_data_a(data, size, A())
 
+	fn clear()
+		list.destroy_n(size)
+		capacity = 0
+		size = 0
+
 	fn concat[OA](Array[T, OA] other)
 		expand(other.size)
 		times(other.size, \i -> list.set(size + i, other'i))
@@ -65,6 +70,7 @@ data Array[T, Allocator A = Mem]
 		var result = Array[T, A](allocator())
 		result.expand(size)
 		times(size, \i -> result.list.set(i, self'(size - 1 - i)))
+		result.size = size
 		return result
 
 	fn slice(start, stop)
@@ -74,6 +80,7 @@ data Array[T, Allocator A = Mem]
 		var size = stop - start + 1
 		result.expand(size)
 		times(size, \i -> result.list.set(i, self'(start + i)))
+		result.size = size
 		return result
 
 	fn expand(n)
