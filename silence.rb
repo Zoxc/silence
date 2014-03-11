@@ -111,8 +111,6 @@ def process(file)
 	end
 	puts "Running..."
 	system(IsWindows ? 'output.exe' : './output')
-	
-	ast
 end
 
 process(File.realpath(Silence::Args.first))
